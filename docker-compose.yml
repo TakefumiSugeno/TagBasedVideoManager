@@ -1,0 +1,94 @@
+name: TagBasedVideoManager-0.1
+
+# =============================================================================
+# docker-compose.yml for TagBasedVideoManager
+# =============================================================================
+# ffmpeg の GPU アクセラレーション設定について:
+#
+# 【パターン1: CPU のみで処理する場合 (デフォルト)】
+#   このファイルをそのまま使用してください。
+#   GPU関連のセクション (deploy / devices) はすべてコメントアウト済みです。
+#
+# 【パターン2: AMD GPU を使用する場合 (VAAPI / ROCm)】
+#   下記 "★ AMD GPU 用設定" セクションをコメントインしてください。
+#   ホストに AMD GPU ドライバおよび /dev/dri デバイスが存在する必要があります。
+#   WSL2 環境では /dev/dri がない場合があります。詳細は AMD の WSL2 GPU ドキュメントを参照。
+#
+# 【パターン3: NVIDIA GPU を使用する場合 (CUDA)】
+#   下記 "★ NVIDIA GPU 用設定" セクションをコメントインしてください。
+#   ホストに NVIDIA Container Toolkit がインストールされている必要があります。
+#   インストール手順: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#   WSL2 環境では nvidia-smi が有効である必要があります。
+# =============================================================================
+
+services:
+  video-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tag-based-video-manager
+    ports:
+      - "5620:5620"
+    environment:
+      - PORT=5620
+      - VIDEO_DIR=/app/videos
+      - THUMBNAIL_DIR=/app/data/thumbnails
+      - DATABASE_PATH=/app/data/metadata.db
+    volumes:
+      # 【永続化データ】DBやサムネイル画像を WSL上のプロジェクトフォルダ内 (./data) に格納して永続化
+      - ./data:/app/data
+
+      # 【動画ファイル】Windows 11 の動画フォルダを WSL経由 (/mnt/c/... 等) で参照し、コンテナへマウント
+      # ※ご自身のWindows環境のフォルダパスに合わせてWSL側のマウントパスを変更してください
+      # 例: Windowsの C:\Users\<ユーザー名>\Videos の場合 -> /mnt/c/Users/<ユーザー名>/Videos
+      # 例: Windowsの D:\MyVideos の場合 -> /mnt/d/MyVideos
+      - /mnt/c/Users/Public/Videos:/app/videos:ro
+
+    # =========================================================================
+    # ★ AMD GPU 用設定 (VAAPI / ROCm) ※コメントアウト状態 - 使用する場合はコメントイン
+    # =========================================================================
+    # AMD GPU を使用してffmpegのハードウェアアクセラレーションを有効にします。
+    # /dev/dri デバイス (DRM: Direct Rendering Manager) をコンテナに渡します。
+    #
+    # ⚠️  WSL2 環境での注意:
+    #   WSL2 では標準で /dev/dri が存在しない場合があります。
+    #   事前に WSL2 内で以下のコマンドで確認してください:
+    #     ls /dev/dri
+    #   存在しない場合は、以下のいずれかを行ってください:
+    #     (a) AMD 公式 ROCm ドライバを Windows ホストにインストール後、WSL2 を再起動
+    #         参考: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/how-to/prerequisites.html
+    #     (b) このセクションをコメントアウトのまま CPU モードで動作させる
+    #
+    # ホスト要件:
+    #   - AMD GPU ドライバ (amdgpu) がインストール済みであること
+    #   - /dev/dri/renderD128 等のデバイスが存在すること (ls /dev/dri で確認)
+    #   - (任意) mesa-va-drivers, libva 等の VAAPI ライブラリがホストにあること
+    #
+    # devices:
+    #   - /dev/dri:/dev/dri
+    #
+    # ※ /dev/dri を渡すだけで ffmpeg の `-hwaccel auto` により自動的に VAAPI が利用されます。
+    #   明示的に VAAPI を指定する場合は環境変数で VAAPI_DEVICE=/dev/dri/renderD128 を設定し
+    #   アプリ側の ffmpeg 引数に `-hwaccel vaapi -vaapi_device /dev/dri/renderD128` を追記してください。
+
+
+    # =========================================================================
+    # ★ NVIDIA GPU 用設定 (CUDA) ※コメントアウト状態 - 使用する場合はコメントイン
+    # =========================================================================
+    # NVIDIA GPU を使用してffmpegのハードウェアアクセラレーションを有効にします。
+    # NVIDIA Container Toolkit によるGPUリソースの提供が必要です。
+    # ホスト要件:
+    #   - NVIDIA ドライバがインストール済みであること
+    #   - NVIDIA Container Toolkit がインストール済みであること
+    #     インストール: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+    #   - WSL2 の場合: nvidia-smi コマンドが WSL2 内で動作すること
+    #
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu, video]
+
+    restart: unless-stopped

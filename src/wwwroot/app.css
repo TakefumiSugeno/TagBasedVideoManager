@@ -1,0 +1,37 @@
+body {
+    font-family: 'Outfit', 'Noto Sans JP', sans-serif;
+}
+/* スクロールバーのカスタマイズ */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.3);
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.4);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.7);
+}
+
+/* タイトル marquee アニメーション */
+.video-title-container {
+    overflow: hidden;
+    white-space: nowrap;
+    position: relative;
+    width: 100%;
+}
+.video-title-container.is-overflowing .video-title-text {
+    display: inline-block;
+    white-space: nowrap;
+    animation: title-marquee var(--scroll-duration, 8s) linear infinite alternate;
+}
+@keyframes title-marquee {
+    0% { transform: translateX(0); }
+    15% { transform: translateX(0); }
+    85% { transform: translateX(var(--scroll-amount)); }
+    100% { transform: translateX(var(--scroll-amount)); }
+}

@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Unit\TaggingEngineTests.fs" />
+    <Compile Include="Unit\SearchDslTests.fs" />
+    <Compile Include="Unit\DbInitTests.fs" />
+    <Compile Include="Unit\DbTests.fs" />
+    <Compile Include="Unit\ScannerTests.fs" />
+    <Compile Include="Unit\MediaTests.fs" />
+    <Compile Include="Unit\HttpHandlersTests.fs" />
+    <Compile Include="Unit\ProgramTests.fs" />
+    <Compile Include="Integration\StaticFileTests.fs" />
+    <Compile Include="Integration\StreamingTests.fs" />
+    <Compile Include="Integration\TagApiTests.fs" />
+    <Compile Include="Integration\RuleApiTests.fs" />
+    <Compile Include="Integration\SearchApiTests.fs" />
+    <Compile Include="Integration\PortTests.fs" />
+    <Compile Include="E2E\E2ETests.fs" />
+    <Compile Include="Tests.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.MTP" Version="10.0.1" />
+    <PackageReference Include="FsUnit" Version="7.1.1" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.9" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.49.0" />
+    <PackageReference Include="xunit.v3.mtp-v2" Version="3.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\src\TagBasedVideoManager.fsproj" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Content Include="..\src\wwwroot\**\*">
+      <Link>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
