@@ -2,18 +2,23 @@
 
 ## Purpose
 
-WinUI 3デスクトップアプリからTagBasedVideoManagerのDockerコンテナ稼働状態（Running / Stopped / Error）を常時監視し、アプリ内から直接 `docker compose` コマンドを発行して起動・停止・再起動を行える機能を提供する。
+Desktop CompanionアプリからTagBasedVideoManagerのDockerコンテナ稼働状態（Running / Stopped / Error）を `docker compose ps --format json` および HTTPヘルスチェックにより特定・監視し、アプリ内から直接 `docker compose` コマンドを発行して起動・停止・再起動を行える機能を提供する。
 
 ## ADDED Requirements
 
-### Requirement: Dockerコンテナ稼働状態の監視
+### Requirement: Dockerコンテナ稼働状態の特定と監視
 
-システムは、TagBasedVideoManagerのコンテナ状態（Running / Stopped / Restarting 等）を非同期に取得し、ステータスインジケーター（色とラベル）としてリアルタイムに表示しなければならない（SHALL）。
+システムは、プロジェクトの `docker-compose.yml` を基点として `docker compose ps --format json` を実行し、サービス `video-manager`（コンテナ名 `tag-based-video-manager`）の稼働状態を特定した上で、ポート5620へのHTTP疎通確認と併せてステータスインジケーター（Running / Stopped / Unhealthy 等）をリアルタイムに表示しなければならない（SHALL）。
 
-#### Scenario: コンテナが正常稼働中の表示
+#### Scenario: コンテナ正常稼働の特定と表示
 
-- **WHEN** TagBasedVideoManagerコンテナが稼働しているとき
+- **WHEN** TagBasedVideoManagerコンテナが起動し、ポート5620がHTTP応答しているとき
 - **THEN** デスクトップアプリのステータスバーに「● RUNNING」およびポート番号が表示されること
+
+#### Scenario: コンテナ停止または異常の特定
+
+- **WHEN** コンテナが停止しているか、マウント失敗等で起動していないとき
+- **THEN** デスクトップアプリのステータスバーに「○ STOPPED」または「▲ UNHEALTHY」と表示されること
 
 ### Requirement: Docker Compose コマンドのGUI実行
 

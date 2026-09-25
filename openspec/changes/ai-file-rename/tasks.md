@@ -1,16 +1,18 @@
 # Tasks: AIファイルリネーム・管理コンパニオン (Desktop Companion)
 
-## 1. プロジェクト構造と環境構築
+## 1. プロジェクト構造と環境構築 (100% F#)
 
-- [ ] 1.1 `src/TagBasedVideoManager.Companion.Core` (F# .NET 10 クラスライブラリ) および `test/TagBasedVideoManager.Companion.Tests` (xUnit + FsUnit) プロジェクトを新設し、ソリューションに追加して `dotnet build` が正常終了することを検証する
-- [ ] 1.2 `src/TagBasedVideoManager.Companion.App` (WinUI 3 / C#) プロジェクトを作成し、`TagBasedVideoManager.Companion.Core` をプロジェクト参照に追加して空ウィンドウが正常にビルド・起動することを検証する
+- [ ] 1.1 `src/TagBasedVideoManager.Companion/` (F# .NET 10 + Avalonia 11.x + Avalonia.FuncUI) プロジェクトを作成し、ソリューションに追加して空ウィンドウが正常にビルド・起動することを検証する
+- [ ] 1.2 `test/TagBasedVideoManager.Companion.Tests/` (F# .NET 10 + xUnit + FsUnit) テストプロジェクトを作成し、ソリューションに追加して `dotnet test` が通過することを検証する
 
-## 2. Core: ファイル走査とリネームエンジン (TDD)
+## 2. Core: 設定管理とファイル走査・リネームエンジン (TDD)
 
-- [ ] 2.1 [単体テスト・仕様検証] `FileScanner` のパス長計算・閾値フィルタリング（例: 220文字以上）に対する失敗するテストを作成する（Red）
-- [ ] 2.2 [実装・リファクタ] `FileScanner` を実装し、指定フォルダを再帰走査して危険ファイルを抽出する単体テストをGreenにし、重複ロジックを整理する
-- [ ] 2.3 [単体テスト・仕様検証] `FileRenamer` の物理リネーム、同名衝突回避、ファイルロック例外ハンドリングに対する失敗するテストを作成する（Red）
-- [ ] 2.4 [実装・リファクタ] `FileRenamer` を実装してテストをGreenにし、ROP（`Result` 型）による安全なエラーハンドリングを適用する
+- [ ] 2.1 [単体テスト・仕様検証] `Settings` モジュールにおける `companion-settings.json` の読み書き・デフォルト値復元に対する失敗するテストを作成する（Red）
+- [ ] 2.2 [実装・リファクタ] `Settings` モジュールを実装し、JSONシリアライズ/デシリアライズのテストをGreenにする
+- [ ] 2.3 [単体テスト・仕様検証] `FileScanner` のパス長計算・閾値フィルタリング（例: 220文字以上）に対する失敗するテストを作成する（Red）
+- [ ] 2.4 [実装・リファクタ] `FileScanner` を実装し、指定フォルダを再帰走査して危険ファイルを抽出する単体テストをGreenにする
+- [ ] 2.5 [単体テスト・仕様検証] `FileRenamer` の物理リネーム、同名衝突回避、ファイルロック例外ハンドリングに対する失敗するテストを作成する（Red）
+- [ ] 2.6 [実装・リファクタ] `FileRenamer` を実装してテストをGreenにし、ROP（`Result` 型）による安全なエラーハンドリングを適用する
 
 ## 3. Core: OpenRouter API クライアント (TDD)
 
@@ -19,22 +21,24 @@
 
 ## 4. Core: Docker Compose コントローラー (TDD)
 
-- [ ] 4.1 [単体テスト・仕様検証] `DockerController` の `docker compose ps --format json` のパースおよび up/down/restart コマンド引数生成に対する失敗するテストを作成する（Red）
-- [ ] 4.2 [実装・リファクタ] `DockerController` を実装し、プロセス実行・ステータス判定・エラー出力取得のテストをGreenにする
+- [ ] 4.1 [単体テスト・仕様検証] `DockerController` の `docker compose ps --format json` 出力パース（サービス `video-manager` 特定）および HTTPヘルスチェック疎通に対する失敗するテストを作成する（Red）
+- [ ] 4.2 [実装・リファクタ] `DockerController` を実装し、コンテナ状態特定（Running/Stopped/Unhealthy）および up/down/restart コマンド発行のテストをGreenにする
 
 ## 5. Webアプリ: マウント異常検知
 
 - [ ] 5.1 [単体テスト・回帰検証] Webアプリ側の `Scanner.fs` におけるマウントディレクトリ異常（未存在・0件）の検知ロジックに対するテストを追加する
 - [ ] 5.2 [実装] Webサーバー起動時にマウント状態を判定し、マウント異常時に Web UI（`src/wwwroot/index.html`, `app.js`）上部に警告バナーを表示する
 
-## 6. WinUI 3 UI 実装と統合
+## 6. Avalonia.FuncUI UI 実装と統合 (Elmish MVU)
 
-- [ ] 6.1 WinUI 3 上に Docker コントローラー（稼働ステータスバッジ、Up/Down/Restartボタン）を構築し、`DockerController` と非同期連携させる
-- [ ] 6.2 WinUI 3 上に フォルダ参照ピッカー、パス長閾値スライダー/入力、OpenRouter APIキー・モデル選択UIを構築する
-- [ ] 6.3 WinUI 3 DataGrid にリネーム前後の比較表示とインライン編集テキストボックスを構築し、リアルタイムパス長再計算・バリデーションを実装する
-- [ ] 6.4 「リネームしてコンテナ再起動」および「リネームのみ実行」のアクションを実装し、進捗プログレスバーおよび完了ダイアログを表示する
+- [ ] 6.1 `State.fs` に Elmish の Model, Msg, init, update を実装し、スキャン・AI提案・リネーム・Docker制御の状態遷移ロジックを構築する
+- [ ] 6.2 `Views.fs` に Docker コントローラーバー（稼働ステータスバッジ、Up/Down/Restartボタン）を構築し、非同期コマンドと連動させる
+- [ ] 6.3 `Views.fs` に フォルダ参照ピッカー、パス長閾値スライダー、OpenRouter設定、命名規則プリセット選択ドロップダウンおよびカスタム入力欄を構築する
+- [ ] 6.4 `Views.fs` に リネーム前後の比較DataGrid（インライン編集テキストボックス、パス長再計算バリデーション）を構築する
+- [ ] 6.5 「リネームしてコンテナ再起動」および「リネームのみ実行」のアクションを実装し、進捗表示および完了ダイアログを実装する
 
-## 7. 総合検証・エビデンス出力
+## 7. 自動E2Eテストの実装と総合検証
 
-- [ ] 7.1 長パスファイル（220文字以上）を含むテスト環境を作成し、検出 → AI提案 → 手動微調整 → リネーム → コンテナ再起動の一連の動作を手動・結合検証する
-- [ ] 7.2 全単体テストを実行し、TRXエビデンスおよびカバレッジレポートを出力して品質基準を満たしていることを検証する
+- [ ] 7.1 [結合E2Eテスト] `TagBasedVideoManager.Companion.Tests` 内に、一時フォルダに220文字以上の長パスファイルを動的生成し、「走査 → AIモック提案 → 物理リネーム → 整合性確認」を一気通貫で自動検証する結合E2Eテストを実装する
+- [ ] 7.2 [Web E2Eテスト] Playwright を用いて、`VIDEO_DIR` が空の状態でWebアプリを起動した際に、トップ画面に「マウント異常・長パス警告バナー」が正しく描画されることを自動検証する E2E テストを実装する
+- [ ] 7.3 全単体テストおよびE2Eテストを実行し、TRXエビデンスおよびカバレッジレポートを出力して品質基準を満たしていることを検証する
