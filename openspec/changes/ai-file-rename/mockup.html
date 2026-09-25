@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TagBasedVideoManager Companion - UI/UX Mockup</title>
+    <title>TagBasedVideoManager - AI File Renamer</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Alpine.js CDN -->
@@ -60,7 +60,7 @@
     <div
       class="w-full max-w-6xl bg-fluent-bg border border-fluent-border rounded-xl shadow-2xl overflow-hidden flex flex-col h-[94vh] max-h-[920px]"
     >
-      <!-- Titlebar -->
+      <!-- Titlebar: Clear app name showing renaming capability, no F# mention -->
       <div
         class="bg-fluent-surface border-b border-fluent-border px-4 py-2 flex items-center justify-between flex-shrink-0"
       >
@@ -71,11 +71,7 @@
             ▶
           </div>
           <span class="text-xs font-semibold text-fluent-text tracking-wide"
-            >TagBasedVideoManager - Desktop Companion</span
-          >
-          <span
-            class="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded border border-zinc-700"
-            >100% F# Avalonia.FuncUI</span
+            >TagBasedVideoManager - AI File Renamer</span
           >
         </div>
         <div class="flex items-center space-x-3 text-fluent-subtext text-xs">
@@ -214,7 +210,7 @@
             class="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-fluent-border/60"
           >
             <div class="flex flex-wrap items-center gap-3">
-              <!-- Model (loaded from settings) -->
+              <!-- Model -->
               <div class="flex items-center space-x-1.5">
                 <label class="text-fluent-subtext font-semibold"
                   >AIモデル:</label
@@ -237,7 +233,7 @@
                 </select>
               </div>
 
-              <!-- Naming Rule (sorted #1 loaded from settings) -->
+              <!-- Naming Rule -->
               <div class="flex items-center space-x-1.5">
                 <label class="text-fluent-subtext font-semibold"
                   >命名規則:</label
@@ -253,7 +249,7 @@
                     ></option>
                   </template>
                 </select>
-                <!-- Rule Manager Modal Trigger -->
+                <!-- Rule Manager Trigger -->
                 <button
                   @click="openRuleManager()"
                   class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-fluent-border text-zinc-300 hover:text-white flex items-center gap-1 font-medium"
@@ -264,7 +260,7 @@
               </div>
             </div>
 
-            <!-- PRIMARY ACTION BUTTON: Single-action Extract & Propose -->
+            <!-- PRIMARY ACTION BUTTON -->
             <div>
               <button
                 @click="executeScanAndPropose()"
@@ -280,11 +276,11 @@
           </div>
         </div>
 
-        <!-- SECTION 3: BEFORE / AFTER Comparison View with Layout Toggle -->
+        <!-- SECTION 3: BEFORE / AFTER Comparison View -->
         <div
           class="flex-1 bg-fluent-surface border border-fluent-border rounded-lg flex flex-col overflow-hidden shadow-sm"
         >
-          <!-- Header Toolbar & Layout Toggle -->
+          <!-- Header Toolbar & Layout Toggle: "上下並び" and "左右並び" -->
           <div
             class="bg-zinc-900 px-3.5 py-2 border-b border-fluent-border flex items-center justify-between text-xs flex-shrink-0"
           >
@@ -303,7 +299,7 @@
               ></span>
             </div>
 
-            <!-- View Layout Switcher (Horizontal vs Vertical) -->
+            <!-- View Layout Switcher (Simplified: "上下並び" vs "左右並び") -->
             <div class="flex items-center space-x-2">
               <span class="text-fluent-subtext text-[11px]">表示形式:</span>
               <div
@@ -313,9 +309,9 @@
                   @click="layoutMode = 'vertical'"
                   :class="layoutMode === 'vertical' ? 'bg-blue-600 text-white font-bold' : 'text-zinc-400 hover:text-white'"
                   class="px-2.5 py-0.5 rounded text-[11px] flex items-center gap-1 transition"
-                  title="上下に薄く並べて視線移動ゼロで比較"
+                  title="上下に薄く並べて視線移動を最小化"
                 >
-                  <span>▤</span> 上下並び (コンパクト)
+                  <span>▤</span> 上下並び
                 </button>
                 <button
                   @click="layoutMode = 'horizontal'"
@@ -356,12 +352,12 @@
                        'bg-zinc-900/40 border-zinc-800 opacity-60': !file.selected
                      }"
                   >
-                    <!-- MODE A: VERTICAL (上下並び - 超コンパクトで上下が見比べやすい) -->
+                    <!-- MODE A: VERTICAL (上下並び - 極低ハイトで上下が見比べやすい) -->
                     <div
                       x-show="layoutMode === 'vertical'"
                       class="p-2 space-y-1 text-xs"
                     >
-                      <!-- Line 1: Header / Checkbox / Metrics -->
+                      <!-- Line 1: Header / Checkbox / Folder & Metrics -->
                       <div
                         class="flex items-center justify-between text-[11px] pb-1 border-b border-zinc-800"
                       >
@@ -376,7 +372,7 @@
                             x-text="'#' + (index + 1)"
                           ></span>
                           <span
-                            class="text-zinc-500 font-mono text-[10px] truncate max-w-[450px]"
+                            class="text-zinc-500 font-mono text-[10px] truncate max-w-[480px]"
                             x-text="file.folderPath + '\\'"
                           ></span>
                         </div>
@@ -386,7 +382,7 @@
                             x-text="'-' + (file.beforeLength - file.afterLength) + '字 (' + Math.round((1 - file.afterLength/file.beforeLength)*100) + '%短縮)'"
                           ></span>
                           <span class="text-emerald-400 font-bold text-[10px]"
-                            >✓ マウント安全</span
+                            >✓ 安全</span
                           >
                         </div>
                       </div>
@@ -429,6 +425,21 @@
                           >AI提案済</span
                         >
                       </div>
+
+                      <!-- Line 4: AI Comment Box (理由・命名規則適合状況の説明) -->
+                      <div
+                        class="flex items-start space-x-1.5 pt-0.5 text-[11px]"
+                        :class="file.isIrregular ? 'text-amber-300' : 'text-zinc-400'"
+                      >
+                        <span
+                          class="font-bold flex-shrink-0"
+                          x-text="file.isIrregular ? '⚠️ AIコメント:' : '💬 AIコメント:'"
+                        ></span>
+                        <span
+                          class="font-sans leading-tight italic"
+                          x-text="file.aiComment"
+                        ></span>
+                      </div>
                     </div>
 
                     <!-- MODE B: HORIZONTAL (左右2列並び) -->
@@ -450,7 +461,7 @@
                             x-text="'#' + (index + 1)"
                           ></span>
                           <span
-                            class="text-zinc-500 font-mono text-[10px] truncate max-w-[450px]"
+                            class="text-zinc-500 font-mono text-[10px] truncate max-w-[480px]"
                             x-text="file.folderPath"
                           ></span>
                         </div>
@@ -480,25 +491,41 @@
                           ></div>
                         </div>
 
-                        <!-- After Box -->
+                        <!-- After Box with AI Comment -->
                         <div
-                          class="bg-emerald-950/20 border border-emerald-900/40 rounded p-2 space-y-1"
+                          class="bg-emerald-950/20 border border-emerald-900/40 rounded p-2 space-y-1.5 flex flex-col justify-between"
                         >
-                          <div class="flex justify-between text-[11px]">
-                            <span class="text-emerald-400 font-bold"
-                              >✓ AFTER (AI提案 / 編集可)</span
-                            >
+                          <div>
+                            <div class="flex justify-between text-[11px] mb-1">
+                              <span class="text-emerald-400 font-bold"
+                                >✓ AFTER (AI提案 / 編集可)</span
+                              >
+                              <span
+                                class="font-mono text-emerald-400 font-bold"
+                                x-text="file.afterLength + '字 [安全]'"
+                              ></span>
+                            </div>
+                            <input
+                              type="text"
+                              x-model="file.afterFileName"
+                              @input="recalculateLength(file)"
+                              class="w-full bg-black/80 border border-emerald-600/80 rounded px-2 py-1 text-xs font-mono text-emerald-300 focus:outline-none"
+                            />
+                          </div>
+                          <!-- AI Comment Box -->
+                          <div
+                            class="text-[11px] pt-1 border-t border-emerald-900/40 flex items-start gap-1"
+                            :class="file.isIrregular ? 'text-amber-300' : 'text-zinc-400'"
+                          >
                             <span
-                              class="font-mono text-emerald-400 font-bold"
-                              x-text="file.afterLength + '字 [安全]'"
+                              class="font-bold flex-shrink-0"
+                              x-text="file.isIrregular ? '⚠️ AIコメント:' : '💬 AIコメント:'"
+                            ></span>
+                            <span
+                              class="font-sans leading-tight italic"
+                              x-text="file.aiComment"
                             ></span>
                           </div>
-                          <input
-                            type="text"
-                            x-model="file.afterFileName"
-                            @input="recalculateLength(file)"
-                            class="w-full bg-black/80 border border-emerald-600/80 rounded px-2 py-1 text-xs font-mono text-emerald-300 focus:outline-none"
-                          />
                         </div>
                       </div>
                     </div>
@@ -524,7 +551,7 @@
                 >✓ 260文字制限を完全クリア</span
               >
 
-              <!-- UNDO BUTTON (Shows up if history exists) -->
+              <!-- UNDO BUTTON -->
               <button
                 x-show="undoAvailable"
                 @click="executeUndo()"
@@ -559,7 +586,7 @@
         </div>
       </div>
 
-      <!-- MODAL: Naming Rule Manager (命名規則作成・編集・並び替え) -->
+      <!-- MODAL: Naming Rule Manager -->
       <div
         x-show="showRuleManager"
         x-transition
@@ -586,7 +613,7 @@
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-12 gap-4 text-xs">
-            <!-- Left: Preset List (Top item = Default on startup) -->
+            <!-- Left: Preset List -->
             <div
               class="md:col-span-5 space-y-2 border-r border-fluent-border/60 pr-3"
             >
@@ -617,7 +644,6 @@
                       >
                       <span class="font-medium truncate" x-text="r.name"></span>
                     </div>
-                    <!-- Move up/down buttons -->
                     <div class="flex items-center space-x-1" @click.stop>
                       <button
                         @click="moveRule(idx, -1)"
@@ -663,7 +689,6 @@
                       x-model="activeEditRule.pattern"
                       class="w-full bg-zinc-900 border border-fluent-border rounded px-2.5 py-1 font-mono text-emerald-300"
                     />
-                    <!-- Quick Tag Insertion -->
                     <div class="flex flex-wrap gap-1 mt-1.5">
                       <span class="text-[10px] text-zinc-500 mr-1">挿入:</span>
                       <button
@@ -781,8 +806,8 @@
           dockerStatus: "unhealthy", // 'running', 'stopped', 'unhealthy'
           isDockerProcessing: false,
           isProcessing: false,
-          layoutMode: "vertical", // 'vertical' (compact rows) or 'horizontal' (columns)
-          filesLoaded: true, // Already extracted on startup simulation
+          layoutMode: "vertical", // 'vertical' (上下並び) or 'horizontal' (左右並び)
+          filesLoaded: true,
           selectAll: true,
           showRuleManager: false,
           showProgressModal: false,
@@ -795,12 +820,10 @@
           undoAvailable: false,
           undoHistory: [],
 
-          // Settings loaded automatically on startup
           targetDir: "C:\\Users\\Public\\Videos\\Touring_2025_Summer",
           selectedModel: "meta-llama/llama-3.3-70b-instruct:free",
           selectedRuleId: "rule_1",
 
-          // Rules array (Index 0 is default on startup, configurable in Rule Manager)
           rules: [
             {
               id: "rule_1",
@@ -826,7 +849,7 @@
           ],
           activeEditRule: null,
 
-          // Sample Data: Extracted files (>= 240 chars) with AI suggestions
+          // Sample Data including regular files and an irregular file with AI Comments
           files: [
             {
               id: 1,
@@ -838,6 +861,9 @@
               beforeLength: 251,
               afterFileName: "20250812_Hokkaido_Soya_Cape.mp4",
               afterLength: 124,
+              isIrregular: false,
+              aiComment:
+                "元ファイル名の日付と地名「Wakkanai（稚内）」、シーン「Cape Soya」から規則通り要約命名しました。",
             },
             {
               id: 2,
@@ -849,6 +875,9 @@
               beforeLength: 247,
               afterFileName: "20250812_Family_Camp_BBQ.mp4",
               afterLength: 120,
+              isIrregular: false,
+              aiComment:
+                "カメラ自動採番「DSC_0099...」から撮影日と「Camping Barbecue」を抽出し短縮命名しました。",
             },
             {
               id: 3,
@@ -856,10 +885,13 @@
               folderPath:
                 "C:\\Users\\Public\\Videos\\Touring_2025_Summer\\Furano_Lavender_Fields_Scenic_Route_Extremely_Detailed_Directory",
               beforeFileName:
-                "20250814_Furano_Tomita_Farm_Flowers_Blooming_Spectacular_Drone_Shot_4K_Landscape_Color_Graded_Final_Version_01.mp4",
-              beforeLength: 242,
+                "7f9a2b8c_raw_camera_sensor_dump_stream_uuid_99887766554433221100_unprocessed_heavy_4k_footage_final.mp4",
+              beforeLength: 249,
               afterFileName: "20250814_Furano_Lavender.mp4",
               afterLength: 119,
+              isIrregular: true,
+              aiComment:
+                "元ファイル名に日付・内容の記載がなかったため、親フォルダ名「Furano」とファイル更新日時(2025/08/14)から補完命名しました。",
             },
           ],
 
@@ -904,7 +936,6 @@
             this.progressMessage =
               "重複チェックとファイルアクセス権限の検証...";
 
-            // Save to Undo History
             this.undoHistory = this.files
               .filter((f) => f.selected)
               .map((f) => ({
@@ -971,7 +1002,7 @@
             setTimeout(() => {
               this.progressPercent = 100;
               this.progressMessage = "元に戻す処理が完了しました！";
-              this.dockerStatus = "unhealthy"; // back to mount error
+              this.dockerStatus = "unhealthy";
               this.isExecutionComplete = true;
               this.isProcessing = false;
               this.undoAvailable = false;
