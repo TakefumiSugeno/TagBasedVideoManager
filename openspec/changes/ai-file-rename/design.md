@@ -10,10 +10,13 @@ Docker Containerのバインドマウント（WSL2 / 9p / virtiofs）におい�
 **Goals:**
 
 - ホストOS上の動画フォルダを走査し、マウント破綻原因となる**絶対パス長 ≧ 240文字（MAX_PATH 260文字へのマージン考慮）**のファイルを自動抽出
-- OpenRouter API (Freeモデル) を活用した新ファイル名候補の自動生成
-- 命名規則設定・APIキーのローカル永続化（`companion-settings.json`）とUIプリセット選択
-- **100% F# (.NET 10) ＋ Avalonia.FuncUI (Elmish MVU)** による完全な関数型クロスプラットフォームデスクトップアプリの構築
-- **Before（変更前）と After（変更後）の完全対比UI**（元フルパス・文字数 vs 新フルパス・短縮文字数・手動微調整入力欄）
+- アプリ起動時にフォルダ・モデル・優先命名規則を自動ロードし、1クリックで抽出＆AI提案を実行
+- 命名規則マネージャー画面によるルールの新規作成・編集・削除・並び替え（先頭ルールが既定）
+- **Before（変更前）と After（変更後）の2通りレイアウト表示**:
+  - **上下並び**: 高さを極限まで低く抑え、Before行とAfter行を隣接させて視線移動ゼロで比較可能
+  - **左右並び**: 横長ディスプレイ向けの2列対比
+- アプリ起動中リネームの **Undo（元に戻す）** 機能（物理逆リネーム＋コンテナ再起動）
+- **100% F# (.NET 10) ＋ Avalonia.FuncUI (Elmish MVU)** による完全な関数型デスクトップアプリ
 - 安全な物理リネーム（重複チェック、エラーハンドリング、ロールバック）
 - `docker compose ps --format json` および HTTP疎通確認による確実なコンテナ状態特定と Up / Down / Restart 制御
 - Webアプリ起動時のマウント異常検知とUI警告バナー表示
@@ -21,51 +24,43 @@ Docker Containerのバインドマウント（WSL2 / 9p / virtiofs）におい�
 
 **Non-Goals:**
 
-- ユーザーにパス長閾値（スライダー）を選ばせる曖昧なUI（240文字の明確な絶対基準で自動抽出）
+- ユーザーにパス長閾値を選ばせる曖昧なUI（240文字の絶対基準で自動抽出）
 - C# や XAML の導入（本プロジェクトの F# ネイティブ方針を堅持）
 - コンテナ内部からの直接物理ファイルリネーム
 - 有料AIモデルへの依存
 
 ## Decisions
 
-### 1. リネーム対象の抽出条件（明確な絶対基準）
+### 1. 起動時自動ロードとワンアクション実行
 
-- **決定**: **絶対パス長 ≧ 240文字** のファイルを自動抽出する。
-- **理由**:
-  - Docker Desktop WSL2バインドマウントの制限は 260文字（MAX_PATH）。
-  - コンテナ内のマウントパス（`/app/videos/...`）への置換マージンを考慮し、240文字以上を「マウント破綻の危険ファイル」として自動抽出する。
-  - スライダー等でユーザーに閾値を選ばせる曖昧さを排除し、システムが安全基準で自動判定する。
+- **決定**: 起動時に `companion-settings.json` から設定（フォルダ、モデル、先頭命名規則）を自動読み込みし、ユーザーは「リネーム対象抽出 ＆ AI提案を実行」ボタンを1回押すだけで処理を完了できる設計とする。
+- **理由**: スキャンとAI提案の二度押しを排除し、最短の手数で結果を確認できるようにする。
 
-### 2. 100% F# によるデスクトップGUI: Avalonia.FuncUI (Elmish MVU)
+### 2. Before / After のレイアウト切り替え ＆ 高さコンパクト化
+
+- **決定**: 上下並び（極低ハイト・コンパクト）と左右並びのトグル切り替えを提供する。
+- **上下並びの最適化**:
+  - 1カード内で、上行（BEFORE: 現パス長・赤バッジ・現ファイル名）と下行（AFTER: 新パス長・緑バッジ・新ファイル名インライン入力）をほぼ隣接させて配置。
+  - 余白を極限まで削り、上下の文字列の差分を目視で直感的に見比べられるようにする。
+
+### 3. リネームの Undo（元に戻す）機能
+
+- **決定**: アプリ起動中のリネーム履歴をメモリスタック（`undoHistory: { OriginalPath: string; RenamedPath: string } list`）として保持し、UI上の「元に戻す (Undo)」ボタンから逆リネームを実行できるようにする。
+- **理由**: AI提案の誤適用やユーザーの手動編集ミスが発生した場合でも、即座に安全に元のファイル構成に戻せるようにするため。
+
+### 4. 命名規則マネージャー画面の新設
+
+- **決定**: メイン画面の「管理...」ボタンから開く命名規則マネージャーモーダルを新設する。
+- **機能**:
+  - ルール一覧の並び替え（一番上に置いたルールが起動時のデフォルト）
+  - ルール名・パターン・AI指示の編集
+  - タグ挿入ボタン（`{{Date}}`, `{{ParentFolder}}`, `{{Summary}}`, `{{Seq}}`）
+  - `companion-settings.json` への自動永続化
+
+### 5. 100% F# によるデスクトップGUI: Avalonia.FuncUI (Elmish MVU)
 
 - **決定**: C# / XAML を一切使用せず、**純粋な F# (.NET 10) ＋ Avalonia.FuncUI** を採用する。
 - **アーキテクチャ**: Elmish (Model-View-Update: MVU) パターンによる単方向データフロー。
-- **UIレイアウト**: Before（変更前: 赤トーン）と After（変更後: 緑トーン）を横並びで対比確認できるカード/グリッドビュー。
-
-### 3. コンテナ状態の特定アーキテクチャ
-
-- **決定**: `docker compose ps --format json` を基点とし、ポート5620への HTTP Ping を併用する。
-- **理由**:
-  - `docker-compose.yml` に定義されたサービス `video-manager`（コンテナ名 `tag-based-video-manager`）を正確に特定でき、他プロジェクトのコンテナと混同しない。
-  - プロセス状態とWebサーバー応答の二重確認により、ハングアップも確実に検知。
-
-### 4. 命名規則・設定の永続化設計
-
-- **決定**: `%APPDATA%/TagBasedVideoManager/companion-settings.json`（またはアプリ直下）に設定をJSON形式で永続化する。
-- **保持する情報**:
-  - `openRouterApiKey`: APIキー
-  - `model`: 選択モデル（デフォルト: `meta-llama/llama-3.3-70b-instruct:free`）
-  - `activeRuleIndex`: 選択中の命名ルールプリセット
-  - `customRules`: ユーザーが追加したプリセットルール配列
-
-### 5. 自動テスト・E2Eテスト戦略
-
-- **単体テスト (Unit)**: xUnit + FsUnit
-  - `FileScanner`, `FileRenamer`, `OpenRouterClient`, `DockerController`, `Settings` の純粋関数・ROP logic
-- **結合E2Eテスト (Companion E2E)**:
-  - 一時ディレクトリに実際の長パスファイル（240文字以上）を動的生成し、「走査 → AIモック提案 → 物理リネーム → 整合性確認」を一気通貫で検証
-- **Web側E2Eテスト (Playwright)**:
-  - マウント先が空の状態でWebサーバーを立ち上げ、ブラウザ画面に警告バナーが表示されることを検証
 
 ## UI/UX モックアップ (Avalonia.FuncUI - Fluent テーマ)
 
@@ -75,65 +70,55 @@ Docker Containerのバインドマウント（WSL2 / 9p / virtiofs）におい�
 +---------------------------------------------------------------------------------+
 | TagBasedVideoManager - Desktop Companion                                 [-] [x]|
 +---------------------------------------------------------------------------------+
-| [Docker Controller]                                                             |
-|  Container: tag-based-video-manager   Status: [● RUNNING] (Port: 5620)          |
-|  [ ▶ Up (Start) ]  [ ■ Down (Stop) ]  [ 🔄 Restart ]  [ 📋 View Logs ]          |
+| [Docker: tag-based-video-manager] Status: [● RUNNING] (Port: 5620)               |
+| [▶ Start] [■ Stop] [🔄 Restart]                                                 |
 +---------------------------------------------------------------------------------+
-| [Scan & AI Rule]                                                                |
-|  対象フォルダ: [ C:\Users\Videos\Touring_2025                       ] [参照...] |
-|  抽出条件: [⚠️ 絶対パス長 ≧ 240文字 (Docker上限 260字対策)] (検出: 3 件)         |
-|  AIモデル: [ OpenRouter: Llama-3.3 70B (Free) v ]  命名: [ [日付]_[要約] v ]    |
+| 対象フォルダ: [ C:\Videos\Touring_2025              ] [参照...]                 |
+| 抽出基準: [⚠️ 絶対パス長 ≧ 240文字 (Docker上限 260字対策)] (検出: 3件)          |
+| AIモデル: [ Llama-3.3 70B (Free) v ]  命名: [ ★日付＋要約 v ] [⚙ 管理...]       |
+|                                                                                 |
+| ===> [ 🚀 リネーム対象抽出 ＆ AI提案を実行 (ワンアクション) ]                   |
 +---------------------------------------------------------------------------------+
-| 【リネーム対象ファイル (Before / After 比較確認)】                               |
+| Before / After 対比確認                表示形式: [ ▤ 上下並び ] [ ◫ 左右並び ]   |
 | +-----------------------------------------------------------------------------+ |
-| | [x] #1  短縮効果: -209文字 (83%削減) [✓ マウント安全]                         | |
-| |  [BEFORE (変更前: 251文字 [危険])]                                          | |
-| |    パス: C:\Videos\Touring_2025\Hokkaido_Very_Long_Directory\...            | |
-| |    名前: VID_20250812_143022_Recorded_At_Wakkanai_Hokkaido_Very_Long...mp4  | |
-| |  [AFTER  (変更後: 42文字 [安全])]                                           | |
-| |    パス: C:\Videos\Touring_2025\Hokkaido_Very_Long_Directory\...            | |
-| |    名前: [ 20250812_Hokkaido_Soya_Cape.mp4                  ] (手動編集可)  | |
+| | [x] #1  C:\Videos\Touring_2025\Hokkaido_Very_Long_Directory\...            | |
+| |  BEFORE (251字 [危険]): VID_20250812_Wakkanai_Motorcycle_Very_Long_Name.mp4 | |
+| |  AFTER  ( 42字 [安全]): [ 20250812_Hokkaido_Soya_Cape.mp4 ] (-209字削減)    | |
 | +-----------------------------------------------------------------------------+ |
-| [ Actions ]                                                                     |
-|  リネーム予定: 3 件   [ リネームのみ実行 ]   [ ⚡ リネームしてコンテナ再起動 ]  |
+|                                                                                 |
+| 確定件数: 3 件      [ ↩ 直前のリネームを元に戻す (Undo) ]                       |
+| [ リネームのみ実行 ]             [ ⚡ リネームしてコンテナ再起動 (復旧) ]       |
 +---------------------------------------------------------------------------------+
 ```
 
 ## アーキテクチャとデータフロー
 
 ```
- [Avalonia.FuncUI (Elmish: Model-View-Update)]
+ [Avalonia.FuncUI (Elmish MVU)]
       |
-      | 1. Msg: StartScan (フォルダパス) -> パス長 ≧ 240文字で抽出
+      | 1. アプリ起動: Settings.load() -> フォルダ, モデル, 既定ルール(1番目)
       v
- [FileScanner.fs] ---> ホストディレクトリ再帰走査 & パス長計算
+ [Elmish Model 初期化] (即座に準備完了)
       |
-      | 2. Msg: ScanCompleted (VideoFileInfo list)
+      | 2. Msg: ExecuteScanAndPropose (ワンアクション実行)
       v
- [Elmish Model 更新 -> View 再描画] (Before / After 対比カードを表示)
+ [FileScanner.fs] ---> パス長 ≧ 240文字のファイルを抽出
       |
-      | 3. Msg: RequestAiSuggestions (選択ファイル, ルール)
-      v
- [OpenRouterClient.fs] ---> OpenRouter API (Free) へ POST (JSON Schema要求)
-      |                                |
-      |<-- 提案JSONパース結果 ---------+
-      v
- [Elmish Model 更新 -> View 再描画] (After の提案ファイル名反映・リアルタイム新パス長計算)
+ [OpenRouterClient.fs] ---> Freeモデルへ一括問い合わせ & 提案生成
       |
-      | 4. Msg: ExecuteRenameAndRestart
-      v
- [FileRenamer.fs]      ---> 重複検証 & File.Move で物理リネーム
+ [Elmish Model 更新] ---> Before / After 対比ビュー描画 (上下コンパクト / 左右並び)
       |
- [DockerController.fs] ---> `docker compose restart` 実行 & HTTP疎通確認
+      | 3. Msg: ExecuteRename
       v
- [Elmish Model 更新]   ---> 完了通知ダイアログ表示！
+ [FileRenamer.fs] ---> 物理リネーム実行 & Undo履歴スタックに記録
+ [DockerController.fs] ---> コンテナ再起動
+      |
+ [Elmish Model 更新] ---> 「↩ 元に戻す (Undo)」ボタンが利用可能に！
 ```
 
 ## Risks / Trade-offs
 
+- **[Risk] Undo実行時に元ファイル名が既に別のファイルで占有されている可能性**
+  → **Mitigation**: Undo実行前にも `File.Exists` チェックを行い、衝突がある場合は警告ダイアログを表示して安全に中断する。
 - **[Risk] OpenRouter Freeモデルのレートリミットやダウンタイム**
-  → **Mitigation**: APIリクエスト失敗時はUIにエラー理由を表示し、手動リネーム入力欄を常に開放。またリトライ処理およびタイムアウト（15秒）を設定。
-- **[Risk] リネーム先ファイル名の衝突（同名ファイルが既に存在）**
-  → **Mitigation**: 物理リネーム前に `File.Exists` による重複チェックを必ず実施。重複時はサフィックス（`_1`, `_2`）を自動付加するかエラーとしてユーザーに確認を促す。
-- **[Risk] ファイルロックによるリネーム失敗（動画再生中など）**
-  → **Mitigation**: `IOException` を捕捉し、ロックしているプロセスがある場合はスキップし、他のファイルのリネームを継続できるように結果レポートを個別管理する。
+  → **Mitigation**: エラー時は手動リネーム入力欄を開放し、再試行ボタンを用意。
