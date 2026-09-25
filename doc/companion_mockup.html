@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="ja" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TagBasedVideoManager Companion - UI/UX Mockup</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js CDN -->
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              fluent: {
+                bg: "#202020",
+                surface: "#2c2c2c",
+                card: "#323232",
+                border: "#404040",
+                accent: "#0078d4",
+                accentHover: "#1084d8",
+                text: "#ffffff",
+                subtext: "#a0a0a0",
+                danger: "#e81123",
+                warning: "#fce100",
+                success: "#107c41",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      /* Custom scrollbar for Windows 11 feel */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #202020;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #444444;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #555555;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-slate-900 text-fluent-text font-sans p-4 sm:p-8 flex justify-center items-center min-h-screen antialiased select-none"
+    x-data="companionApp()"
+  >
+    <!-- Desktop App Window Frame (Windows 11 Fluent) -->
+    <div
+      class="w-full max-w-5xl bg-fluent-bg border border-fluent-border rounded-xl shadow-2xl overflow-hidden flex flex-col h-[90vh] max-h-[850px]"
+    >
+      <!-- Titlebar -->
+      <div
+        class="bg-fluent-surface/80 backdrop-blur border-b border-fluent-border px-4 py-2 flex items-center justify-between"
+      >
+        <div class="flex items-center space-x-3">
+          <!-- App Icon -->
+          <div
+            class="w-5 h-5 rounded bg-blue-600 flex items-center justify-center text-xs font-bold shadow"
+          >
+            ▶
+          </div>
+          <span class="text-xs font-medium text-fluent-text tracking-wide"
+            >TagBasedVideoManager - Desktop Companion</span
+          >
+        </div>
+        <!-- Window Controls -->
+        <div class="flex items-center space-x-3 text-fluent-subtext text-xs">
+          <button class="hover:text-white px-2 py-1">─</button>
+          <button class="hover:text-white px-2 py-1">□</button>
+          <button class="hover:text-fluent-danger px-2 py-1 font-bold">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Container -->
+      <div class="flex-1 flex flex-col overflow-hidden p-5 space-y-4">
+        <!-- SECTION 1: Docker Compose Controller Bar -->
+        <div
+          class="bg-fluent-surface border border-fluent-border rounded-lg p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-sm"
+        >
+          <div class="flex items-center space-x-4">
+            <div
+              class="text-xs font-semibold uppercase tracking-wider text-fluent-subtext flex items-center gap-1.5"
+            >
+              <svg
+                class="w-4 h-4 text-blue-400"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.186.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.186.185.186m-2.953 2.714h2.118a.186.186 0 00.186-.185V9.006a.185.185 0 00-.186-.186H8.076a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m0-2.714h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185H8.076a.185.185 0 00-.185.185v1.887c0 .102.083.186.185.186m-2.955 5.428h2.119a.186.186 0 00.185-.185V11.72a.186.186 0 00-.185-.186H5.121a.186.186 0 00-.185.186v1.887c0 .103.083.185.185.185m0-2.714h2.119a.186.186 0 00.185-.186V9.006a.185.185 0 00-.185-.186H5.121a.186.186 0 00-.185.185v1.888c0 .102.083.185.185.185m0-2.714h2.119a.186.186 0 00.185-.186V6.29a.186.186 0 00-.185-.185H5.121a.186.186 0 00-.185.185v1.887c0 .102.083.186.185.186m16.598 4.298c-.147-.323-.396-.582-.71-.741a4.954 4.954 0 00-1.685-.436H16.32a.186.186 0 00-.186.185v1.888c0 .102.083.185.186.185h2.47c.075 0 .144.027.198.077.062.058.093.136.086.22-.051.61-.413 1.139-.99 1.44-.45.234-.97.357-1.492.357H3.454c-.663 0-1.287-.272-1.743-.761A2.528 2.528 0 011 15.632c0-.704.281-1.365.776-1.859.458-.458 1.066-.723 1.706-.745.18-.006.326-.153.326-.334v-.486c0-.986.386-1.914 1.085-2.614.7-.7 1.628-1.085 2.614-1.085.183 0 .332-.146.332-.33v-.486c0-.986.386-1.913 1.086-2.613A3.705 3.705 0 0111.538 4c.987 0 1.914.385 2.614 1.084.7.7 1.085 1.627 1.085 2.613v.486c0 .184.148.33.332.33.986 0 1.914.386 2.613 1.086.7.7 1.086 1.627 1.086 2.613v.486c0 .18.146.328.326.334.64.022 1.248.287 1.706.745.495.494.776 1.155.776 1.859a2.534 2.534 0 01-.71 1.794c-.456.489-1.08.761-1.743.761H17.84a.185.185 0 01-.186-.185v-1.888a.186.186 0 01.186-.185h2.47c.522 0 1.042-.123 1.492-.357.577-.301.939-.83 1.012-1.44a.186.186 0 00-.095-.19z"
+                />
+              </svg>
+              Docker Container
+            </div>
+
+            <!-- Dynamic Status Badge -->
+            <div
+              class="flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-semibold tracking-wide border"
+              :class="{
+                 'bg-emerald-950/80 text-emerald-400 border-emerald-800': dockerStatus === 'running',
+                 'bg-zinc-800 text-zinc-400 border-zinc-700': dockerStatus === 'stopped',
+                 'bg-amber-950/80 text-amber-400 border-amber-800': dockerStatus === 'unhealthy'
+               }"
+            >
+              <span
+                class="w-2 h-2 rounded-full animate-pulse"
+                :class="{
+                    'bg-emerald-400': dockerStatus === 'running',
+                    'bg-zinc-500': dockerStatus === 'stopped',
+                    'bg-amber-400': dockerStatus === 'unhealthy'
+                  }"
+              ></span>
+              <span
+                x-text="dockerStatus === 'running' ? '● RUNNING (Port 5620)' : (dockerStatus === 'stopped' ? '○ STOPPED' : '▲ UNHEALTHY (Mount Error)')"
+              ></span>
+            </div>
+
+            <span class="text-xs text-fluent-subtext font-mono"
+              >tag-based-video-manager</span
+            >
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex items-center space-x-2">
+            <button
+              @click="triggerDockerAction('up')"
+              :disabled="isDockerProcessing"
+              class="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-white border border-fluent-border flex items-center gap-1.5 transition disabled:opacity-50"
+            >
+              <span>▶</span> Start
+            </button>
+            <button
+              @click="triggerDockerAction('down')"
+              :disabled="isDockerProcessing"
+              class="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-white border border-fluent-border flex items-center gap-1.5 transition disabled:opacity-50"
+            >
+              <span>■</span> Stop
+            </button>
+            <button
+              @click="triggerDockerAction('restart')"
+              :disabled="isDockerProcessing"
+              class="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white shadow flex items-center gap-1.5 transition disabled:opacity-50"
+            >
+              <span :class="{'animate-spin': isDockerProcessing}">🔄</span>
+              Restart
+            </button>
+            <!-- Status Toggle Simulation -->
+            <button
+              @click="toggleDockerStatusSim()"
+              class="px-2 py-1.5 rounded bg-zinc-900/60 hover:bg-zinc-800 text-[10px] text-fluent-subtext border border-zinc-700"
+            >
+              状態切替(Demo)
+            </button>
+          </div>
+        </div>
+
+        <!-- SECTION 2: Scan & AI Rule Configuration -->
+        <div
+          class="bg-fluent-surface border border-fluent-border rounded-lg p-4 space-y-3.5 shadow-sm text-xs"
+        >
+          <!-- Row 1: Target Folder & Scan Threshold -->
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+            <div class="md:col-span-7 flex items-center space-x-2">
+              <label class="text-fluent-subtext w-24 flex-shrink-0 font-medium"
+                >対象フォルダ:</label
+              >
+              <div
+                class="flex-1 flex items-center bg-zinc-900 border border-fluent-border rounded px-2.5 py-1.5 focus-within:border-blue-500 transition"
+              >
+                <span class="text-zinc-500 mr-2">📁</span>
+                <input
+                  type="text"
+                  x-model="targetDir"
+                  class="bg-transparent flex-1 outline-none text-fluent-text font-mono text-xs"
+                />
+              </div>
+              <button
+                class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded border border-fluent-border font-medium"
+              >
+                参照...
+              </button>
+            </div>
+
+            <!-- Path length slider -->
+            <div
+              class="md:col-span-5 flex items-center justify-end space-x-3 bg-zinc-900/60 p-1.5 px-3 rounded border border-zinc-800"
+            >
+              <span class="text-fluent-subtext">パス長警告閾値:</span>
+              <input
+                type="range"
+                min="150"
+                max="255"
+                x-model="threshold"
+                class="w-24 accent-blue-500 cursor-pointer"
+              />
+              <span
+                class="font-mono font-bold text-amber-400 w-12 text-right"
+                x-text="threshold + ' 文字'"
+              ></span>
+              <span
+                class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-950 text-amber-400 border border-amber-800"
+                x-text="'該当 ' + filteredFiles.length + ' 件'"
+              ></span>
+            </div>
+          </div>
+
+          <!-- Row 2: AI Model & Naming Rule Presets -->
+          <div
+            class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center pt-2 border-t border-fluent-border/60"
+          >
+            <div class="md:col-span-4 flex items-center space-x-2">
+              <label class="text-fluent-subtext w-24 flex-shrink-0 font-medium"
+                >AIモデル:</label
+              >
+              <select
+                x-model="selectedModel"
+                class="flex-1 bg-zinc-900 border border-fluent-border rounded px-2.5 py-1.5 text-fluent-text outline-none focus:border-blue-500"
+              >
+                <option value="meta-llama/llama-3.3-70b-instruct:free">
+                  OpenRouter: Llama-3.3 70B (Free)
+                </option>
+                <option value="google/gemini-2.0-flash-exp:free">
+                  OpenRouter: Gemini 2.0 Flash (Free)
+                </option>
+                <option value="mistralai/mistral-small-24b-instruct-2501:free">
+                  OpenRouter: Mistral Small (Free)
+                </option>
+              </select>
+            </div>
+
+            <div class="md:col-span-5 flex items-center space-x-2">
+              <label class="text-fluent-subtext w-20 flex-shrink-0 font-medium"
+                >命名ルール:</label
+              >
+              <select
+                x-model="selectedPreset"
+                @change="onPresetChange()"
+                class="flex-1 bg-zinc-900 border border-fluent-border rounded px-2.5 py-1.5 text-fluent-text outline-none focus:border-blue-500"
+              >
+                <option value="date_summary">[日付]_[要約(20文字以内)]</option>
+                <option value="date_folder_seq">
+                  [日付]_[フォルダ名]_[通番]
+                </option>
+                <option value="folder_keywords">
+                  [フォルダ名]_[キーワード]
+                </option>
+                <option value="custom">カスタムプロンプト指定...</option>
+              </select>
+            </div>
+
+            <div class="md:col-span-3 flex justify-end">
+              <button
+                @click="generateAiSuggestions()"
+                :disabled="isGeneratingAi"
+                class="w-full sm:w-auto px-4 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded text-xs font-bold text-white shadow-md flex items-center justify-center gap-2 transition disabled:opacity-50"
+              >
+                <span :class="{'animate-spin': isGeneratingAi}">✨</span>
+                <span>AI提案を取得 (一括)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Custom Prompt Box (Conditional) -->
+          <div
+            x-show="selectedPreset === 'custom'"
+            x-transition
+            class="pt-2 flex items-center space-x-2"
+          >
+            <label class="text-fluent-subtext w-24 flex-shrink-0 font-medium"
+              >カスタム指示:</label
+            >
+            <input
+              type="text"
+              x-model="customPrompt"
+              class="flex-1 bg-zinc-900 border border-fluent-border rounded px-2.5 py-1 text-fluent-text text-xs focus:border-blue-500 outline-none"
+            />
+          </div>
+        </div>
+
+        <!-- SECTION 3: Rename Preview DataGrid -->
+        <div
+          class="flex-1 bg-fluent-surface border border-fluent-border rounded-lg flex flex-col overflow-hidden shadow-sm"
+        >
+          <!-- Table Header / Toolbar -->
+          <div
+            class="bg-zinc-900/80 px-4 py-2.5 border-b border-fluent-border flex items-center justify-between text-xs"
+          >
+            <div class="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                x-model="selectAll"
+                @change="toggleSelectAll()"
+                class="w-4 h-4 rounded accent-blue-500 cursor-pointer"
+              />
+              <span class="font-semibold text-fluent-text"
+                >リネーム対象ファイル一覧</span
+              >
+              <span
+                class="text-fluent-subtext"
+                x-text="'(' + selectedCount + ' / ' + filteredFiles.length + ' 件選択)'"
+              ></span>
+            </div>
+            <div
+              class="flex items-center space-x-2 text-[11px] text-fluent-subtext"
+            >
+              <span class="flex items-center gap-1"
+                ><span class="w-2 h-2 rounded-full bg-red-500"></span> 危険
+                (240字超)</span
+              >
+              <span class="flex items-center gap-1 ml-2"
+                ><span class="w-2 h-2 rounded-full bg-yellow-500"></span> 警告
+                (閾値超)</span
+              >
+              <span class="flex items-center gap-1 ml-2"
+                ><span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                安全</span
+              >
+            </div>
+          </div>
+
+          <!-- Scrollable Table -->
+          <div class="flex-1 overflow-y-auto">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead
+                class="bg-zinc-900/50 sticky top-0 border-b border-fluent-border text-fluent-subtext text-[11px]"
+              >
+                <tr>
+                  <th class="p-2.5 w-10 text-center">選択</th>
+                  <th class="p-2.5 w-24">現パス長</th>
+                  <th class="p-2.5 w-5/12">現在のファイルパス</th>
+                  <th class="p-2.5 w-5/12">AI提案ファイル名 (手動編集可能)</th>
+                  <th class="p-2.5 w-20 text-center">新パス長</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-fluent-border/40">
+                <template x-for="(file, index) in filteredFiles" :key="file.id">
+                  <tr
+                    class="hover:bg-zinc-800/40 transition group"
+                    :class="{'bg-blue-950/20': file.selected}"
+                  >
+                    <!-- Select Checkbox -->
+                    <td class="p-2.5 text-center">
+                      <input
+                        type="checkbox"
+                        x-model="file.selected"
+                        class="w-4 h-4 rounded accent-blue-500 cursor-pointer"
+                      />
+                    </td>
+
+                    <!-- Current Length Badge -->
+                    <td class="p-2.5 font-mono">
+                      <span
+                        class="px-2 py-0.5 rounded text-[10px] font-bold inline-block"
+                        :class="{
+                            'bg-red-950 text-red-400 border border-red-800': file.currentLength >= 240,
+                            'bg-yellow-950 text-yellow-400 border border-yellow-800': file.currentLength < 240 && file.currentLength >= threshold,
+                            'bg-zinc-800 text-zinc-400': file.currentLength < threshold
+                          }"
+                        x-text="file.currentLength + ' 字'"
+                      ></span>
+                    </td>
+
+                    <!-- Current File Path -->
+                    <td
+                      class="p-2.5 font-mono text-zinc-300 break-all text-[11px]"
+                    >
+                      <span
+                        class="text-zinc-500"
+                        x-text="file.folderPath + '\\'"
+                      ></span>
+                      <span
+                        class="font-bold text-white"
+                        x-text="file.fileName"
+                      ></span>
+                    </td>
+
+                    <!-- Suggested Name (Editable Input) -->
+                    <td class="p-2.5">
+                      <div class="relative flex items-center">
+                        <input
+                          type="text"
+                          x-model="file.suggestedName"
+                          @input="recalculateNewLength(file)"
+                          class="w-full bg-zinc-900 border rounded px-2.5 py-1 text-xs font-mono text-emerald-300 focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
+                          :class="file.suggestedName ? 'border-emerald-600/70' : 'border-fluent-border text-zinc-500'"
+                          placeholder="AI提案または手動入力..."
+                        />
+                        <span
+                          x-show="file.isAiGenerated"
+                          class="absolute right-2 text-[10px] text-blue-400 font-bold bg-blue-950/80 px-1.5 py-0.5 rounded"
+                          >AI</span
+                        >
+                      </div>
+                    </td>
+
+                    <!-- New Length Result -->
+                    <td class="p-2.5 text-center font-mono">
+                      <template x-if="file.suggestedName">
+                        <span
+                          class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800"
+                          x-text="file.newLength + ' 字 [OK]'"
+                        ></span>
+                      </template>
+                      <template x-if="!file.suggestedName">
+                        <span class="text-zinc-600 text-[10px]">-</span>
+                      </template>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Footer / Execution Bar -->
+          <div
+            class="bg-fluent-surface border-t border-fluent-border p-3 px-4 flex flex-wrap items-center justify-between gap-3"
+          >
+            <div class="text-xs text-fluent-subtext">
+              <span>リネーム予定: </span>
+              <span
+                class="font-bold text-white"
+                x-text="readyToRenameCount + ' 件'"
+              ></span>
+              <span class="text-zinc-500 text-[11px] ml-2"
+                >※同名重複チェックおよびロールバック保護が有効です</span
+              >
+            </div>
+
+            <div class="flex items-center space-x-3">
+              <button
+                @click="executeRename(false)"
+                :disabled="readyToRenameCount === 0 || isExecuting"
+                class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded text-xs font-semibold text-white border border-fluent-border transition disabled:opacity-40"
+              >
+                リネームのみ実行
+              </button>
+              <button
+                @click="executeRename(true)"
+                :disabled="readyToRenameCount === 0 || isExecuting"
+                class="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded text-xs font-bold text-white shadow-lg flex items-center gap-2 transition disabled:opacity-40"
+              >
+                <span>⚡</span>
+                <span>リネームしてコンテナ再起動</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Execution Modal -->
+      <div
+        x-show="showProgressModal"
+        x-transition
+        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+      >
+        <div
+          class="bg-fluent-surface border border-fluent-border rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4"
+        >
+          <h3 class="text-sm font-bold text-white flex items-center gap-2">
+            <span class="animate-spin text-blue-400">🔄</span>
+            <span>リネームおよびコンテナ再起動を実行中...</span>
+          </h3>
+
+          <!-- Progress Bar -->
+          <div
+            class="w-full bg-zinc-900 rounded-full h-2 overflow-hidden border border-zinc-700"
+          >
+            <div
+              class="bg-blue-500 h-full transition-all duration-300"
+              :style="'width: ' + progressPercent + '%'"
+            ></div>
+          </div>
+          <p
+            class="text-xs text-fluent-subtext font-mono"
+            x-text="progressMessage"
+          ></p>
+
+          <div x-show="isExecutionComplete" class="pt-2 flex justify-end">
+            <button
+              @click="showProgressModal = false"
+              class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs font-bold text-white"
+            >
+              完了
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast Notification -->
+      <div
+        x-show="showToast"
+        x-transition
+        class="fixed bottom-8 right-8 bg-zinc-800 border border-fluent-border text-white text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2 z-50"
+      >
+        <span class="text-emerald-400">✓</span>
+        <span x-text="toastMessage"></span>
+      </div>
+    </div>
+
+    <script>
+      function companionApp() {
+        return {
+          dockerStatus: "unhealthy", // 'running', 'stopped', 'unhealthy'
+          isDockerProcessing: false,
+          targetDir: "C:\\Users\\Public\\Videos\\Touring_2025_Summer",
+          threshold: 220,
+          selectedModel: "meta-llama/llama-3.3-70b-instruct:free",
+          selectedPreset: "date_summary",
+          customPrompt: "[Date]_[Location]_[ShortSummary(20chars)]",
+          selectAll: true,
+          isGeneratingAi: false,
+          isExecuting: false,
+          showProgressModal: false,
+          progressPercent: 0,
+          progressMessage: "",
+          isExecutionComplete: false,
+          showToast: false,
+          toastMessage: "",
+
+          files: [
+            {
+              id: 1,
+              selected: true,
+              folderPath:
+                "C:\\Users\\Public\\Videos\\Touring_2025_Summer\\Hokkaido_Cape_Soya_Super_Long_Folder_Path_Name_Over_Limit",
+              fileName:
+                "VID_20250812_143022_Recorded_At_Wakkanai_Hokkaido_Very_Detailed_Description_Of_Riding_Motorcycle_Against_Strong_Wind.mp4",
+              currentLength: 251,
+              suggestedName: "",
+              newLength: 0,
+              isAiGenerated: false,
+            },
+            {
+              id: 2,
+              selected: true,
+              folderPath:
+                "C:\\Users\\Public\\Videos\\Touring_2025_Summer\\Hokkaido_Cape_Soya_Super_Long_Folder_Path_Name_Over_Limit",
+              fileName:
+                "DSC_009988112233_Family_Camping_Barbecue_Party_Night_Campfire_Acoustic_Guitar_Session_Full_HD_High_Bitrate.mp4",
+              currentLength: 236,
+              suggestedName: "",
+              newLength: 0,
+              isAiGenerated: false,
+            },
+            {
+              id: 3,
+              selected: true,
+              folderPath:
+                "C:\\Users\\Public\\Videos\\Touring_2025_Summer\\Furano_Lavender_Fields",
+              fileName:
+                "20250814_Furano_Tomita_Farm_Flowers_Blooming_Spectacular_Drone_Shot_4K_Landscape_Color_Graded_Final_Version_01.mp4",
+              currentLength: 228,
+              suggestedName: "",
+              newLength: 0,
+              isAiGenerated: false,
+            },
+            {
+              id: 4,
+              selected: false,
+              folderPath:
+                "C:\\Users\\Public\\Videos\\Touring_2025_Summer\\ShortClip",
+              fileName: "short_clip.mp4",
+              currentLength: 68,
+              suggestedName: "",
+              newLength: 0,
+              isAiGenerated: false,
+            },
+          ],
+
+          get filteredFiles() {
+            return this.files.filter((f) => f.currentLength >= this.threshold);
+          },
+
+          get selectedCount() {
+            return this.filteredFiles.filter((f) => f.selected).length;
+          },
+
+          get readyToRenameCount() {
+            return this.filteredFiles.filter(
+              (f) => f.selected && f.suggestedName.trim().length > 0,
+            ).length;
+          },
+
+          toggleSelectAll() {
+            this.filteredFiles.forEach((f) => (f.selected = this.selectAll));
+          },
+
+          onPresetChange() {
+            if (this.selectedPreset === "date_summary") {
+              this.customPrompt = "[Date]_[Location]_[ShortSummary(20chars)]";
+            } else if (this.selectedPreset === "date_folder_seq") {
+              this.customPrompt = "[Date]_[ParentFolder]_[SequenceNumber]";
+            } else if (this.selectedPreset === "folder_keywords") {
+              this.customPrompt = "[ParentFolder]_[Keywords]";
+            }
+          },
+
+          recalculateNewLength(file) {
+            if (!file.suggestedName) {
+              file.newLength = 0;
+              return;
+            }
+            file.newLength = (
+              file.folderPath +
+              "\\" +
+              file.suggestedName
+            ).length;
+          },
+
+          generateAiSuggestions() {
+            this.isGeneratingAi = true;
+            setTimeout(() => {
+              // Mock AI Generation Results from OpenRouter
+              const mockSuggestions = [
+                "20250812_Hokkaido_Soya_Cape.mp4",
+                "20250812_Camp_BBQ_Night.mp4",
+                "20250814_Furano_Lavender.mp4",
+              ];
+
+              let index = 0;
+              this.filteredFiles.forEach((f) => {
+                if (f.selected && index < mockSuggestions.length) {
+                  f.suggestedName = mockSuggestions[index];
+                  f.isAiGenerated = true;
+                  this.recalculateNewLength(f);
+                  index++;
+                }
+              });
+
+              this.isGeneratingAi = false;
+              this.notify(
+                "OpenRouter Freeモデルから3件の新ファイル名を提案しました",
+              );
+            }, 800);
+          },
+
+          executeRename(withRestart) {
+            this.isExecuting = true;
+            this.showProgressModal = true;
+            this.isExecutionComplete = false;
+            this.progressPercent = 10;
+            this.progressMessage = "重複ファイル名の検証中...";
+
+            setTimeout(() => {
+              this.progressPercent = 40;
+              this.progressMessage = "物理ファイルのリネームを実行中 (3/3)...";
+            }, 600);
+
+            setTimeout(() => {
+              if (withRestart) {
+                this.progressPercent = 75;
+                this.progressMessage = "Docker Compose restart を実行中...";
+                this.dockerStatus = "running";
+              } else {
+                this.progressPercent = 100;
+                this.progressMessage = "リネーム完了！";
+                this.isExecutionComplete = true;
+                this.isExecuting = false;
+              }
+            }, 1400);
+
+            if (withRestart) {
+              setTimeout(() => {
+                this.progressPercent = 100;
+                this.progressMessage =
+                  "リネームおよびコンテナ再起動が完了しました！正常マウント確認済";
+                this.isExecutionComplete = true;
+                this.isExecuting = false;
+                this.notify("リネームとDocker再起動が完了しました！");
+              }, 2200);
+            }
+          },
+
+          triggerDockerAction(action) {
+            this.isDockerProcessing = true;
+            setTimeout(() => {
+              if (action === "up" || action === "restart") {
+                this.dockerStatus = "running";
+                this.notify("Dockerコンテナが正常に起動しました (Port 5620)");
+              } else if (action === "down") {
+                this.dockerStatus = "stopped";
+                this.notify("Dockerコンテナを停止しました");
+              }
+              this.isDockerProcessing = false;
+            }, 700);
+          },
+
+          toggleDockerStatusSim() {
+            if (this.dockerStatus === "running")
+              this.dockerStatus = "unhealthy";
+            else if (this.dockerStatus === "unhealthy")
+              this.dockerStatus = "stopped";
+            else this.dockerStatus = "running";
+          },
+
+          notify(msg) {
+            this.toastMessage = msg;
+            this.showToast = true;
+            setTimeout(() => {
+              this.showToast = false;
+            }, 3000);
+          },
+        };
+      }
+    </script>
+  </body>
+</html>

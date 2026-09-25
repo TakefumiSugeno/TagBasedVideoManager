@@ -68,6 +68,8 @@ Docker Containerのバインドマウント（WSL2 / 9p / virtiofs）におい�
 
 ## UI/UX モックアップ (Avalonia.FuncUI - Fluent テーマ)
 
+> ブラウザで操作可能なHTMLモックアップ: [doc/companion_mockup.html](../../doc/companion_mockup.html)
+
 ```
 +---------------------------------------------------------------------------------+
 | TagBasedVideoManager - Desktop Companion                                 [-] [x]|
