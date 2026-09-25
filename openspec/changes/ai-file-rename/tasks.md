@@ -2,9 +2,9 @@
 
 ## 1. フォルダ構成の再編・既存回帰テストおよび新設プロジェクト構築
 
-- [ ] 1.1 [フォルダ構成再編] 既存Webアプリケーションのソース一式を `src/TagBasedVideoManager/` へ移動し、テストコード一式を `test/TagBasedVideoManager.Tests/` へ移動する
-- [ ] 1.2 [構成・参照パス更新] `TagBasedVideoManager.slnx`, `Dockerfile`, `docker-compose.yml`, `TagBasedVideoManager.Tests.fsproj`（プロジェクト参照パス）、`run_tests_with_coverage.ps1`、`README.md` のパスを新ディレクトリ構成に合わせて更新する
-- [ ] 1.3 [既存回帰テスト検証] 移動後の既存Webアプリケーションの全テストを一括実行（`dotnet test test/TagBasedVideoManager.Tests/`）し、全テスト通過（回帰テスト成功）を確認する
+- [x] 1.1 [フォルダ構成再編] 既存Webアプリケーションのソース一式を `src/TagBasedVideoManager/` へ移動し、テストコード一式を `test/TagBasedVideoManager.Tests/` へ移動する
+- [x] 1.2 [構成・参照パス更新] `TagBasedVideoManager.slnx`, `Dockerfile`, `docker-compose.yml`, `TagBasedVideoManager.Tests.fsproj`（プロジェクト参照パス）、`run_tests_with_coverage.ps1`、`README.md` のパスを新ディレクトリ構成に合わせて更新する
+- [x] 1.3 [既存回帰テスト検証] 移動後の既存Webアプリケーションの全テストを一括実行（`dotnet test test/TagBasedVideoManager.Tests/`）し、全テスト通過（回帰テスト成功）を確認する
 - [ ] 1.4 [Renamer プロジェクト新設] `src/TagBasedVideoManager.Renamer/` (F# .NET 10 + Avalonia 11.x + Avalonia.FuncUI) プロジェクトを作成し、ソリューションに追加して空ウィンドウが正常にビルド・起動することを検証する
 - [ ] 1.5 [Renamer テストプロジェクト新設] `test/TagBasedVideoManager.Renamer.Tests/` (F# .NET 10 + xUnit + FsUnit) テストプロジェクトを作成し、ソリューションに追加して `dotnet test` が通過することを検証する
 

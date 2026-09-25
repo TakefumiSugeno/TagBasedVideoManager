@@ -70,8 +70,8 @@ doc/work/
 
 # Local database and media files
 *.db
-test/videos/
-test/thumbnails/
+test/**/videos/
+test/**/thumbnails/
 
 # Editor and LSP directories
 .vscode/
