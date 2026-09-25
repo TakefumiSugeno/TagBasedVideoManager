@@ -456,3 +456,62 @@
 - **LGTM**: **true (Pass)**
 - **次のアクション**:
   Task 4.1, 4.2 を完了とし、Section 5 (Avalonia.FuncUI UI 実装と統合: State.fs & Views.fs) へ進む。
+
+---
+
+# レビュー記録: ai-file-rename / apply / task-5.1-5.5
+
+## QA Agent レビュー (UI状態遷移・テスト仕様妥当性)
+
+- **日時**: 2026-09-26
+- **フェーズ**: apply
+- **タスク**: 5.1 [単体テスト・仕様検証] Elmish State モジュールの状態遷移テスト作成 (Red)
+- **レビュアー**: QA Agent (仕様妥当性・MVU状態遷移・ビジネスロジック網羅性)
+- **対象成果物**: `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs`
+
+### チェックリスト結果 (checklist_apply_test.md 準拠)
+
+| #   | 観点                                                                                      | 判定 | コメント                                                                                                  |
+| --- | ----------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------- |
+| 1   | 初期化処理（`init`）で設定ファイルからの初期閾値（240文字）ロードが検証されているか       | ✅   | `initial state loads settings with default threshold 240` にて `CurrentThreshold = 240` を検証。          |
+| 2   | 起動中の閾値一時変更で Model のみ更新され、設定ファイルが不変であることが検証されているか | ✅   | `changing threshold updates current threshold without altering settings` にて検証。                       |
+| 3   | 候補ファイルの全選択/全解除および個別トグルが検証されているか                             | ✅   | `SelectAllCandidates` および `ToggleCandidateSelect` によるフラグ反転・一括更新を網羅。                   |
+| 4   | インライン編集による提案名更新とパス長リアルタイム再計算が検証されているか                | ✅   | `UpdateProposedName` にて `ProposedFileName` 更新と `ProposedLength` の再計算が正確に同期することを検証。 |
+| 5   | Undo要求時の確認ダイアログ表示およびコンテナ再起動警告メッセージの仕様が検証されているか  | ✅   | `RequestUndo displays confirmation dialog with container restart warning` にて警告文言の含有を検証。      |
+| 6   | リネーム実行完了時の Undo 履歴追加と候補リストの再走査/クリアが検証されているか           | ✅   | `RenameCompleted updates undo stack and candidates` にて `UndoStack` へのエントリ追加を検証。             |
+| 7   | Docker 状態更新メッセージによる Model 反映が検証されているか                              | ✅   | `DockerStatusChecked updates docker state` にて Running / PortAccessible の状態遷移を検証。               |
+
+### 判定
+
+- **LGTM**: **true**
+
+---
+
+## PG Agent レビュー (Elmish MVU 実装 & Avalonia.FuncUI 画面統合)
+
+- **日時**: 2026-09-26
+- **フェーズ**: apply
+- **タスク**: 5.1〜5.5 [実装・リファクタ] State.fs, Views.fs, Program.fs の Elmish MVU 実装と統合 (Green)
+- **レビュアー**: PG Agent (コード品質・Elmishアーキテクチャ・DSL保守性・非同期連動)
+- **対象成果物**:
+  - `src/TagBasedVideoManager.Renamer/State.fs`
+  - `src/TagBasedVideoManager.Renamer/Views.fs`
+  - `src/TagBasedVideoManager.Renamer/Program.fs`
+
+### チェックリスト結果 (checklist_apply_impl.md 準拠)
+
+| #   | 観点                                                                  | 判定 | コメント                                                                                                                               |
+| --- | --------------------------------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Elmish MVU パターン（Model, Msg, init, update, view）の厳密な適用     | ✅   | 状態をイミュータブルな Model に集約し、純粋関数 `update` と非同期 `Cmd`（Cmd.OfAsync）で副作用を分離。                                 |
+| 2   | Docker コントローラーバー（Task 5.2）の実装と非同期連動               | ✅   | 稼働ステータスバッジ（色分け）、ポート5620疎通バッジ、Start/Stop/Restart/Check ボタンおよび操作中のビジー制御を完全実装。              |
+| 3   | コントロールパネル（Task 5.3）の操作性                                | ✅   | フォルダ指定、閾値一時変更（設定非更新）、命名規則選択、ワンアクション実行ボタン（走査＆AI提案連続発行）を配置。                       |
+| 4   | Before / After 対比ビュー（Task 5.4）の柔軟性とAIコメント条件付き表示 | ✅   | 上下並び（デフォルト）/ 左右並びのトグル切り替え、文字数バッジ（赤/緑/削減量）、インライン編集、問題時限定のAIコメント警告表示を実装。 |
+| 5   | フッターアクションとUndo安全性（Task 5.5）                            | ✅   | 「リネームしてコンテナ再起動」「リネームのみ実行」「直前のリネームを元に戻す」および Undo確認モーダルダイアログを構築。                |
+| 6   | Avalonia.FuncUI ホストとの結合 (`Program.fs`)                         | ✅   | `Program.mkProgram State.init State.update Views.view` を `MainWindow` に正しくバインドし、0エラーでビルド成功。                       |
+| 7   | 自動フォーマット実行済みか                                            | ✅   | Prettier および dotnet format を実行済み。                                                                                             |
+
+### 判定
+
+- **LGTM**: **true (Pass)**
+- **次のアクション**:
+  Task 5.1〜5.5 を完了とし、Section 6 (自動E2Eテストの実装と総合検証: Task 6.1 & 6.2) へ進む。
