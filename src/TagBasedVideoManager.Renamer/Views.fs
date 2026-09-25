@@ -18,7 +18,9 @@ module Views =
     let private dangerColor = Color.Parse("#DC2626")
     let private bgHeader = Color.Parse("#1E293B")
     let private textLight = Color.Parse("#F8FAFC")
+    let private textDark = Color.Parse("#0F172A")
     let private borderGray = Color.Parse("#CBD5E1")
+    let private bgPanel = Color.Parse("#F8FAFC")
 
     // ==========================================
     // 1. Docker コントローラーバー (Task 5.2)
@@ -91,21 +93,37 @@ module Views =
                         Button.create [
                             Button.content "▶ Start"
                             Button.isEnabled (not model.IsDockerBusy && model.Docker.State <> Running)
+                            Button.background (SolidColorBrush (Color.Parse("#334155")))
+                            Button.foreground (SolidColorBrush textLight)
+                            Button.cornerRadius 4.0
+                            Button.padding (10.0, 4.0)
                             Button.onClick (fun _ -> dispatch (ExecuteDockerAction "up -d"))
                         ]
                         Button.create [
                             Button.content "■ Stop"
                             Button.isEnabled (not model.IsDockerBusy && model.Docker.State = Running)
+                            Button.background (SolidColorBrush (Color.Parse("#334155")))
+                            Button.foreground (SolidColorBrush textLight)
+                            Button.cornerRadius 4.0
+                            Button.padding (10.0, 4.0)
                             Button.onClick (fun _ -> dispatch (ExecuteDockerAction "stop"))
                         ]
                         Button.create [
                             Button.content "🔄 Restart"
                             Button.isEnabled (not model.IsDockerBusy)
+                            Button.background (SolidColorBrush (Color.Parse("#334155")))
+                            Button.foreground (SolidColorBrush textLight)
+                            Button.cornerRadius 4.0
+                            Button.padding (10.0, 4.0)
                             Button.onClick (fun _ -> dispatch (ExecuteDockerAction "restart tag-based-video-manager"))
                         ]
                         Button.create [
                             Button.content "Check"
                             Button.isEnabled (not model.IsDockerBusy)
+                            Button.background (SolidColorBrush (Color.Parse("#334155")))
+                            Button.foreground (SolidColorBrush textLight)
+                            Button.cornerRadius 4.0
+                            Button.padding (10.0, 4.0)
                             Button.onClick (fun _ -> dispatch CheckDockerStatus)
                         ]
                     ]
@@ -119,7 +137,7 @@ module Views =
     let controlPanel (model: Model) (dispatch: Msg -> unit) =
         Border.create [
             DockPanel.dock Dock.Top
-            Border.background (SolidColorBrush (Color.Parse("#F1F5F9")))
+            Border.background (SolidColorBrush bgPanel)
             Border.borderBrush (SolidColorBrush borderGray)
             Border.borderThickness (0.0, 1.0, 0.0, 1.0)
             Border.padding 12.0
@@ -133,12 +151,22 @@ module Views =
                                 TextBlock.create [
                                     DockPanel.dock Dock.Left
                                     TextBlock.text "走査対象フォルダ:"
+                                    TextBlock.foreground (SolidColorBrush textDark)
                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                     TextBlock.width 130.0
                                     TextBlock.fontWeight FontWeight.Bold
                                 ]
                                 TextBox.create [
                                     TextBox.text model.Settings.TargetDirectory
+                                    TextBox.height 32.0
+                                    TextBox.verticalAlignment VerticalAlignment.Center
+                                    TextBox.verticalContentAlignment VerticalAlignment.Center
+                                    TextBox.background (SolidColorBrush Colors.White)
+                                    TextBox.foreground (SolidColorBrush textDark)
+                                    TextBox.borderBrush (SolidColorBrush borderGray)
+                                    TextBox.borderThickness 1.0
+                                    TextBox.cornerRadius 4.0
+                                    TextBox.padding (8.0, 4.0)
                                     TextBox.onTextChanged (fun text -> dispatch (TargetDirectoryChanged text))
                                 ]
                             ]
@@ -154,16 +182,27 @@ module Views =
                                     StackPanel.children [
                                         TextBlock.create [
                                             TextBlock.text "抽出基準:"
+                                            TextBlock.foreground (SolidColorBrush textDark)
                                             TextBlock.verticalAlignment VerticalAlignment.Center
                                             TextBlock.fontWeight FontWeight.Bold
                                         ]
                                         TextBlock.create [
                                             TextBlock.text "パス長 ≧"
+                                            TextBlock.foreground (SolidColorBrush textDark)
                                             TextBlock.verticalAlignment VerticalAlignment.Center
                                         ]
                                         TextBox.create [
                                             TextBox.text (string model.CurrentThreshold)
                                             TextBox.width 60.0
+                                            TextBox.height 32.0
+                                            TextBox.verticalAlignment VerticalAlignment.Center
+                                            TextBox.verticalContentAlignment VerticalAlignment.Center
+                                            TextBox.background (SolidColorBrush Colors.White)
+                                            TextBox.foreground (SolidColorBrush textDark)
+                                            TextBox.borderBrush (SolidColorBrush borderGray)
+                                            TextBox.borderThickness 1.0
+                                            TextBox.cornerRadius 4.0
+                                            TextBox.padding (6.0, 4.0)
                                             TextBox.onTextChanged (fun text ->
                                                 match Int32.TryParse(text) with
                                                 | true, v -> dispatch (ThresholdChanged v)
@@ -185,6 +224,7 @@ module Views =
                                     StackPanel.children [
                                         TextBlock.create [
                                             TextBlock.text "命名規則:"
+                                            TextBlock.foreground (SolidColorBrush textDark)
                                             TextBlock.verticalAlignment VerticalAlignment.Center
                                             TextBlock.fontWeight FontWeight.Bold
                                         ]
@@ -202,6 +242,12 @@ module Views =
                                         ]
                                         Button.create [
                                             Button.content "⚙ 管理..."
+                                            Button.background (SolidColorBrush Colors.White)
+                                            Button.foreground (SolidColorBrush textDark)
+                                            Button.borderBrush (SolidColorBrush borderGray)
+                                            Button.borderThickness 1.0
+                                            Button.cornerRadius 4.0
+                                            Button.padding (8.0, 4.0)
                                             Button.onClick (fun _ -> dispatch OpenRuleManager)
                                         ]
                                     ]
@@ -219,6 +265,7 @@ module Views =
                                     Button.background (SolidColorBrush primaryColor)
                                     Button.foreground (SolidColorBrush textLight)
                                     Button.fontWeight FontWeight.Bold
+                                    Button.cornerRadius 6.0
                                     Button.padding (16.0, 8.0)
                                     Button.isEnabled (not model.IsScanning && not model.IsRequestingAi && not model.IsRenaming)
                                     Button.onClick (fun _ -> dispatch ExecuteScanAndPropose)
@@ -229,12 +276,14 @@ module Views =
                                         TextBlock.text "🔍 長パスファイルを走査中..."
                                         TextBlock.verticalAlignment VerticalAlignment.Center
                                         TextBlock.foreground (SolidColorBrush primaryColor)
+                                        TextBlock.fontWeight FontWeight.Bold
                                     ]
                                 elif model.IsRequestingAi then
                                     TextBlock.create [
-                                        TextBlock.text "🤖 OpenRouter AIに短縮リネーム提案を問い合わせ中..."
+                                        TextBlock.text "🤖 AI短縮リネーム提案を生成中..."
                                         TextBlock.verticalAlignment VerticalAlignment.Center
                                         TextBlock.foreground (SolidColorBrush warningColor)
+                                        TextBlock.fontWeight FontWeight.Bold
                                     ]
                             ]
                         ]
@@ -256,11 +305,11 @@ module Views =
             Border.borderBrush (SolidColorBrush (if c.IsSelected then primaryColor else borderGray))
             Border.borderThickness (if c.IsSelected then 2.0 else 1.0)
             Border.cornerRadius 6.0
-            Border.margin (0.0, 2.0, 0.0, 4.0)
-            Border.padding 8.0
+            Border.margin (0.0, 2.0, 0.0, 6.0)
+            Border.padding 10.0
             Border.child (
                 StackPanel.create [
-                    StackPanel.spacing 4.0
+                    StackPanel.spacing 6.0
                     StackPanel.children [
                         // 上行: BEFORE
                         DockPanel.create [
@@ -270,13 +319,14 @@ module Views =
                                     CheckBox.isChecked c.IsSelected
                                     CheckBox.onIsCheckedChanged (fun _ -> dispatch (ToggleCandidateSelect c.OriginalFullPath))
                                     CheckBox.verticalAlignment VerticalAlignment.Center
+                                    CheckBox.margin (0.0, 0.0, 4.0, 0.0)
                                 ]
                                 Border.create [
                                     DockPanel.dock Dock.Left
                                     Border.background (SolidColorBrush origBadgeColor)
                                     Border.cornerRadius 3.0
-                                    Border.padding (6.0, 1.0)
-                                    Border.margin (4.0, 0.0, 8.0, 0.0)
+                                    Border.padding (6.0, 2.0)
+                                    Border.margin (0.0, 0.0, 8.0, 0.0)
                                     Border.child (
                                         TextBlock.create [
                                             TextBlock.text $"BEFORE: {c.OriginalLength}字"
@@ -288,6 +338,7 @@ module Views =
                                 ]
                                 TextBlock.create [
                                     TextBlock.text c.OriginalFileName
+                                    TextBlock.foreground (SolidColorBrush textDark)
                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                     TextBlock.textTrimming TextTrimming.CharacterEllipsis
                                 ]
@@ -302,7 +353,7 @@ module Views =
                                     DockPanel.dock Dock.Left
                                     Border.background (SolidColorBrush successColor)
                                     Border.cornerRadius 3.0
-                                    Border.padding (6.0, 1.0)
+                                    Border.padding (6.0, 2.0)
                                     Border.margin (0.0, 0.0, 8.0, 0.0)
                                     Border.child (
                                         TextBlock.create [
@@ -317,7 +368,7 @@ module Views =
                                     DockPanel.dock Dock.Right
                                     Border.background (SolidColorBrush (Color.Parse("#E0F2FE")))
                                     Border.cornerRadius 3.0
-                                    Border.padding (6.0, 1.0)
+                                    Border.padding (6.0, 2.0)
                                     Border.margin (8.0, 0.0, 0.0, 0.0)
                                     Border.child (
                                         TextBlock.create [
@@ -330,6 +381,15 @@ module Views =
                                 ]
                                 TextBox.create [
                                     TextBox.text c.ProposedFileName
+                                    TextBox.height 30.0
+                                    TextBox.verticalAlignment VerticalAlignment.Center
+                                    TextBox.verticalContentAlignment VerticalAlignment.Center
+                                    TextBox.background (SolidColorBrush Colors.White)
+                                    TextBox.foreground (SolidColorBrush textDark)
+                                    TextBox.borderBrush (SolidColorBrush (Color.Parse("#93C5FD")))
+                                    TextBox.borderThickness 1.0
+                                    TextBox.cornerRadius 4.0
+                                    TextBox.padding (8.0, 2.0)
                                     TextBox.onTextChanged (fun newName ->
                                         dispatch (UpdateProposedName (c.OriginalFullPath, newName))
                                     )
@@ -343,13 +403,16 @@ module Views =
                             Border.create [
                                 Border.margin (28.0, 2.0, 0.0, 0.0)
                                 Border.background (SolidColorBrush (Color.Parse("#FEF3C7")))
+                                Border.borderBrush (SolidColorBrush (Color.Parse("#F59E0B")))
+                                Border.borderThickness 1.0
                                 Border.cornerRadius 4.0
                                 Border.padding (8.0, 4.0)
                                 Border.child (
                                     TextBlock.create [
                                         TextBlock.text $"⚠️ AIコメント: {comment}"
                                         TextBlock.fontSize 11.0
-                                        TextBlock.foreground (SolidColorBrush warningColor)
+                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#92400E")))
+                                        TextBlock.fontWeight FontWeight.SemiBold
                                         TextBlock.textWrapping TextWrapping.Wrap
                                     ]
                                 )
@@ -367,8 +430,8 @@ module Views =
             Border.borderBrush (SolidColorBrush (if c.IsSelected then primaryColor else borderGray))
             Border.borderThickness (if c.IsSelected then 2.0 else 1.0)
             Border.cornerRadius 6.0
-            Border.margin (0.0, 2.0, 0.0, 4.0)
-            Border.padding 8.0
+            Border.margin (0.0, 2.0, 0.0, 6.0)
+            Border.padding 10.0
             Border.child (
                 StackPanel.create [
                     StackPanel.spacing 4.0
@@ -391,17 +454,19 @@ module Views =
                                         Border.create [
                                             Border.background (SolidColorBrush dangerColor)
                                             Border.cornerRadius 3.0
-                                            Border.padding (4.0, 1.0)
+                                            Border.padding (4.0, 2.0)
                                             Border.child (
                                                 TextBlock.create [
                                                     TextBlock.text $"{c.OriginalLength}字"
                                                     TextBlock.fontSize 11.0
                                                     TextBlock.foreground (SolidColorBrush textLight)
+                                                    TextBlock.fontWeight FontWeight.Bold
                                                 ]
                                             )
                                         ]
                                         TextBlock.create [
                                             TextBlock.text c.OriginalFileName
+                                            TextBlock.foreground (SolidColorBrush textDark)
                                             TextBlock.verticalAlignment VerticalAlignment.Center
                                             TextBlock.textTrimming TextTrimming.CharacterEllipsis
                                         ]
@@ -410,7 +475,16 @@ module Views =
                                 TextBox.create [
                                     Grid.column 2
                                     TextBox.text c.ProposedFileName
+                                    TextBox.height 30.0
                                     TextBox.margin (8.0, 0.0, 8.0, 0.0)
+                                    TextBox.verticalAlignment VerticalAlignment.Center
+                                    TextBox.verticalContentAlignment VerticalAlignment.Center
+                                    TextBox.background (SolidColorBrush Colors.White)
+                                    TextBox.foreground (SolidColorBrush textDark)
+                                    TextBox.borderBrush (SolidColorBrush (Color.Parse("#93C5FD")))
+                                    TextBox.borderThickness 1.0
+                                    TextBox.cornerRadius 4.0
+                                    TextBox.padding (8.0, 2.0)
                                     TextBox.onTextChanged (fun newName ->
                                         dispatch (UpdateProposedName (c.OriginalFullPath, newName))
                                     )
@@ -436,13 +510,16 @@ module Views =
                             Border.create [
                                 Border.margin (28.0, 2.0, 0.0, 0.0)
                                 Border.background (SolidColorBrush (Color.Parse("#FEF3C7")))
+                                Border.borderBrush (SolidColorBrush (Color.Parse("#F59E0B")))
+                                Border.borderThickness 1.0
                                 Border.cornerRadius 4.0
                                 Border.padding (8.0, 4.0)
                                 Border.child (
                                     TextBlock.create [
                                         TextBlock.text $"⚠️ AIコメント: {comment}"
                                         TextBlock.fontSize 11.0
-                                        TextBlock.foreground (SolidColorBrush warningColor)
+                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#92400E")))
+                                        TextBlock.fontWeight FontWeight.SemiBold
                                     ]
                                 )
                             ]
@@ -458,7 +535,7 @@ module Views =
                 // リストヘッダー
                 Border.create [
                     DockPanel.dock Dock.Top
-                    Border.background (SolidColorBrush (Color.Parse("#F8FAFC")))
+                    Border.background (SolidColorBrush (Color.Parse("#F1F5F9")))
                     Border.borderBrush (SolidColorBrush borderGray)
                     Border.borderThickness (0.0, 0.0, 0.0, 1.0)
                     Border.padding (12.0, 6.0)
@@ -472,14 +549,27 @@ module Views =
                                     StackPanel.children [
                                         Button.create [
                                             Button.content "全選択"
+                                            Button.background (SolidColorBrush Colors.White)
+                                            Button.foreground (SolidColorBrush textDark)
+                                            Button.borderBrush (SolidColorBrush borderGray)
+                                            Button.borderThickness 1.0
+                                            Button.cornerRadius 4.0
+                                            Button.padding (10.0, 4.0)
                                             Button.onClick (fun _ -> dispatch (SelectAllCandidates true))
                                         ]
                                         Button.create [
                                             Button.content "全解除"
+                                            Button.background (SolidColorBrush Colors.White)
+                                            Button.foreground (SolidColorBrush textDark)
+                                            Button.borderBrush (SolidColorBrush borderGray)
+                                            Button.borderThickness 1.0
+                                            Button.cornerRadius 4.0
+                                            Button.padding (10.0, 4.0)
                                             Button.onClick (fun _ -> dispatch (SelectAllCandidates false))
                                         ]
                                         TextBlock.create [
                                             TextBlock.text $"対象ファイル: {model.Candidates.Length} 件"
+                                            TextBlock.foreground (SolidColorBrush textDark)
                                             TextBlock.verticalAlignment VerticalAlignment.Center
                                             TextBlock.fontWeight FontWeight.Bold
                                         ]
@@ -492,19 +582,28 @@ module Views =
                                     StackPanel.children [
                                         TextBlock.create [
                                             TextBlock.text "表示形式:"
+                                            TextBlock.foreground (SolidColorBrush textDark)
                                             TextBlock.verticalAlignment VerticalAlignment.Center
                                             TextBlock.fontSize 12.0
                                         ]
                                         Button.create [
                                             Button.content "▤ 上下並び"
-                                            Button.background (if model.Layout = Vertical then SolidColorBrush primaryColor else SolidColorBrush (Color.Parse("#E2E8F0")))
-                                            Button.foreground (if model.Layout = Vertical then SolidColorBrush textLight else SolidColorBrush Colors.Black)
+                                            Button.background (if model.Layout = Vertical then SolidColorBrush primaryColor else SolidColorBrush Colors.White)
+                                            Button.foreground (if model.Layout = Vertical then SolidColorBrush textLight else SolidColorBrush textDark)
+                                            Button.borderBrush (SolidColorBrush borderGray)
+                                            Button.borderThickness 1.0
+                                            Button.cornerRadius 4.0
+                                            Button.padding (8.0, 4.0)
                                             Button.onClick (fun _ -> dispatch (SetLayoutMode Vertical))
                                         ]
                                         Button.create [
                                             Button.content "◫ 左右並び"
-                                            Button.background (if model.Layout = Horizontal then SolidColorBrush primaryColor else SolidColorBrush (Color.Parse("#E2E8F0")))
-                                            Button.foreground (if model.Layout = Horizontal then SolidColorBrush textLight else SolidColorBrush Colors.Black)
+                                            Button.background (if model.Layout = Horizontal then SolidColorBrush primaryColor else SolidColorBrush Colors.White)
+                                            Button.foreground (if model.Layout = Horizontal then SolidColorBrush textLight else SolidColorBrush textDark)
+                                            Button.borderBrush (SolidColorBrush borderGray)
+                                            Button.borderThickness 1.0
+                                            Button.cornerRadius 4.0
+                                            Button.padding (8.0, 4.0)
                                             Button.onClick (fun _ -> dispatch (SetLayoutMode Horizontal))
                                         ]
                                     ]
@@ -556,10 +655,18 @@ module Views =
                                 Button.create [
                                     Button.content "↩ 直前のリネームを元に戻す (Undo)"
                                     Button.isEnabled (hasUndo && not model.IsRenaming)
+                                    Button.background (SolidColorBrush Colors.White)
+                                    Button.foreground (SolidColorBrush textDark)
+                                    Button.borderBrush (SolidColorBrush (Color.Parse("#94A3B8")))
+                                    Button.borderThickness 1.0
+                                    Button.cornerRadius 4.0
+                                    Button.padding (12.0, 8.0)
+                                    Button.fontWeight FontWeight.Bold
                                     Button.onClick (fun _ -> dispatch RequestUndo)
                                 ]
                                 TextBlock.create [
                                     TextBlock.text $"選択中: {selectedCount} / {model.Candidates.Length} 件"
+                                    TextBlock.foreground (SolidColorBrush textDark)
                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                     TextBlock.fontWeight FontWeight.Bold
                                 ]
@@ -574,6 +681,11 @@ module Views =
                                 Button.create [
                                     Button.content "リネームのみ実行"
                                     Button.isEnabled (selectedCount > 0 && not model.IsRenaming)
+                                    Button.background (SolidColorBrush (Color.Parse("#0284C7")))
+                                    Button.foreground (SolidColorBrush textLight)
+                                    Button.cornerRadius 4.0
+                                    Button.padding (12.0, 8.0)
+                                    Button.fontWeight FontWeight.Bold
                                     Button.onClick (fun _ -> dispatch ExecuteRenameOnly)
                                 ]
                                 Button.create [
@@ -581,6 +693,8 @@ module Views =
                                     Button.background (SolidColorBrush successColor)
                                     Button.foreground (SolidColorBrush textLight)
                                     Button.fontWeight FontWeight.Bold
+                                    Button.cornerRadius 4.0
+                                    Button.padding (14.0, 8.0)
                                     Button.isEnabled (selectedCount > 0 && not model.IsRenaming)
                                     Button.onClick (fun _ -> dispatch ExecuteRenameAndRestart)
                                 ]
@@ -597,9 +711,11 @@ module Views =
     let errorBanner (model: Model) (dispatch: Msg -> unit) =
         match model.ErrorMessage with
         | Some msg ->
+            let isInfo = msg.StartsWith("💡")
+            let bannerBg = if isInfo then Color.Parse("#0284C7") else dangerColor
             Border.create [
                 DockPanel.dock Dock.Top
-                Border.background (SolidColorBrush dangerColor)
+                Border.background (SolidColorBrush bannerBg)
                 Border.padding (12.0, 8.0)
                 Border.child (
                     DockPanel.create [
@@ -609,12 +725,14 @@ module Views =
                                 Button.content "✕"
                                 Button.foreground (SolidColorBrush textLight)
                                 Button.background (SolidColorBrush Colors.Transparent)
+                                Button.borderThickness 0.0
                                 Button.onClick (fun _ -> dispatch DismissError)
                             ]
                             TextBlock.create [
                                 TextBlock.text msg
                                 TextBlock.foreground (SolidColorBrush textLight)
                                 TextBlock.verticalAlignment VerticalAlignment.Center
+                                TextBlock.fontWeight FontWeight.SemiBold
                                 TextBlock.textWrapping TextWrapping.Wrap
                             ]
                         ]
@@ -642,11 +760,13 @@ module Views =
                                 StackPanel.children [
                                     TextBlock.create [
                                         TextBlock.text dialog.Title
+                                        TextBlock.foreground (SolidColorBrush textDark)
                                         TextBlock.fontWeight FontWeight.Bold
                                         TextBlock.fontSize 16.0
                                     ]
                                     TextBlock.create [
                                         TextBlock.text dialog.Message
+                                        TextBlock.foreground (SolidColorBrush textDark)
                                         TextBlock.textWrapping TextWrapping.Wrap
                                     ]
                                     StackPanel.create [
@@ -656,12 +776,20 @@ module Views =
                                         StackPanel.children [
                                             Button.create [
                                                 Button.content dialog.CancelText
+                                                Button.background (SolidColorBrush Colors.White)
+                                                Button.foreground (SolidColorBrush textDark)
+                                                Button.borderBrush (SolidColorBrush borderGray)
+                                                Button.borderThickness 1.0
+                                                Button.cornerRadius 4.0
+                                                Button.padding (12.0, 6.0)
                                                 Button.onClick (fun _ -> dispatch DismissConfirm)
                                             ]
                                             Button.create [
                                                 Button.content dialog.ConfirmText
                                                 Button.background (SolidColorBrush primaryColor)
                                                 Button.foreground (SolidColorBrush textLight)
+                                                Button.cornerRadius 4.0
+                                                Button.padding (12.0, 6.0)
                                                 Button.fontWeight FontWeight.Bold
                                                 Button.onClick (fun _ -> dispatch dialog.OnConfirm)
                                             ]
@@ -680,6 +808,7 @@ module Views =
     // ==========================================
     let view (model: Model) (dispatch: Msg -> unit) =
         Grid.create [
+            Grid.background (SolidColorBrush Colors.White)
             Grid.children [
                 DockPanel.create [
                     DockPanel.children [

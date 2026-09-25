@@ -189,3 +189,52 @@ module OpenRouterClient =
                 | ex ->
                     return Error (OpenRouterError (0, $"OpenRouter API 通信中に例外が発生しました: {ex.Message}"))
         }
+
+    /// <summary>
+    /// APIキー未設定時またはオフライン用のローカル命名短縮ルール
+    /// 命名規則に従い、日時抽出とタイトル短縮（最大30文字）を施して240文字未満の安全なファイル名を生成する。
+    /// </summary>
+    let generateLocalProposals (rule: NamingRule) (candidates: ScanCandidate list) : RenameProposal list =
+        let dateRegex = System.Text.RegularExpressions.Regex(@"(\d{4})[-_.](\d{2})[-_.](\d{2})")
+        candidates
+        |> List.map (fun c ->
+            let ext = Path.GetExtension(c.FileName)
+            let baseWithoutExt = Path.GetFileNameWithoutExtension(c.FileName)
+            let dateMatch = dateRegex.Match(baseWithoutExt)
+
+            let datePrefix, comment =
+                if dateMatch.Success then
+                    let y = dateMatch.Groups.[1].Value
+                    let m = dateMatch.Groups.[2].Value
+                    let d = dateMatch.Groups.[3].Value
+                    $"{y}-{m}-{d}", None
+                else
+                    let d = c.LastWriteTime.ToString("yyyy-MM-dd")
+                    d, Some "元ファイル名に撮影日時が含まれていないため、最終更新日時で補完しました。"
+
+            let cleanTitle =
+                if dateMatch.Success then
+                    baseWithoutExt.Remove(dateMatch.Index, dateMatch.Length).Trim('_', '-', ' ')
+                else
+                    baseWithoutExt.Trim('_', '-', ' ')
+
+            let shortenedTitle =
+                if String.IsNullOrWhiteSpace(cleanTitle) then "video"
+                elif cleanTitle.Length > 30 then cleanTitle.Substring(0, 30).TrimEnd('_', '-')
+                else cleanTitle
+
+            let proposedName = $"{datePrefix}_{shortenedTitle}{ext}"
+            let proposedPath = Path.Combine(c.DirectoryPath, proposedName)
+
+            {
+                OriginalFullPath = c.FullPath
+                OriginalFileName = c.FileName
+                DirectoryPath = c.DirectoryPath
+                OriginalLength = c.PathLength
+                ProposedFileName = proposedName
+                ProposedLength = proposedPath.Length
+                AiComment = comment
+                IsSelected = true
+            }
+        )
+

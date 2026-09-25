@@ -32,8 +32,13 @@ module Settings =
 
     /// 既定の設定値を生成
     let defaultSettings () : RenamerSettings =
+        let defaultDir =
+            let envVideo = Environment.GetEnvironmentVariable("VIDEO_DIR")
+            if not (String.IsNullOrWhiteSpace(envVideo)) && Directory.Exists(envVideo) then envVideo
+            elif Directory.Exists("test/videos") then Path.GetFullPath("test/videos")
+            else Directory.GetCurrentDirectory()
         {
-            TargetDirectory = ""
+            TargetDirectory = defaultDir
             PathLengthThreshold = 240
             SelectedModel = "meta-llama/llama-3.3-70b-instruct:free"
             ApiKey = None

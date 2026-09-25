@@ -4,6 +4,7 @@ open System
 open System.IO
 open Xunit
 open FsUnit
+open Avalonia
 open TagBasedVideoManager.Renamer
 
 module RenameIntegrationE2ETests =
@@ -208,3 +209,133 @@ module RenameIntegrationE2ETests =
                     File.Exists(targetPath) |> should equal false
                     File.Exists(expectedUniqueB) |> should equal false
         )
+
+    // Avalonia App の初期化 (テスト実行中1回だけ)
+    type UiTestApp() =
+        inherit Avalonia.Application()
+        override this.Initialize() =
+            this.Styles.Add(Avalonia.Themes.Fluent.FluentTheme())
+
+    let mutable private isAppInitialized = false
+    let private appInitLock = obj()
+    let ensureAppInitialized () =
+        lock appInitLock (fun () ->
+            if not isAppInitialized then
+                Avalonia.AppBuilder.Configure<UiTestApp>()
+                    .UsePlatformDetect()
+                    .SetupWithoutStarting() |> ignore
+                isAppInitialized <- true
+        )
+
+    [<Fact>]
+    let ``E2E UI: render and capture application states as visual evidence (initial, proposed vertical, proposed horizontal, undo dialog)`` () =
+        ensureAppInitialized ()
+
+        let settings = Settings.defaultSettings ()
+        let sampleCandidates : RenameProposal list = [
+            {
+                OriginalFullPath = "D:\\Videos\\2024-01-01_extremely_long_video_name_about_nature_and_wildlife_in_the_deep_forest_recorded_with_high_definition_camera_special_edition_documentary_part_1_full_hd_1080p_60fps_surround_sound_extended_version_remastered_2024_spring_collection_sample_video.mp4"
+                OriginalFileName = "2024-01-01_extremely_long_video_name_about_nature_and_wildlife_in_the_deep_forest_recorded_with_high_definition_camera_special_edition_documentary_part_1_full_hd_1080p_60fps_surround_sound_extended_version_remastered_2024_spring_collection_sample_video.mp4"
+                DirectoryPath = "D:\\Videos"
+                OriginalLength = 265
+                ProposedFileName = "2024-01-01_nature_doc_part1.mp4"
+                ProposedLength = 39
+                AiComment = None
+                IsSelected = true
+            }
+            {
+                OriginalFullPath = "D:\\Videos\\strange_title_without_date_recorded_by_random_camera_device_and_extremely_long_filename_that_exceeds_threshold_character_limit_for_docker_mount_failure_demonstration_file_sample_data.mp4"
+                OriginalFileName = "strange_title_without_date_recorded_by_random_camera_device_and_extremely_long_filename_that_exceeds_threshold_character_limit_for_docker_mount_failure_demonstration_file_sample_data.mp4"
+                DirectoryPath = "D:\\Videos"
+                OriginalLength = 252
+                ProposedFileName = "2026-09-26_strange_title_fixed.mp4"
+                ProposedLength = 41
+                AiComment = Some "元ファイル名に撮影日時が含まれていなかったため、本日の日付で補完しました。"
+                IsSelected = true
+            }
+        ]
+
+        let baseModel : Model = {
+            Settings = { settings with TargetDirectory = "D:\\Videos" }
+            CurrentThreshold = 240
+            SelectedRuleId = "rule-date-action"
+            IsScanning = false
+            IsRequestingAi = false
+            IsRenaming = false
+            IsDockerBusy = false
+            ErrorMessage = None
+            Candidates = []
+            UndoStack = []
+            Docker = {
+                State = Running
+                IsPortAccessible = true
+                ContainerId = Some "tag-based-video-manager-1"
+                LastChecked = DateTime.UtcNow
+            }
+            Layout = Vertical
+            IsRuleManagerOpen = false
+            EditingRule = None
+            ConfirmDialog = None
+        }
+
+        let renderAndCapture (m: Model) (fileName: string) =
+            let w = new Avalonia.FuncUI.Hosts.HostWindow()
+            w.Width <- 1100.0
+            w.Height <- 720.0
+            w.Background <- Avalonia.Media.SolidColorBrush Avalonia.Media.Colors.White
+
+            Elmish.Program.mkProgram (fun () -> m, Elmish.Cmd.none) State.update Views.view
+            |> Avalonia.FuncUI.Elmish.Program.withHost w
+            |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+
+            w.Show()
+            w.UpdateLayout()
+
+            let pixelSize = Avalonia.PixelSize(1100, 720)
+            let dpi = Avalonia.Vector(96.0, 96.0)
+            let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
+            rtb.Render(w)
+
+            let outputDir = Path.Combine("test", "TestResults")
+            if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
+            let outputPath = Path.Combine(outputDir, fileName)
+            rtb.Save(outputPath)
+            w.Close()
+
+            File.Exists(outputPath) |> should equal true
+            FileInfo(outputPath).Length |> should be (greaterThan 1000L)
+
+        // 1. 初期画面 (0件)
+        renderAndCapture baseModel "E2E_01_Initial_State.png"
+
+        // 2. 走査＆短縮提案完了 (上下並び・AIコメント付き)
+        let proposedModel = {
+            baseModel with
+                Candidates = sampleCandidates
+                ErrorMessage = Some "💡 2件の長パス危険ファイル（240文字超）を検出し、短縮リネーム候補を生成しました。"
+        }
+        renderAndCapture proposedModel "E2E_02_Proposed_Vertical_With_AI_Comment.png"
+
+        // 3. 左右並びモード
+        let horizontalModel = { proposedModel with Layout = Horizontal }
+        renderAndCapture horizontalModel "E2E_03_Proposed_Horizontal_Layout.png"
+
+        // 4. Undo確認ダイアログ
+        let undoDialogModel = {
+            proposedModel with
+                UndoStack = [ [ {
+                    Id = Guid.NewGuid()
+                    Timestamp = DateTime.UtcNow
+                    OriginalFullPath = sampleCandidates.[0].OriginalFullPath
+                    RenamedFullPath = Path.Combine(sampleCandidates.[0].DirectoryPath, sampleCandidates.[0].ProposedFileName)
+                } ] ]
+                ConfirmDialog = Some {
+                    Title = "直前のリネームを元に戻しますか？"
+                    Message = "直前にリネームされたファイルを以前のファイル名に復元します。復旧を反映するため、Dockerコンテナが自動的に再起動されます。"
+                    ConfirmText = "復元してコンテナ再起動"
+                    CancelText = "キャンセル"
+                    OnConfirm = DismissConfirm
+                }
+        }
+        renderAndCapture undoDialogModel "E2E_04_Undo_Confirm_Dialog.png"
+

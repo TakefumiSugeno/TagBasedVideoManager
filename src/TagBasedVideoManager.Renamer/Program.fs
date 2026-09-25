@@ -13,10 +13,11 @@ type MainWindow() as this =
         base.Title <- "TagBasedVideoManager - AI File Renamer"
         base.Width <- 1100.0
         base.Height <- 720.0
+        base.Background <- Media.SolidColorBrush(Media.Colors.White)
 
         Program.mkProgram State.init State.update Views.view
         |> Program.withHost this
-        |> Program.run
+        |> Program.runWithAvaloniaSyncDispatch ()
 
 type App() =
     inherit Application()

@@ -167,19 +167,32 @@ module State =
                     |> List.tryFind (fun r -> r.Id = model.SelectedRuleId)
                     |> Option.defaultValue (List.head model.Settings.Rules)
 
-                let aiCmd =
-                    Cmd.OfAsync.perform
-                        (fun () ->
-                            OpenRouterClient.requestProposals
-                                None
-                                model.Settings.ApiKey
-                                model.Settings.SelectedModel
-                                selectedRule
-                                candidates
-                        )
-                        ()
-                        AiProposeCompleted
-                { model with IsScanning = false; IsRequestingAi = true }, aiCmd
+                // まずローカル命名規則による短縮候補を即時生成して反映！
+                let localProposals = OpenRouterClient.generateLocalProposals selectedRule candidates
+
+                match model.Settings.ApiKey with
+                | Some key when not (String.IsNullOrWhiteSpace(key)) ->
+                    let aiCmd =
+                        Cmd.OfAsync.perform
+                            (fun () ->
+                                OpenRouterClient.requestProposals
+                                    None
+                                    (Some key)
+                                    model.Settings.SelectedModel
+                                    selectedRule
+                                    candidates
+                            )
+                            ()
+                            AiProposeCompleted
+                    { model with IsScanning = false; IsRequestingAi = true; Candidates = localProposals }, aiCmd
+                | _ ->
+                    // APIキー未設定時はローカル短縮ルールをそのまま採用し、直ちにリネーム可能にする
+                    {
+                        model with
+                            IsScanning = false
+                            Candidates = localProposals
+                            ErrorMessage = Some "💡 命名規則に従って短縮ファイル名（BEFORE/AFTER）を自動生成しました。必要に応じて直接手動修正し、リネームを実行できます。"
+                    }, Cmd.none
 
         | ScanCompleted (Error (IoError (msg, _))) ->
             { model with IsScanning = false; ErrorMessage = Some msg }, Cmd.none
@@ -187,12 +200,24 @@ module State =
             { model with IsScanning = false; ErrorMessage = Some ($"走査失敗: {other}") }, Cmd.none
 
         | AiProposeCompleted (Ok proposals) ->
-            { model with IsRequestingAi = false; Candidates = proposals }, Cmd.none
+            let merged =
+                if List.isEmpty proposals then model.Candidates
+                else proposals
+            { model with IsRequestingAi = false; Candidates = merged }, Cmd.none
 
         | AiProposeCompleted (Error (OpenRouterError (code, msg))) ->
-            { model with IsRequestingAi = false; ErrorMessage = Some ($"AI提案取得エラー ({code}): {msg}") }, Cmd.none
+            // AI通信エラー時もローカル提案候補を維持し、ユーザーが手動編集・リネームできるようにする
+            {
+                model with
+                    IsRequestingAi = false
+                    ErrorMessage = Some ($"⚠️ OpenRouter AI通信エラー ({code}) が発生したため、ローカル短縮候補を維持しました: {msg}")
+            }, Cmd.none
         | AiProposeCompleted (Error other) ->
-            { model with IsRequestingAi = false; ErrorMessage = Some ($"AI提案失敗: {other}") }, Cmd.none
+            {
+                model with
+                    IsRequestingAi = false
+                    ErrorMessage = Some ($"⚠️ AI提案の取得に失敗したため、ローカル短縮候補を維持しました: {other}")
+            }, Cmd.none
 
         // 候補編集
         | ToggleCandidateSelect fullPath ->
