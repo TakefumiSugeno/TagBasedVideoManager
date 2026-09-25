@@ -1,174 +1,460 @@
-# Design: AI File Renamer (TagBasedVideoManager - AI File Renamer)
+# 詳細設計書: TagBasedVideoManager - AI File Renamer
 
-## Context
+## 1. システム構成とデータフロー
 
-Docker Containerのバインドマウント（WSL2 / 9p / virtiofs）において、パス長制限（MAX_PATH / NAME_MAX 260文字）を超えるファイルが存在するとマウント自体が失敗し、Webアプリから動画が参照できなくなる（GitHub Issue #1）。
-コンテナ内からは不可視となるため、ホストOS側で稼働する独立したデスクトップアプリ **TagBasedVideoManager - AI File Renamer** を新設し、ホストファイルシステムを直接走査してAIリネームおよびDockerコンテナ制御を行う。
-既存Webアプリ側には一切の機能・UI改修を行わず（案1採用）、完全独立したデスクトップツールとして提供する。
+### 1.1 物理・データフロー構成
 
-## Goals / Non-Goals
+本システムは、ホストOS（Windows / WSL2 / macOS / Linux）上で動作する独立したデスクトップアプリケーションであり、純粋な **100% F# (.NET 10) ＋ Avalonia.FuncUI (Elmish MVU)** で構築されます。
+Dockerバインドマウント（WSL2/9p）のパス長制限（260文字）によるマウント失敗問題を解決するため、ホストファイルシステムを直接走査し、OpenRouter APIのAI支援を受けてファイル名を短縮・正規化リネームし、Docker Compose経由でWebアプリコンテナを再起動します。
 
-**Goals:**
+```mermaid
+graph TD
+    subgraph HostOS ["ホストOS (Windows / WSL2 / macOS)"]
+        User(["ユーザー"]) <---> UI["Avalonia.FuncUI (Elmish MVU)"]
+        UI <---> Engine["Renamer Engine (F# Core)"]
+        Engine <---> SettingsFile[("companion-settings.json")]
+        Engine <---> HostFS[/"ホスト動画ディレクトリ (C:\Videos等)"/]
+        Engine <---> OpenRouter["OpenRouter API (Free LLM)"]
+        Engine <---> DockerCLI["Docker Compose CLI"]
+    end
 
-- ホストOS上の動画フォルダを走査し、マウント破綻原因となる**絶対パス長 ≧ 設定基準文字数（初期値: 240文字）**のファイルを自動抽出
-- 抽出基準文字数は設定ファイル（`companion-settings.json`）で初期値を定義し、**アプリ起動中にUI上で自由に変更可能（※設定ファイルは更新しない）**
-- アプリ起動時にフォルダ・モデル・優先命名規則・基準文字数を自動ロードし、1クリックで抽出＆AI提案を実行
-- 命名規則マネージャー画面によるルールの新規作成・編集・削除・並び替え（先頭ルールが既定）
-- **AIコメントの条件付き表示**: 規則通り正常に命名できたファイルは非表示とし、**風変わりな元ファイル名で補完や例外対応を行った問題発生時のみ表示**
-- **Before（変更前）と After（変更後）の2通りレイアウト表示**:
-  - **上下並び**: 高さを極限まで低く抑え、Before行とAfter行、（存在する場合のみ）AIコメントを隣接させて視線移動ゼロで比較可能
-  - **左右並び**: 横長ディスプレイ向けの2列対比
-- アプリ起動中リネームの **Undo（元に戻す）** 機能（物理逆リネーム＋コンテナ再起動）
-- **100% F# (.NET 10) ＋ Avalonia.FuncUI (Elmish MVU)** による完全な関数型デスクトップアプリ
-- 安全な物理リネーム（重複チェック、エラーハンドリング、ロールバック）
-- `docker compose ps --format json` および HTTP疎通確認による確実なコンテナ状態特定と Up / Down / Restart 制御
-- プロジェクトフォルダ構成の再編（`src/` 配下にWebとRenamer、`test/` 配下にWebテストとRenamerテストを並列化）
-- フォルダ移動に伴う Dockerfile / compose / slnx / テストスクリプトのパス更新と、**既存Web機能の全回帰テスト実行**
-- 自動テストの徹底（TDD単体テスト ＋ 結合E2Eテスト）
-
-**Non-Goals:**
-
-- 既存Webアプリのソースコード・UI改修（案1採用により変更ゼロ）
-- 起動中に変更した抽出基準文字数の設定ファイルへの自動保存（セッション限りの一時変更に留める）
-- 正常なファイルに対する不要なAIコメント表示（UIノイズ防止）
-- C# や XAML の導入（本プロジェクトの F# ネイティブ方針を堅持）
-- コンテナ内部からの直接物理ファイルリネーム
-- 有料AIモデルへの依存
-
-## Decisions
-
-### 1. プロジェクト・フォルダ構成の再編と回帰テスト方針
-
-- **決定**: ソリューションおよびフォルダ構造を以下のように階層化・再編する。
-  ```
-  TagBasedVideoManager/
-  ├── TagBasedVideoManager.slnx
-  ├── Dockerfile
-  ├── docker-compose.yml
-  ├── src/
-  │   ├── TagBasedVideoManager/             # 既存 Web アプリケーション
-  │   │   ├── TagBasedVideoManager.fsproj
-  │   │   └── ...
-  │   └── TagBasedVideoManager.Renamer/     # 新設 デスクトップアプリ
-  │       ├── TagBasedVideoManager.Renamer.fsproj
-  │       └── ...
-  └── test/
-      ├── TagBasedVideoManager.Tests/       # 既存 Web アプリのテスト
-      │   ├── TagBasedVideoManager.Tests.fsproj
-      │   └── ...
-      └── TagBasedVideoManager.Renamer.Tests/ # 新設 デスクトップアプリのテスト
-          ├── TagBasedVideoManager.Renamer.Tests.fsproj
-          └── ...
-  ```
-- **移行手順と回帰検証**:
-  1. 既存ファイルをサブディレクトリに移動。
-  2. `Dockerfile`, `docker-compose.yml`, `TagBasedVideoManager.slnx`, `test/TagBasedVideoManager.Tests/TagBasedVideoManager.Tests.fsproj` 内のプロジェクト参照パスを同期更新。
-  3. `dotnet test test/TagBasedVideoManager.Tests/` を実行し、既存テストが100%パスすることを回帰テストとして確認する。
-
-### 2. 抽出基準（パス長閾値）の設計
-
-- **決定**: 設定ファイル `companion-settings.json` に `pathLengthThreshold: 240` を定義し、起動時に初期値として読み込む。UI上でユーザーが数値を一時変更できるが、**設定ファイルには書き戻さない（更新しない）**。
-- **理由**:
-  - 毎回同じ安全基準（240文字）で即座にスキャンできる安定性を確保。
-  - 特定のフォルダや一時的な確認で「200文字以上」「250文字以上」を見たい場合にも、設定ファイルを汚さずに柔軟にUI上で変更できる。
-
-### 3. AIコメントの条件付き描画
-
-- **決定**: 命名規則に正常に従えたファイルは `aiComment` を `None`（非表示）とし、元ファイル名がランダム英数字や記号等で親フォルダや更新日時から代替補完した場合のみ `Some("理由...")` を設定して `⚠️ AIコメント: ...` を表示する。
-- **理由**: 全件にコメントを出すとUIの縦幅が増加しノイズになるため、注意が必要な問題ファイルのみを目立たせる。
-
-### 4. Before / After のレイアウト切り替え ＆ 高さコンパクト化
-
-- **決定**: 「上下並び」と「左右並び」のトグル切り替えを提供する。
-- **上下並びの最適化**:
-  - 1カード内で、上行（BEFORE: 現パス長・赤バッジ・現ファイル名）と下行（AFTER: 新パス長・緑バッジ・新ファイル名インライン入力）を隣接配置。
-  - 問題があるファイルにのみAIコメントを1行追加。
-
-### 5. リネームの Undo（元に戻す）機能
-
-- **決定**: アプリ起動中のリネーム履歴をメモリスタック（`undoHistory: { OriginalPath: string; RenamedPath: string } list`）として保持し、UI上の「元に戻す (Undo)」ボタンから逆リネームを実行できるようにする。
-
-### 6. 命名規則マネージャー画面
-
-- **決定**: メイン画面の「管理...」ボタンから開く命名規則マネージャーモーダルを新設する。
-- **機能**:
-  - ルール一覧の並び替え（一番上に置いたルールが起動時のデフォルト）
-  - ルール名・パターン・AI指示の編集
-  - タグ挿入ボタン（`{{Date}}`, `{{ParentFolder}}`, `{{Summary}}`, `{{Seq}}`）
-  - `companion-settings.json` への自動永続化
-
-### 7. 100% F# によるデスクトップGUI: Avalonia.FuncUI (Elmish MVU)
-
-- **決定**: C# / XAML を一切使用せず、**純粋な F# (.NET 10) ＋ Avalonia.FuncUI** を採用する。
-
-## UI/UX モックアップ (Avalonia.FuncUI - Fluent テーマ)
-
-> ブラウザで操作可能なHTMLモックアップ（UI仕様正本）: [mockup.html](./mockup.html)
-
-```
-+---------------------------------------------------------------------------------+
-| TagBasedVideoManager - AI File Renamer                                   [-] [x]|
-+---------------------------------------------------------------------------------+
-| [Docker: tag-based-video-manager] Status: [● RUNNING] (Port: 5620)               |
-| [▶ Start] [■ Stop] [🔄 Restart]                                                 |
-+---------------------------------------------------------------------------------+
-| 対象フォルダ: [ C:\Videos\Touring_2025              ] [参照...]                 |
-| 抽出基準: ≧ [ 240 ] 文字 (※一時変更・設定非保存)   (該当: 3件)                 |
-| AIモデル: [ Llama-3.3 70B (Free) v ]  命名: [ ★日付＋要約 v ] [⚙ 管理...]       |
-|                                                                                 |
-| ===> [ 🚀 リネーム対象抽出 ＆ AI提案を実行 (ワンアクション) ]                   |
-+---------------------------------------------------------------------------------+
-| Before / After 対比確認                            表示形式: [ ▤ 上下並び ] [ ◫ 左右並び ] |
-| +-----------------------------------------------------------------------------+ |
-| | [x] #1  C:\Videos\Touring_2025\Hokkaido_Very_Long_Directory\...            | |
-| |  BEFORE (251字 [危険]): VID_20250812_Wakkanai_Motorcycle_Very_Long_Name.mp4 | |
-| |  AFTER  ( 42字 [安全]): [ 20250812_Hokkaido_Soya_Cape.mp4 ] (-209字削減)    | |
-| |  (※正常適合のためAIコメントなし)                                           | |
-| +-----------------------------------------------------------------------------+ |
-| | [x] #3  C:\Videos\Touring_2025\Furano\...                                   | |
-| |  BEFORE (249字 [危険]): 7f9a2b8c_sensor_uuid_heavy_dump_4k_final.mp4        | |
-| |  AFTER  ( 41字 [安全]): [ 20250814_Furano_Lavender.mp4    ] (-208字削減)    | |
-| |  ⚠️ AIコメント: 元名に日時・地名が不記載のため親フォルダ・作成日より補完。   | |
-| +-----------------------------------------------------------------------------+ |
-|                                                                                 |
-| 確定件数: 3 件      [ ↩ 直前のリネームを元に戻す (Undo) ]                       |
-| [ リネームのみ実行 ]             [ ⚡ リネームしてコンテナ再起動 (復旧) ]       |
-+---------------------------------------------------------------------------------+
+    subgraph DockerEnv ["Docker コンテナ環境"]
+        DockerCLI -. "docker compose restart" .-> Container["TagBasedVideoManager Container"]
+        Container --- Mount[/"バインドマウント (/app/videos)"/]
+        Mount === HostFS
+    end
 ```
 
-## アーキテクチャとデータフロー
+### 1.2 処理シーケンス
 
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as ユーザー
+    participant UI as Avalonia.FuncUI (Elmish)
+    participant Core as Renamer Core
+    participant OpenRouter as OpenRouter API
+    participant Docker as Docker CLI / Kestrel
+    participant FS as ホストファイルシステム
+
+    Note over User, UI: アプリ起動
+    UI->>Core: Settings.load()
+    Core-->>UI: 設定初期値 (閾値: 240, フォルダ, モデル, 既定ルール)
+    UI->>Docker: DockerController.checkStatus()
+    Docker-->>UI: ステータス取得 (Running / Port 5620 OK)
+
+    Note over User, UI: ワンアクション実行
+    User->>UI: 「🚀 リネーム対象抽出 ＆ AI提案を実行」クリック
+    UI->>Core: FileScanner.scan(folder, currentThreshold)
+    Core->>FS: 再帰走査 (Path.Length >= threshold)
+    FS-->>Core: 該当ファイル一覧返却
+    Core->>OpenRouter: OpenRouterClient.propose(rules, files)
+    OpenRouter-->>Core: JSONレスポンス (新ファイル名 + 問題時AIコメント)
+    Core-->>UI: Before / After 対比データ描画
+
+    Note over User, UI: 確認・リネーム・Undo
+    User->>UI: 「⚡ リネームしてコンテナ再起動」クリック
+    UI->>Core: FileRenamer.rename(proposals)
+    Core->>FS: 物理リネーム実行 & Undo履歴記録
+    Core->>Docker: DockerController.restart()
+    Docker-->>UI: コンテナ再起動完了
+    UI-->>User: 完了ダイアログ表示 (「↩ 元に戻す」ボタン活性化)
 ```
- [Avalonia.FuncUI (Elmish MVU)]
-      |
-      | 1. アプリ起動: Settings.load() -> フォルダ, モデル, 既定ルール, 初期閾値(240)
-      v
- [Elmish Model 初期化] (閾値はModelメモリ内に保持)
-      |
-      |-- (※UIで閾値を変更した場合: Msg: UpdateThreshold -> Modelのみ更新、ファイル非保存)
-      |
-      | 2. Msg: ExecuteScanAndPropose (ワンアクション実行)
-      v
- [FileScanner.fs] ---> パス長 ≧ Model.CurrentThreshold のファイルを抽出
-      |
- [OpenRouterClient.fs] ---> Freeモデルへ一括問い合わせ
-      |                      (新ファイル名 + 問題時のみAIコメントを取得)
-      |
- [Elmish Model 更新] ---> Before / After 対比ビュー描画 (問題ファイルのみAIコメント表示)
-      |
-      | 3. Msg: ExecuteRename
-      v
- [FileRenamer.fs] ---> 物理リネーム実行 & Undo履歴スタックに記録
- [DockerController.fs] ---> コンテナ再起動
-      |
- [Elmish Model 更新] ---> 「↩ 元に戻す (Undo)」ボタンが利用可能に！
+
+---
+
+## 2. データモデル設計 (`Domain.fs`)
+
+### 2.1 ドメイン型定義
+
+```fsharp
+namespace TagBasedVideoManager.Renamer.Domain
+
+open System
+
+/// 命名規則のドメインモデル
+type NamingRule = {
+    Id: string
+    Name: string
+    Pattern: string        // 例: "{{Date}}_{{Summary}}"
+    PromptInstruction: string // LLMに対する命名指示
+    Order: int             // 並び順 (最小値がデフォルトルール)
+}
+
+/// スキャン抽出されたファイル情報
+type ScanCandidate = {
+    FullPath: string
+    FileName: string
+    DirectoryPath: string
+    PathLength: int
+    FileSizeBytes: int64
+    LastWriteTime: DateTime
+}
+
+/// リネーム提案データ
+type RenameProposal = {
+    OriginalFullPath: string
+    OriginalFileName: string
+    DirectoryPath: string
+    OriginalLength: int
+    ProposedFileName: string
+    ProposedLength: int
+    AiComment: string option // 問題・補完発生時のみ Some
+    IsSelected: bool
+}
+
+/// リネームUndo履歴レコード
+type UndoRecord = {
+    Id: Guid
+    Timestamp: DateTime
+    OriginalFullPath: string
+    RenamedFullPath: string
+}
+
+/// Dockerコンテナ稼働ステータス
+type ContainerState =
+    | Running
+    | Stopped
+    | Restarting
+    | Unhealthy
+    | NotFound
+
+type DockerStatus = {
+    State: ContainerState
+    IsPortAccessible: bool // ポート5620のHTTP疎通
+    ContainerId: string option
+    LastChecked: DateTime
+}
+
+/// アプリケーション永続化設定
+type RenamerSettings = {
+    TargetDirectory: string
+    PathLengthThreshold: int // 初期値: 240 (※起動中の変更はメモリ上のみで非保存)
+    SelectedModel: string
+    ApiKey: string option
+    Rules: NamingRule list
+}
+
+/// 表示レイアウト種別
+type LayoutMode =
+    | Vertical   // 上下並び (極低ハイト設計・視線移動最小化)
+    | Horizontal // 左右並び (横長ワイド対比)
+
+/// ROP (Railway Oriented Programming) のためのエラー型
+type RenamerError =
+    | IoError of message: string * ex: exn option
+    | SettingsError of message: string
+    | OpenRouterError of statusCode: int * message: string
+    | DockerError of command: string * exitCode: int * stderr: string
+    | ValidationError of message: string
+    | UndoConflictError of path: string * message: string
 ```
 
-## Risks / Trade-offs
+---
 
-- **[Risk] フォルダ移動に伴う Docker ビルドやテスト実行の破綻**
-  → **Mitigation**: プロジェクト構築直後に、更新されたパス設定で既存全テストを実行し、100%パスする回帰検証エビデンスを取得する。
-- **[Risk] Undo実行時に元ファイル名が既に別のファイルで占有されている可能性**
-  → **Mitigation**: Undo実行前にも `File.Exists` チェックを行い、衝突がある場合は警告ダイアログを表示して安全に中断する。
-- **[Risk] OpenRouter Freeモデルのレートリミットやダウンタイム**
-  → **Mitigation**: エラー時は手動リネーム入力欄を開放し、再試行ボタンを用意。
+## 3. 設定ファイル・外部連携スキーマ設計
+
+### 3.1 設定ファイル スキーマ (`companion-settings.json`)
+
+アプリケーション設定は実行ファイルと同ディレクトリ（またはユーザープロファイル）の `companion-settings.json` にJSON形式で保存されます。
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RenamerSettings",
+  "type": "object",
+  "properties": {
+    "targetDirectory": { "type": "string" },
+    "pathLengthThreshold": { "type": "integer", "default": 240 },
+    "selectedModel": {
+      "type": "string",
+      "default": "meta-llama/llama-3.3-70b-instruct:free"
+    },
+    "apiKey": { "type": ["string", "null"] },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "pattern": { "type": "string" },
+          "promptInstruction": { "type": "string" },
+          "order": { "type": "integer" }
+        },
+        "required": ["id", "name", "pattern", "promptInstruction", "order"]
+      }
+    }
+  },
+  "required": [
+    "targetDirectory",
+    "pathLengthThreshold",
+    "selectedModel",
+    "rules"
+  ]
+}
+```
+
+### 3.2 OpenRouter API連携仕様
+
+- **エンドポイント**: `POST https://openrouter.ai/api/v1/chat/completions`
+- **モデル**: Freeモデル（既定: `meta-llama/llama-3.3-70b-instruct:free`）
+- **プロンプト構造**:
+  - **System Prompt**:
+    ```text
+    あなたはファイル名の短縮・正規化を行う専門AIです。
+    提供されたファイル一覧に対し、指定の命名規則に従って安全で簡潔なファイル名を生成してください。
+    出力は必ず指定されたJSONフォーマットのみを返し、余計な解説文やMarkdownタグを含めないでください。
+    ```
+  - **User Prompt**:
+    ```text
+    【命名規則】: {RuleName}
+    【命名パターン】: {Pattern}
+    【命名指示】: {PromptInstruction}
+
+    【ファイル一覧】:
+    1. FullPath: "...", FileName: "...", ParentFolder: "...", LastModified: "..."
+    ...
+
+    【出力JSON仕様】:
+    [
+      {
+        "originalFileName": "元ファイル名",
+        "proposedFileName": "新ファイル名.mp4",
+        "aiComment": "問題点・補完理由（※規則通り命名できた場合は null または空文字にすること）"
+      }
+    ]
+    ```
+
+### 3.3 Docker Compose コマンド仕様
+
+- **ステータス確認**: `docker compose ps --format json`
+- **コンテナ再起動**: `docker compose restart tag-based-video-manager`
+- **コンテナ起動 / 停止**: `docker compose up -d` / `docker compose stop`
+
+---
+
+## 4. モジュール別詳細設計 & 関数シグネチャ
+
+### 4.1 設定管理モジュール (`Settings.fs`)
+
+```fsharp
+namespace TagBasedVideoManager.Renamer
+
+open TagBasedVideoManager.Renamer.Domain
+
+module Settings =
+    /// 既定の設定値を生成
+    val defaultSettings: unit -> RenamerSettings
+
+    /// 指定パスから設定ファイルを読み込む
+    val load: filePath: string -> Result<RenamerSettings, RenamerError>
+
+    /// 指定パスへ設定ファイルを保存する
+    val save: filePath: string -> settings: RenamerSettings -> Result<unit, RenamerError>
+
+    /// 命名ルールの並び順を更新する
+    val reorderRules: ruleIdsInOrder: string list -> settings: RenamerSettings -> RenamerSettings
+```
+
+- **セッション内一時変更の保証**: UI上で閾値（`PathLengthThreshold`）が変更された場合、Elmish の `Model` のみ更新し、`Settings.save` は一切呼び出しません。
+
+### 4.2 ファイル走査モジュール (`FileScanner.fs`)
+
+```fsharp
+namespace TagBasedVideoManager.Renamer
+
+open TagBasedVideoManager.Renamer.Domain
+
+module FileScanner =
+    /// 指定フォルダを再帰走査し、絶対パス長が閾値以上の動画ファイルを抽出する
+    val scanLongPaths:
+        targetDirectory: string ->
+        threshold: int ->
+        Result<ScanCandidate list, RenamerError>
+```
+
+- **アルゴリズム**:
+  - `Directory.EnumerateFiles(targetDir, "*.*", SearchOption.AllDirectories)` を使用。
+  - 対象拡張子: `.mp4`, `.mkv`, `.avi`, `.mov`, `.wmv`, `.webm`, `.flv`。
+  - 各ファイルの完全パス長（`file.Length`）を算出し、`length >= threshold` のものを抽出。
+  - アクセス権限エラー（`UnauthorizedAccessException`）発生時は例外を握りつぶさず安全にスキップまたはログ記録。
+
+### 4.3 OpenRouter APIクライアント (`OpenRouterClient.fs`)
+
+```fsharp
+namespace TagBasedVideoManager.Renamer
+
+open TagBasedVideoManager.Renamer.Domain
+
+module OpenRouterClient =
+    /// AIモデルへリネーム候補を問い合わせる
+    val requestProposals:
+        httpHandler: (string -> string -> Async<int * string>) option -> // テスト用モック注入
+        apiKey: string option ->
+        model: string ->
+        rule: NamingRule ->
+        candidates: ScanCandidate list ->
+        Async<Result<RenameProposal list, RenamerError>>
+```
+
+- **AIコメント制御ロジック**:
+  - AIレスポンス内の `aiComment` が空文字または `"null"` の場合は `None` に正規化。
+  - 元ファイル名が記号の羅列等で日時や地名が存在せず、親フォルダやファイル更新日時から代替補完した場合のみ `Some("...")` を保持。
+  - レスポンスのJSONパースに失敗した場合、Markdownのコードブロック記号（`json ... `）を自動トリムして再パースを試行。
+
+### 4.4 物理リネーム・Undoエンジン (`FileRenamer.fs`)
+
+```fsharp
+namespace TagBasedVideoManager.Renamer
+
+open TagBasedVideoManager.Renamer.Domain
+
+module FileRenamer =
+    /// 選択されたリネーム提案を一括実行し、Undo履歴レコードを生成する
+    val executeRename:
+        proposals: RenameProposal list ->
+        Result<UndoRecord list, RenamerError>
+
+    /// 直前のリネーム履歴に基づいて逆リネームを実行し、元に戻す
+    val executeUndo:
+        records: UndoRecord list ->
+        Result<unit, RenamerError>
+```
+
+- **同名衝突回避アルゴリズム**:
+  - 移動先パスが既に存在する場合、ファイル名の末尾に `_1`, `_2` のようなサフィックスを付与して安全に一意化。
+- **Undoの安全設計**:
+  - Undo実行時に、元ファイル名が既に別の新規ファイルで占有されている場合は `UndoConflictError` を返し、上書き破壊を防止。
+
+### 4.5 Dockerコントローラー (`DockerController.fs`)
+
+```fsharp
+namespace TagBasedVideoManager.Renamer
+
+open TagBasedVideoManager.Renamer.Domain
+
+module DockerController =
+    /// コンテナのステータスおよびポート5620の疎通を確認する
+    val checkStatus:
+        workingDirectory: string ->
+        Async<DockerStatus>
+
+    /// Docker Compose アクションを実行する
+    val executeAction:
+        workingDirectory: string ->
+        action: string -> // "up -d" | "stop" | "restart"
+        Async<Result<string, RenamerError>>
+```
+
+---
+
+## 5. UI/UX & Elmish アーキテクチャ詳細設計 (`State.fs` & `Views.fs`)
+
+### 5.1 Elmish Model 定義
+
+```fsharp
+type Model = {
+    // 設定
+    Settings: RenamerSettings
+    CurrentThreshold: int         // UIで変更可能なセッション限定閾値
+    SelectedRuleId: string
+
+    // 状態
+    IsScanning: bool
+    IsRequestingAi: bool
+    IsRenaming: bool
+    ErrorMessage: string option
+
+    // データ
+    Candidates: RenameProposal list
+    UndoStack: UndoRecord list list // 1回のリネーム単位でスタック保持
+    Docker: DockerStatus
+
+    // UI表示設定
+    Layout: LayoutMode
+    IsRuleManagerOpen: bool
+    EditingRule: NamingRule option
+}
+```
+
+### 5.2 Elmish Msg 定義
+
+```fsharp
+type Msg =
+    // 初期化・設定
+    | SettingsLoaded of Result<RenamerSettings, RenamerError>
+    | ThresholdChanged of int
+    | TargetDirectoryChanged of string
+    | RuleSelected of string
+
+    // 走査 & AI提案 (ワンアクション)
+    | ExecuteScanAndPropose
+    | ScanCompleted of Result<ScanCandidate list, RenamerError>
+    | AiProposeCompleted of Result<RenameProposal list, RenamerError>
+
+    // 候補編集
+    | ToggleCandidateSelect of fullPath: string
+    | SelectAllCandidates of bool
+    | UpdateProposedName of fullPath: string * newName: string
+
+    // リネーム実行 & Undo
+    | ExecuteRenameOnly
+    | ExecuteRenameAndRestart
+    | RenameCompleted of Result<UndoRecord list, RenamerError>
+    | ExecuteUndo
+    | UndoCompleted of Result<unit, RenamerError>
+
+    // Docker連携
+    | DockerStatusUpdated of DockerStatus
+    | DockerCommandCompleted of action: string * Result<string, RenamerError>
+
+    // 表示切り替え & ルール管理モーダル
+    | SetLayoutMode of LayoutMode
+    | OpenRuleManager
+    | CloseRuleManager
+    | SaveRule of NamingRule
+    | DeleteRule of ruleId: string
+    | MoveRuleOrder of ruleId: string * direction: int // -1: up, +1: down
+    | DismissError
+```
+
+### 5.3 UIレイアウト構造 (`Views.fs`)
+
+- **Docker Status Bar**: 画面最上部に常駐。ステータスバッジ（緑: RUNNING, 灰: STOPPED, 赤: UNHEALTHY）と、[▶ Start] [■ Stop] [🔄 Restart] ボタン。
+- **Control Panel**:
+  - 対象フォルダ入力欄 ＆ [参照...] ボタン
+  - 抽出基準数値ボックス: `≧ [ 240 ] 文字 (※一時変更・設定非保存)`
+  - 該当件数バッジ
+  - モデル選択ドロップダウン、命名規則選択ドロップダウン ＆ [⚙ 管理...] ボタン
+  - メインアクションボタン: `[ 🚀 リネーム対象抽出 ＆ AI提案を実行 (ワンアクション) ]`
+- **Before / After Comparison List**:
+  - 表示形式トグル: `[ ▤ 上下並び ] [ ◫ 左右並び ]`
+  - **上下並び (Vertical)**:
+    - 高さ最小化カード構成。
+    - 上行: `BEFORE (251字 [危険]): 元のとても長いファイル名.mp4`
+    - 下行: `AFTER  ( 42字 [安全]): [ 20250812_Wakkanai_Motorcycle.mp4 ] (-209字削減)`
+    - 問題発生時のみ下部に `⚠️ AIコメント: 元名に日時情報がないため親フォルダより補完` を表示。
+- **Footer Actions**:
+  - 選択件数表示、`[ ↩ 直前のリネームを元に戻す (Undo) ]` ボタン（履歴あり時のみ活性化）
+  - `[ リネームのみ実行 ]` ボタン ＆ `[ ⚡ リネームしてコンテナ再起動 (復旧) ]` ボタン
+
+---
+
+## 6. テスト・品質検証設計
+
+### 6.1 テスト駆動開発 (TDD) 方針
+
+すべてのCore機能およびロジックは、**Red（失敗する単体テスト）→ Green（最小実装）→ Refactor（リファクタリング）** の順で開発を進めます。
+
+### 6.2 テストコードとテスト対象の 1:1 対応関係マッピング表
+
+| テストファイル                                | テスト対象モジュール          | 検証内容・主要アサーション                                                                                                                 | 異常系・境界値テスト                                                                                                                 |
+| :-------------------------------------------- | :---------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
+| **`test/.../SettingsTests.fs`**               | `src/.../Settings.fs`         | ・初期閾値 240文字のロード<br>・命名規則リストのシリアライズ/デシリアライズ<br>・ルールの並び替えと優先度更新                              | ・不正なJSON形式時のフォールバック<br>・**UIで閾値変更時に設定ファイルが書き換えられないことの検証**                                 |
+| **`test/.../FileScannerTests.fs`**            | `src/.../FileScanner.fs`      | ・指定フォルダの再帰走査<br>・パス長 ≧ threshold のファイル抽出<br>・対象動画拡張子のフィルタリング                                        | ・空フォルダ、存在しないパス<br>・閾値ちょうどの境界値（239文字 / 240文字 / 241文字）<br>・アクセス権限エラー時の安全スキップ        |
+| **`test/.../OpenRouterClientTests.fs`**       | `src/.../OpenRouterClient.fs` | ・モックHTTPによるAPIレスポンスパース<br>・命名規則プロンプト構築の妥当性<br>・**正常時 `aiComment = None`、問題時のみ `Some` となる判定** | ・Markdownコードブロックの自動除去<br>・不正JSON時のフォールバック<br>・HTTPタイムアウトおよびステータスエラー                       |
+| **`test/.../FileRenamerTests.fs`**            | `src/.../FileRenamer.fs`      | ・物理ファイル名のリネーム実行<br>・Undo履歴レコードの生成<br>・**Undo実行による完全な元ファイル名復元**                                   | ・同名ファイル存在時の自動連番サフィックス<br>・ファイルロック中のエラーハンドリング<br>・Undo時に元名が占有されている場合の衝突検知 |
+| **`test/.../DockerControllerTests.fs`**       | `src/.../DockerController.fs` | ・`docker compose ps --format json` のパース<br>・コンテナ稼働状態（Running/Stopped/Unhealthy）判定<br>・ポート5620のHTTPヘルスチェック    | ・Docker CLI 未インストール / 未起動時のエラー処理<br>・非0終了コード時の標準エラー捕捉                                              |
+| **`test/.../RenameIntegrationE2ETests.fs`**   | 全モジュール結合              | ・一時フォルダへの実ファイル生成<br>・スキャン → AI提案 → リネーム → 整合性確認 → Undo復元の一気通貫検証                                   | ・260文字超過ファイルの実リネーム検証<br>・連続リネーム後の連続Undo検証                                                              |
+| **`test/TagBasedVideoManager.Tests/` (既存)** | 既存Webアプリ全体             | ・フォルダ移動後の全既存テスト一括実行                                                                                                     | ・**フォルダ再編によるリグレッションがゼロであることの回帰検証**                                                                     |
