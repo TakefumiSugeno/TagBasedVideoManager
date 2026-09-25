@@ -1,30 +1,109 @@
 schema: spec-driven
 
+reviews:
+  required_phases: [propose, apply, archive]
+  roles:
+    - name: user
+      perspective: "要件・ビジネス価値・UX・受け入れ基準"
+      phases: [propose, archive]
+    - name: se
+      perspective: "アーキテクチャ・設計整合・影響範囲・非機能"
+      phases: [propose, apply, archive]
+    - name: pg
+      perspective: "コード品質・可読性・リファクタ・境界値・エラー処理"
+      phases: [apply]
+    - name: qa
+      perspective: "テスト網羅性・仕様妥当性検証・回帰防止・E2Eシナリオ"
+      phases: [apply, archive]
+
+  templates:
+    review_record: "openspec/templates/review_record.md"
+    checklist:
+      propose: "openspec/templates/checklist_propose.md"
+      apply_impl: "openspec/templates/checklist_apply_impl.md"
+      apply_test: "openspec/templates/checklist_apply_test.md"
+      archive: "openspec/templates/checklist_archive.md"
+
 context: |
   Language: Japanese
   All artifacts must be written in Japanese.
   Keep OpenSpec structural headings and SHALL/MUST keywords in English.
-githubCopilot:
-  cloudAgent: false
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  # プロジェクト共通コンテキスト
+  - アーキテクチャ: 仕様書駆動開発 (SDD) with OpenSpec
+  - 開発フロー: Propose → Apply → Archive
+  - 技術スタック: F# (.NET 10) + Giraffe, SQLite (Dapper), FFmpeg, HTML5 + Alpine.js (CDN) + Tailwind CSS (CDN)
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+  # 共通制約（全アーティファクト・全フェーズで適用）
+  - ソースコードとテストコードは 1:1 のファイル構成で作成する
+  - テスト先行 (Test First / TDD) で実装する
+    - テストの目的は2種類:
+      1. 回帰テスト: 既存機能が壊れていないことを継続的に保証する
+      2. 仕様変更の妥当性検証: 新しい仕様・変更要求が正しく実装されていることを検証する（仕様書と実装の整合性確認）
+    - テストの種類とTDD実践方法:
+      - 単体テスト (xUnit + FsUnit): 関数・モジュール単位の純粋ロジックを検証
+        - Red: 失敗するテストを先に書く（仕様の期待値をコード化）
+        - Green: 最小限の実装でテストを通す
+        - Refactor: 重複排除・可読性向上・パフォーマンス改善（テストは変更しない）
+        - 境界値・異常系・エッジケースを網羅する
+      - 結合/E2Eテスト (Playwright): 複数コンポーネント連携・画面インタラクション・ユーザーシナリオを検証
+        - Red: 受け入れ基準（仕様書のシナリオ）から失敗するテストを先に書く
+        - Green: 必要なコンポーネントを繋ぎ合わせてシナリオを通す
+        - Refactor: テストの安定性向上・セットアップ簡素化・実行速度改善
+        - 単体テストでは検出できない結合不具合・データフロー・副作用を検証
+    - フェーズやタスクの最後には、テストエビデンス（TRXファイル、ログ、E2E失敗時キャプチャ）およびカバレッジレポートを出力して確認・記録する（※テスト成果物はGit管理不要）
+  - 自動フォーマット必須: ファイル更新時・コミット前・テスト実行前には、対象ファイル種別に応じたフォーマット（dotnet format / npx prettier）を実行する
+  - 必須サブエージェントレビュー: 各フェーズで定義された役割（User/SE/PG/QA Agent）によるレビューを実施し、指摘への対応方針を記録してユーザー合意を得る。テンプレートは openspec/templates/ 参照
+  - OpenSpec管理外への新規タスク作成は禁止（全て openspec/changes/ で管理）
+
+rules:
+  # プロポーザル作成時のルール
+  proposal:
+    - "変更の「What & Why」を簡潔に記述（500語以内推奨）"
+    - "Non-goals（やらないこと）セクションを含める"
+    - "Propose完了時: User Agent・SE Agentによるレビュー必須（checklist_propose.md 使用）"
+    - "全役割LGTMで次フェーズへ。指摘がある場合は proposal.md 更新して再レビュー"
+
+  # デルタ仕様作成時のルール
+  specs:
+    - "システムが「何をすべきか」を外部観測可能な振る舞いとして記述"
+    - "既存仕様との矛盾がないか確認し、矛盾があれば明記"
+
+  # 設計書作成時のルール
+  design:
+    - "どう実現するか（アーキテクチャ・データフロー・インターフェース等）を記述"
+    - "UI/UXに関してはモックアップを作成する"
+    - "実装タスクへの分解粒度は「2時間以内で完了する単位」を目安にする"
+
+  # タスクリスト作成時のルール
+  tasks:
+    - "各タスクにチェックボックス（`- [ ]`）を付与"
+    - "依存関係があるタスクは順序を明示"
+    - "テストファーストの手順を含める（先にテストを書くタスクを分ける）"
+    - "単体テストタスク: 対象関数・モジュールごとに「失敗するテスト作成 → 実装 → リファクタ」のサイクルを明示"
+    - "結合/E2Eテストタスク: 仕様書の受け入れシナリオごとに「失敗するシナリオテスト作成 → 結合実装 → 安定化」のサイクルを明示"
+    - "テストタスクには「回帰テスト追加」と「仕様妥当性検証テスト追加」の観点を両方含める"
+
+operations:
+  apply:
+    guidance:
+      - "タスク完了前に必ず自動フォーマットを実行する"
+      - "タスク完了前にテストを実行し、テストエビデンス（TRX、ログ、画面キャプチャ）およびカバレッジレポートを出力・確認する（Git管理不要）"
+      - "単体テスト: Red-Green-Refactorサイクルを厳守し、境界値・異常系を網羅する"
+      - "結合/E2Eテスト: 仕様書の受け入れ基準からテストケースを導出し、シナリオベースで検証する"
+      - "テストは「回帰防止」と「仕様妥当性検証」の両観点で設計する"
+      - "タスク完了時に tasks.md のチェックボックスを `- [ ]` → `- [x]` に更新する"
+      - "実装で設計課題が発覚したら即座に停止し、アーティファクト更新を提案する（Fluid Workflow）"
+      - "タスク完了前に必須レビュー実施（実装タスク: PG Agent、テストタスク: QA Agent）"
+      - "レビュー記録は openspec/changes/<name>/reviews.md にテンプレート（review_record.md）準拠で追記"
+      - "指摘への対応方針（採用/保留/却下＋理由）を明記"
+      - "全指摘クローズ（LGTM）でタスク完了 [x]。保留指摘は「申し送り事項」として reviews.md および Archive時 handover.md に記録"
+
+  archive:
+    guidance:
+      - "実装成果物の最終確認（テスト・ビルド・動作確認）を行ってからアーカイブする"
+      - "openspec sync specs でデルタ仕様をメイン仕様（openspec/specs/）に反映する"
+      - "アーカイブ前に関連ドキュメント（README等）があれば同期更新する"
+      - "アーカイブ時に変更のサマリ（何が変わったか、テスト結果、レビュー指摘の対応状況）を記録する"
+      - "Archive前: 全役割（User/SE/PG/QA Agent）による総括レビュー必須（checklist_archive.md 使用：テスト結果・エビデンス確認含む）"
+      - "ユーザー最終合意記録後に openspec archive 実行"
