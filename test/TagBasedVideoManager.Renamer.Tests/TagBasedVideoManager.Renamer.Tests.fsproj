@@ -13,6 +13,7 @@
     <Compile Include="FileScannerTests.fs" />
     <Compile Include="FileRenamerTests.fs" />
     <Compile Include="OpenRouterClientTests.fs" />
+    <Compile Include="DockerControllerTests.fs" />
     <Compile Include="Tests.fs" />
   </ItemGroup>
 

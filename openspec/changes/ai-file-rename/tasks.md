@@ -24,8 +24,8 @@
 
 ## 4. Core: Docker Compose コントローラー (TDD)
 
-- [ ] 4.1 [単体テスト・仕様検証] `DockerController` の `docker compose ps --format json` 出力パース（単一JSON配列形式および改行区切りNDJSON形式の両対応、サービス `video-manager` 特定）および HTTPヘルスチェック疎通に対する失敗するテストを作成する（Red）
-- [ ] 4.2 [実装・リファクタ] `DockerController` を実装し、JSON配列/NDJSONのフォールバックデシリアライズ、コンテナ状態特定（Running/Stopped/Unhealthy）および up/down/restart コマンド発行のテストをGreenにする
+- [x] 4.1 [単体テスト・仕様検証] `DockerController` の `docker compose ps --format json` 出力パース（単一JSON配列形式および改行区切りNDJSON形式の両対応、サービス `video-manager` 特定）および HTTPヘルスチェック疎通に対する失敗するテストを作成する（Red）
+- [x] 4.2 [実装・リファクタ] `DockerController` を実装し、JSON配列/NDJSONのフォールバックデシリアライズ、コンテナ状態特定（Running/Stopped/Unhealthy）および up/down/restart コマンド発行のテストをGreenにする
 
 ## 5. Avalonia.FuncUI UI 実装と統合 (Elmish MVU)
 

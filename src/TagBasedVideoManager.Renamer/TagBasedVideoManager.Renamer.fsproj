@@ -11,6 +11,7 @@
     <Compile Include="FileScanner.fs" />
     <Compile Include="FileRenamer.fs" />
     <Compile Include="OpenRouterClient.fs" />
+    <Compile Include="DockerController.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
