@@ -40,6 +40,14 @@ TagBasedVideoManagerは、バイクツーリングの記録、旅行動画、大
 
 - タグ階層、自動ルール、スマートフォルダの設定情報を、WebAPIフォーマット（TSV / JSON）で一括インポート・エクスポートできます。
 
+### 7. デスクトップコンパニオン: AI File Renamer (長パス短縮＆Docker制御)
+
+- **Dockerバインドマウント（WSL2/9p）の260文字制限対策**: ホストOS上の動画フォルダを走査し、240文字以上の長パス危険ファイルを自動抽出。
+- **OpenRouter Freeモデルによる短縮AI提案**: 命名規則（日時_タイトル等）に基づき、Freeモデルを活用して安全な短縮ファイル名および問題発生時のみのAIコメントを提示。
+- **Before / After 対比ビュー**: 視線移動を最小化する上下並び・左右並びのトグル切り替え、文字数削減バッジ、インライン手動編集機能。
+- **ワンクリック復旧 & Undo**: 物理リネーム実行と同時にDockerコンテナを自動再起動して即時マウント復旧。直前のリネームを元のファイル名に完全復元する逆リネーム（Undo）に対応。
+- **100% F# .NET 10 + Avalonia.FuncUI Elmish MVU**: 既存Webアプリのコードに一切手を加えない（改修行数ゼロ）完全独立デスクトップアプリ。
+
 ---
 
 ## 画面イメージ (Screenshots)
@@ -126,34 +134,41 @@ docker compose up -d --build
 
 ## 開発者向け情報とテスト実行 (For Developers & Testing)
 
-### ローカル起動
+### ローカル起動 (Web アプリケーション)
 
 ```bash
 cd src/TagBasedVideoManager
 dotnet run
 ```
 
+### ローカル起動 (AI File Renamer デスクトップアプリ)
+
+```bash
+cd src/TagBasedVideoManager.Renamer
+dotnet run
+```
+
 ### 自動テストとカバレッジ測定
 
 本プロジェクトは MTP (Microsoft Testing Platform) および `coverlet.MTP` を用いた品質検証を導入しています。
-テスト分類（Unit / Integration / E2E）ごとに個別のカバレッジデータとHTMLレポートを自動生成するスクリプトが用意されています。
+
+#### 1. Web アプリケーション テスト (Unit / Integration / Playwright E2E)
 
 ```powershell
-cd test/TagBasedVideoManager.Tests
-# テストの実行とカバレッジレポートの自動生成
-pwsh ./run_tests_with_coverage.ps1
+# Webアプリのテスト実行とカバレッジレポート生成
+pwsh ./test/TagBasedVideoManager.Tests/run_tests_with_coverage.ps1
 ```
 
-#### 成果物の出力先
+- **成果物出力先**: `test/TagBasedVideoManager.Tests/TestResults/TestRun_yyyy-MM-dd_HH_mm_ss/`
 
-テストを実行するたびに、以下のタイムスタンプ付きのフォルダが自動生成され、成果物が集約されます。
+#### 2. AI File Renamer デスクトップアプリ テスト (Unit / 結合 E2E)
 
-- **出力先フォルダ**: `test/TestResults/TestRun_yyyy-MM-dd_HH_mm_ss/`
-- **成果物**:
-  - 各カテゴリのTRXログ（`Unit_net10.0.trx`等）
-  - バックエンドコードカバレッジレポート: `CoverageReport_Unit/`, `CoverageReport_Integration/`, `CoverageReport_E2E/`
-  - フロントエンドコードカバレッジレポート: `CoverageReport_Frontend/`
-  - Playwrightのテスト失敗時の自動画面キャプチャ: `test/TestResults/error_screenshot.png`
+```powershell
+# Renamerアプリのテスト実行とカバレッジレポート生成
+pwsh ./test/TagBasedVideoManager.Renamer.Tests/run_tests_with_coverage.ps1
+```
+
+- **成果物出力先**: `test/TagBasedVideoManager.Renamer.Tests/TestResults/TestRun_yyyy-MM-dd_HH_mm_ss/`
 
 ---
 
