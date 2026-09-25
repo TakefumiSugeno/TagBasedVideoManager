@@ -60,7 +60,7 @@
     <div
       class="w-full max-w-6xl bg-fluent-bg border border-fluent-border rounded-xl shadow-2xl overflow-hidden flex flex-col h-[94vh] max-h-[920px]"
     >
-      <!-- Titlebar: Clear app name showing renaming capability, no F# mention -->
+      <!-- Titlebar -->
       <div
         class="bg-fluent-surface border-b border-fluent-border px-4 py-2 flex items-center justify-between flex-shrink-0"
       >
@@ -162,7 +162,7 @@
         <div
           class="bg-fluent-surface border border-fluent-border rounded-lg p-3 space-y-2.5 shadow-sm text-xs flex-shrink-0"
         >
-          <!-- Row 1: Target Folder & Criteria Information -->
+          <!-- Row 1: Target Folder & Criteria Config (Editable at runtime, not saved to settings file) -->
           <div class="flex flex-wrap items-center justify-between gap-2.5">
             <div class="flex-1 min-w-[340px] flex items-center space-x-2">
               <label
@@ -187,20 +187,30 @@
               </button>
             </div>
 
+            <!-- Runtime Editable Threshold (Default from settings, runtime only) -->
             <div
-              class="flex items-center space-x-2 bg-zinc-900/90 border border-red-900/60 px-2.5 py-1 rounded"
+              class="flex items-center space-x-2 bg-zinc-900/90 border border-zinc-700 px-2.5 py-1 rounded"
             >
               <span class="text-xs text-fluent-subtext font-medium"
-                >抽出基準:</span
+                >抽出基準 (パス長):</span
               >
+              <div class="flex items-center space-x-1">
+                <span class="text-red-400 font-bold">≧</span>
+                <input
+                  type="number"
+                  x-model.number="currentThreshold"
+                  min="100"
+                  max="260"
+                  step="5"
+                  class="w-14 bg-black/80 border border-zinc-600 rounded px-1.5 py-0.5 text-center font-mono font-bold text-amber-300 focus:outline-none focus:border-blue-500 text-xs"
+                  title="設定ファイル初期値: 240文字。起動中に変更可能 (設定ファイルは更新されません)"
+                />
+                <span class="text-zinc-400">文字</span>
+              </div>
+              <span class="text-[10px] text-zinc-500 ml-1">(※一時変更)</span>
               <span
-                class="px-2 py-0.5 rounded text-[11px] font-bold bg-red-950 text-red-400 border border-red-800"
-              >
-                ⚠️ 絶対パス長 ≧ 240文字 (Docker 260字対策)
-              </span>
-              <span
-                class="text-xs font-bold text-white ml-1"
-                x-text="'検出: ' + (filesLoaded ? files.length + ' 件' : '未実行')"
+                class="text-xs font-bold text-white ml-2 pl-2 border-l border-zinc-700"
+                x-text="'該当: ' + (filesLoaded ? filteredFiles.length + ' 件' : '未実行')"
               ></span>
             </div>
           </div>
@@ -295,11 +305,11 @@
               <span class="font-bold text-white">Before / After 対比確認</span>
               <span
                 class="text-fluent-subtext"
-                x-text="filesLoaded ? '(' + selectedCount + ' / ' + files.length + ' 件選択中)' : '(実行ボタンを押して抽出)'"
+                x-text="filesLoaded ? '(' + selectedCount + ' / ' + filteredFiles.length + ' 件選択中)' : '(実行ボタンを押して抽出)'"
               ></span>
             </div>
 
-            <!-- View Layout Switcher (Simplified: "上下並び" vs "左右並び") -->
+            <!-- View Layout Switcher ("上下並び" vs "左右並び") -->
             <div class="flex items-center space-x-2">
               <span class="text-fluent-subtext text-[11px]">表示形式:</span>
               <div
@@ -337,14 +347,15 @@
                   >」ボタンを押してください
                 </p>
                 <p class="text-[11px] text-zinc-500">
-                  設定済みのフォルダから240文字以上の長パスファイルを自動検出し、AI提案を生成します
+                  設定済みのフォルダから指定文字数（初期値:
+                  240字）以上の長パスファイルを検出し、AI提案を生成します
                 </p>
               </div>
             </template>
 
             <template x-if="filesLoaded">
               <div class="space-y-2">
-                <template x-for="(file, index) in files" :key="file.id">
+                <template x-for="(file, index) in filteredFiles" :key="file.id">
                   <div
                     class="border rounded-md transition shadow-sm"
                     :class="{
@@ -352,7 +363,7 @@
                        'bg-zinc-900/40 border-zinc-800 opacity-60': !file.selected
                      }"
                   >
-                    <!-- MODE A: VERTICAL (上下並び - 極低ハイトで上下が見比べやすい) -->
+                    <!-- MODE A: VERTICAL (上下並び) -->
                     <div
                       x-show="layoutMode === 'vertical'"
                       class="p-2 space-y-1 text-xs"
@@ -426,20 +437,20 @@
                         >
                       </div>
 
-                      <!-- Line 4: AI Comment Box (理由・命名規則適合状況の説明) -->
-                      <div
-                        class="flex items-start space-x-1.5 pt-0.5 text-[11px]"
-                        :class="file.isIrregular ? 'text-amber-300' : 'text-zinc-400'"
-                      >
-                        <span
-                          class="font-bold flex-shrink-0"
-                          x-text="file.isIrregular ? '⚠️ AIコメント:' : '💬 AIコメント:'"
-                        ></span>
-                        <span
-                          class="font-sans leading-tight italic"
-                          x-text="file.aiComment"
-                        ></span>
-                      </div>
+                      <!-- Line 4: AI Comment Box (問題・補完があった時のみ表示) -->
+                      <template x-if="file.aiComment">
+                        <div
+                          class="flex items-start space-x-1.5 pt-0.5 text-[11px] text-amber-300 bg-amber-950/20 px-2 py-0.5 rounded border border-amber-900/30"
+                        >
+                          <span class="font-bold flex-shrink-0"
+                            >⚠️ AIコメント:</span
+                          >
+                          <span
+                            class="font-sans leading-tight italic"
+                            x-text="file.aiComment"
+                          ></span>
+                        </div>
+                      </template>
                     </div>
 
                     <!-- MODE B: HORIZONTAL (左右2列並び) -->
@@ -491,7 +502,7 @@
                           ></div>
                         </div>
 
-                        <!-- After Box with AI Comment -->
+                        <!-- After Box -->
                         <div
                           class="bg-emerald-950/20 border border-emerald-900/40 rounded p-2 space-y-1.5 flex flex-col justify-between"
                         >
@@ -512,20 +523,20 @@
                               class="w-full bg-black/80 border border-emerald-600/80 rounded px-2 py-1 text-xs font-mono text-emerald-300 focus:outline-none"
                             />
                           </div>
-                          <!-- AI Comment Box -->
-                          <div
-                            class="text-[11px] pt-1 border-t border-emerald-900/40 flex items-start gap-1"
-                            :class="file.isIrregular ? 'text-amber-300' : 'text-zinc-400'"
-                          >
-                            <span
-                              class="font-bold flex-shrink-0"
-                              x-text="file.isIrregular ? '⚠️ AIコメント:' : '💬 AIコメント:'"
-                            ></span>
-                            <span
-                              class="font-sans leading-tight italic"
-                              x-text="file.aiComment"
-                            ></span>
-                          </div>
+                          <!-- AI Comment Box (問題があった時のみ表示) -->
+                          <template x-if="file.aiComment">
+                            <div
+                              class="text-[11px] pt-1 border-t border-emerald-900/40 flex items-start gap-1 text-amber-300"
+                            >
+                              <span class="font-bold flex-shrink-0"
+                                >⚠️ AIコメント:</span
+                              >
+                              <span
+                                class="font-sans leading-tight italic"
+                                x-text="file.aiComment"
+                              ></span>
+                            </div>
+                          </template>
                         </div>
                       </div>
                     </div>
@@ -820,9 +831,13 @@
           undoAvailable: false,
           undoHistory: [],
 
+          // Settings loaded automatically on startup
           targetDir: "C:\\Users\\Public\\Videos\\Touring_2025_Summer",
           selectedModel: "meta-llama/llama-3.3-70b-instruct:free",
           selectedRuleId: "rule_1",
+
+          // Criterion Threshold: initialized from settings (240), editable at runtime, NOT saved to file
+          currentThreshold: 240,
 
           rules: [
             {
@@ -849,7 +864,7 @@
           ],
           activeEditRule: null,
 
-          // Sample Data including regular files and an irregular file with AI Comments
+          // Sample Data: Only irregular files have aiComment! Regular files have aiComment: null.
           files: [
             {
               id: 1,
@@ -861,9 +876,7 @@
               beforeLength: 251,
               afterFileName: "20250812_Hokkaido_Soya_Cape.mp4",
               afterLength: 124,
-              isIrregular: false,
-              aiComment:
-                "元ファイル名の日付と地名「Wakkanai（稚内）」、シーン「Cape Soya」から規則通り要約命名しました。",
+              aiComment: null, // Normal file, no comment needed
             },
             {
               id: 2,
@@ -875,9 +888,7 @@
               beforeLength: 247,
               afterFileName: "20250812_Family_Camp_BBQ.mp4",
               afterLength: 120,
-              isIrregular: false,
-              aiComment:
-                "カメラ自動採番「DSC_0099...」から撮影日と「Camping Barbecue」を抽出し短縮命名しました。",
+              aiComment: null, // Normal file, no comment needed
             },
             {
               id: 3,
@@ -889,14 +900,20 @@
               beforeLength: 249,
               afterFileName: "20250814_Furano_Lavender.mp4",
               afterLength: 119,
-              isIrregular: true,
+              // Irregular file: AI comment is provided explaining fallback
               aiComment:
-                "元ファイル名に日付・内容の記載がなかったため、親フォルダ名「Furano」とファイル更新日時(2025/08/14)から補完命名しました。",
+                "元ファイル名に日付・撮影地が不記載のため、親フォルダ名「Furano」と更新日時(2025/08/14)から補完命名しました。",
             },
           ],
 
+          get filteredFiles() {
+            return this.files.filter(
+              (f) => f.beforeLength >= this.currentThreshold,
+            );
+          },
+
           get selectedCount() {
-            return this.files.filter((f) => f.selected).length;
+            return this.filteredFiles.filter((f) => f.selected).length;
           },
 
           init() {
@@ -904,7 +921,7 @@
           },
 
           toggleSelectAll() {
-            this.files.forEach((f) => (f.selected = this.selectAll));
+            this.filteredFiles.forEach((f) => (f.selected = this.selectAll));
           },
 
           recalculateLength(file) {
@@ -917,12 +934,14 @@
 
           executeScanAndPropose() {
             this.isProcessing = true;
-            this.notify("240文字以上の長パスファイルをスキャン中...");
+            this.notify(
+              `${this.currentThreshold}文字以上の長パスファイルをスキャン中...`,
+            );
             setTimeout(() => {
               this.filesLoaded = true;
               this.isProcessing = false;
               this.notify(
-                "抽出完了: 3件の危険ファイルを検出し、AI新ファイル名を生成しました",
+                `抽出完了: ${this.filteredFiles.length}件の危険ファイルを検出し、AI新ファイル名を生成しました`,
               );
             }, 800);
           },
@@ -936,7 +955,7 @@
             this.progressMessage =
               "重複チェックとファイルアクセス権限の検証...";
 
-            this.undoHistory = this.files
+            this.undoHistory = this.filteredFiles
               .filter((f) => f.selected)
               .map((f) => ({
                 folderPath: f.folderPath,
@@ -946,7 +965,7 @@
 
             setTimeout(() => {
               this.progressPercent = 50;
-              this.progressMessage = "物理ファイルのリネーム処理中 (3/3)...";
+              this.progressMessage = "物理ファイルのリネーム処理中...";
             }, 500);
 
             setTimeout(() => {
