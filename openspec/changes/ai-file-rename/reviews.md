@@ -515,3 +515,57 @@
 - **LGTM**: **true (Pass)**
 - **次のアクション**:
   Task 5.1〜5.5 を完了とし、Section 6 (自動E2Eテストの実装と総合検証: Task 6.1 & 6.2) へ進む。
+
+---
+
+# レビュー記録: ai-file-rename / apply / task-6.1-6.2
+
+## QA Agent レビュー (結合E2Eテスト・全回帰テスト・エビデンス検証)
+
+- **日時**: 2026-09-26
+- **フェーズ**: apply
+- **タスク**: 6.1〜6.2 [結合E2Eテスト・総合検証] 自動E2Eテストの実装と全テスト一括実行・エビデンス検証
+- **レビュアー**: QA Agent (E2Eシナリオ網羅性・既存回帰防止・TRX・カバレッジ検証)
+- **対象成果物**:
+  - `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs`
+  - `test/TagBasedVideoManager.Renamer.Tests/TestResults/TestRun_2026-09-26_04_19_33/` (TRX & CoverageReport)
+  - `test/TagBasedVideoManager.Tests/TestResults/TestRun_2026-09-26_04_19_43/` (TRX & CoverageReport Unit/Integration/E2E)
+
+### チェックリスト結果 (checklist_apply_test.md 準拠)
+
+| #   | 観点                                                                          | 判定 | コメント                                                                                                                                                                          |
+| --- | ----------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 一気通貫の結合E2Eテストが仕様（`design.md`）の受入シナリオを網羅しているか    | ✅   | 240文字以上の長パスファイル作成 → 走査抽出 → AI提案（問題時限定AIコメント） → 物理リネーム → 再走査0件確認 → Undo逆リネーム完全復元 → 再走査2件復元 の全フローを自動検証。        |
+| 2   | 同名衝突時の自動一意化（`_1` サフィックス）および Undo 安全性の結合検証       | ✅   | `collision auto-uniquification and undo safety check` にて同一提案名衝突時の自動ナンバリングおよび両ファイル復元を完全実証。                                                      |
+| 3   | 既存Webアプリケーションに対する回帰テストの完全合格（回帰ゼロ）               | ✅   | 既存Webアプリの全66件（Unit: 18件, Integration: 16件, E2E: 10メソッド/32シナリオ）が **100% 成功 (Passed: 66, Failed: 0, Skipped: 0)**。                                          |
+| 4   | 新規 Renamer アプリケーションの全テスト完全合格                               | ✅   | 単体テスト（34件）＋結合E2Eテスト（2件）の計36件が **100% 成功 (Passed: 36, Failed: 0, Skipped: 0)**。                                                                            |
+| 5   | テスト実行結果エビデンス（TRX、HTMLカバレッジレポート）が正常出力されているか | ✅   | 両プロジェクト配下の `TestResults/TestRun_*/` に TRX レポートおよび HTML カバレッジレポート（`CoverageReport/index.html`）が確実に出力され、Git管理対象外（`.gitignore`）を維持。 |
+
+### 判定
+
+- **LGTM**: **true (Pass)**
+
+---
+
+## PG Agent レビュー (結合テスト品質 & 実装完了確認)
+
+- **日時**: 2026-09-26
+- **フェーズ**: apply
+- **タスク**: 6.1〜6.2 [実装・リファクタ] RenameIntegrationE2ETests.fs の実装と総合検証
+- **レビュアー**: PG Agent (コード品質・クリーンアップ安全性・CI/CD適合性)
+- **対象成果物**: `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs`
+
+### チェックリスト結果 (checklist_apply_impl.md 準拠)
+
+| #   | 観点                                                                      | 判定 | コメント                                                                                                                                       |
+| --- | ------------------------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | テスト実行時の一時リソース分離と確実なクリーンアップ                      | ✅   | `withTempDirectory` により `Path.GetTempPath()` 配下に一意な GUID サブディレクトリを生成し、`finally` 節で確実に削除して環境を汚染しない設計。 |
+| 2   | 既存Webアプリケーションのソースコードに対する不要な改修がないか (案1遵守) | ✅   | 既存Webアプリ（`src/TagBasedVideoManager/`）のソースコード改修行数ゼロ（完全無改修）を最終検証。                                               |
+| 3   | F# イディオムと ROP によるエラーハンドリングの徹底                        | ✅   | 全モジュール（Domain, Settings, FileScanner, FileRenamer, OpenRouterClient, DockerController, State）で `Result` 型 ROP を貫徹。               |
+| 4   | 自動フォーマット実行済みか                                                | ✅   | Prettier を実行済み。                                                                                                                          |
+
+### 判定
+
+- **LGTM**: **true (Pass)**
+- **次のアクション**:
+  Apply フェーズの全タスク（Section 1〜6）が完了。ユーザー合意のもと Archive フェーズ（`openspec sync specs`、`openspec archive`、メイン仕様同期、`handover.md` 作成）へ進む。
