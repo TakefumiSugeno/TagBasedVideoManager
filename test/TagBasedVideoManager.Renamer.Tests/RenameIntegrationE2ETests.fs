@@ -215,6 +215,7 @@ module RenameIntegrationE2ETests =
         inherit Avalonia.Application()
         override this.Initialize() =
             this.Styles.Add(Avalonia.Themes.Fluent.FluentTheme())
+            this.RequestedThemeVariant <- Avalonia.Styling.ThemeVariant.Dark
 
     let mutable private isAppInitialized = false
     let private appInitLock = obj()
@@ -282,7 +283,7 @@ module RenameIntegrationE2ETests =
             let w = new Avalonia.FuncUI.Hosts.HostWindow()
             w.Width <- 1100.0
             w.Height <- 720.0
-            w.Background <- Avalonia.Media.SolidColorBrush Avalonia.Media.Colors.White
+            w.Background <- Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#1a1a1a"))
 
             Elmish.Program.mkProgram (fun () -> m, Elmish.Cmd.none) State.update Views.view
             |> Avalonia.FuncUI.Elmish.Program.withHost w
@@ -296,7 +297,13 @@ module RenameIntegrationE2ETests =
             let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
             rtb.Render(w)
 
-            let outputDir = Path.Combine("test", "TestResults")
+            let rec findRepoRoot (dir: DirectoryInfo) =
+                if dir = null then AppContext.BaseDirectory
+                elif File.Exists(Path.Combine(dir.FullName, "AGENTS.md")) then dir.FullName
+                elif dir.Parent = null then AppContext.BaseDirectory
+                else findRepoRoot dir.Parent
+            let repoRoot = findRepoRoot (DirectoryInfo(AppContext.BaseDirectory))
+            let outputDir = Path.Combine(repoRoot, "test", "TestResults")
             if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
             let outputPath = Path.Combine(outputDir, fileName)
             rtb.Save(outputPath)
@@ -338,4 +345,94 @@ module RenameIntegrationE2ETests =
                 }
         }
         renderAndCapture undoDialogModel "E2E_04_Undo_Confirm_Dialog.png"
+
+    [<Fact>]
+    let ``E2E: Zero-configuration user journey (no API key, scan long paths, fallback proposal, manual edit, physical rename and undo)`` () =
+        withTempDirectory (fun tempDir ->
+            // 1. テスト用の長パスファイル作成
+            let targetNameLen1 = max 20 (245 - tempDir.Length - 1)
+            let longName1 = "2024-05-01_" + String('a', targetNameLen1 - 15) + ".mp4"
+            let longPath1 = Path.Combine(tempDir, longName1)
+            File.WriteAllText(longPath1, "initial-video-data-1")
+
+            let targetNameLen2 = max 20 (245 - tempDir.Length - 1)
+            let longName2 = "random_no_date_video_" + String('b', targetNameLen2 - 25) + ".mp4"
+            let longPath2 = Path.Combine(tempDir, longName2)
+            File.WriteAllText(longPath2, "initial-video-data-2")
+
+            // 2. 初期Modelセットアップ (APIキー未設定 = None)
+            let initialSettings = { Settings.defaultSettings () with TargetDirectory = tempDir; ApiKey = None }
+            let baseModel, _ = State.init ()
+            let model1 = { baseModel with Settings = initialSettings }
+
+            // 3. 走査実行 (FileScanner.scanLongPaths)
+            let scanResult = FileScanner.scanLongPaths tempDir 240
+            match scanResult with
+            | Error err -> failwith $"走査失敗: {err}"
+            | Ok candidates ->
+                candidates.Length |> should equal 2
+
+                // 4. State.update で ScanCompleted を処理
+                // (APIキー未設定のため、ローカル短縮フォールバックが起動)
+                let model2, cmd = State.update (ScanCompleted (Ok candidates)) model1
+                
+                // ローカル短縮候補が Candidates に格納されていることを検証
+                model2.Candidates.Length |> should equal 2
+                
+                let prop1 = model2.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath1)
+                let prop2 = model2.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath2)
+
+                // 正常系 (日付あり): AIコメントなし、30文字程度に短縮
+                prop1.ProposedFileName |> should startWith "2024-05-01"
+                prop1.AiComment |> should equal None
+                (prop1.ProposedLength < 240) |> should equal true
+
+                // 変則系 (日付なし): AIコメントあり、本日の日付で補完
+                prop2.AiComment |> should not' (equal None)
+                (prop2.ProposedLength < 240) |> should equal true
+
+                // 5. ユーザーによる手動ファイル名編集のシミュレート (UpdateProposedName)
+                let customName1 = "2024-05-01_my_edited_title.mp4"
+                let model3, _ = State.update (UpdateProposedName (longPath1, customName1)) model2
+                let updatedProp1 = model3.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath1)
+                updatedProp1.ProposedFileName |> should equal customName1
+
+                // 6. リネーム実行 (State.update ExecuteRenameOnly)
+                let model4, _ = State.update ExecuteRenameOnly model3
+                // 物理リネームの実行 (FileRenamer.executeRename)
+                let renameRes = FileRenamer.executeRename model3.Candidates
+                match renameRes with
+                | Error err -> failwith $"リネーム失敗: {err}"
+                | Ok undoRecords ->
+                    let model5, _ = State.update (RenameCompleted (false, Ok undoRecords)) model4
+
+                    // 物理ファイルの存在検証
+                    let renamedPath1 = Path.Combine(tempDir, customName1)
+                    let renamedPath2 = Path.Combine(tempDir, prop2.ProposedFileName)
+                    File.Exists(longPath1) |> should equal false
+                    File.Exists(longPath2) |> should equal false
+                    File.Exists(renamedPath1) |> should equal true
+                    File.Exists(renamedPath2) |> should equal true
+
+                    // 7. Undoスタックに履歴が積まれ、Undo可能状態になっていることを検証
+                    model5.UndoStack.IsEmpty |> should equal false
+
+                    // 8. Undo確認ダイアログの表示と実行 (RequestUndo -> ConfirmDialog -> ExecuteUndo)
+                    let model6, _ = State.update RequestUndo model5
+                    model6.ConfirmDialog |> should not' (equal None)
+
+                    let undoRes = FileRenamer.executeUndo undoRecords
+                    match undoRes with
+                    | Error err -> failwith $"Undo失敗: {err}"
+                    | Ok () ->
+                        let model7, _ = State.update (UndoCompleted (Ok ())) model6
+
+                        // 元の長パスファイルが完全に復元されていること
+                        File.Exists(longPath1) |> should equal true
+                        File.Exists(longPath2) |> should equal true
+                        File.Exists(renamedPath1) |> should equal false
+                        File.Exists(renamedPath2) |> should equal false
+                        File.ReadAllText(longPath1) |> should equal "initial-video-data-1"
+                        File.ReadAllText(longPath2) |> should equal "initial-video-data-2"
+        )
 
