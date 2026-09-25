@@ -19,8 +19,8 @@
 
 ## 3. Core: OpenRouter API クライアント (TDD)
 
-- [ ] 3.1 [単体テスト・仕様検証] `OpenRouterClient` の命名規則プロンプト構築および構造化JSONレスポンス（新ファイル名、および問題発生時のみのAIコメント）のデシリアライズに対する失敗するテスト（モックHTTP）を作成する（Red）
-- [ ] 3.2 [実装・リファクタ] `OpenRouterClient` を実装し、Freeモデル向けのAPI通信・JSONパース（問題時のみAIコメント格納）・タイムアウト処理のテストをGreenにする
+- [x] 3.1 [単体テスト・仕様検証] `OpenRouterClient` の命名規則プロンプト構築および構造化JSONレスポンス（新ファイル名、および問題発生時のみのAIコメント）のデシリアライズに対する失敗するテスト（モックHTTP）を作成する（Red）
+- [x] 3.2 [実装・リファクタ] `OpenRouterClient` を実装し、Freeモデル向けのAPI通信・JSONパース（問題時のみAIコメント格納）・タイムアウト処理のテストをGreenにする
 
 ## 4. Core: Docker Compose コントローラー (TDD)
 
