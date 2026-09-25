@@ -1,9 +1,12 @@
 # Tasks: AI File Renamer (TagBasedVideoManager - AI File Renamer)
 
-## 1. プロジェクト構造と環境構築 (100% F#)
+## 1. フォルダ構成の再編・既存回帰テストおよび新設プロジェクト構築
 
-- [ ] 1.1 `src/TagBasedVideoManager.Companion/` (F# .NET 10 + Avalonia 11.x + Avalonia.FuncUI) プロジェクトを作成し、ソリューションに追加して空ウィンドウが正常にビルド・起動することを検証する
-- [ ] 1.2 `test/TagBasedVideoManager.Companion.Tests/` (F# .NET 10 + xUnit + FsUnit) テストプロジェクトを作成し、ソリューションに追加して `dotnet test` が通過することを検証する
+- [ ] 1.1 [フォルダ構成再編] 既存Webアプリケーションのソース一式を `src/TagBasedVideoManager/` へ移動し、テストコード一式を `test/TagBasedVideoManager.Tests/` へ移動する
+- [ ] 1.2 [構成・参照パス更新] `TagBasedVideoManager.slnx`, `Dockerfile`, `docker-compose.yml`, `TagBasedVideoManager.Tests.fsproj`（プロジェクト参照パス）、`run_tests_with_coverage.ps1`、`README.md` のパスを新ディレクトリ構成に合わせて更新する
+- [ ] 1.3 [既存回帰テスト検証] 移動後の既存Webアプリケーションの全テストを一括実行（`dotnet test test/TagBasedVideoManager.Tests/`）し、全テスト通過（回帰テスト成功）を確認する
+- [ ] 1.4 [Renamer プロジェクト新設] `src/TagBasedVideoManager.Renamer/` (F# .NET 10 + Avalonia 11.x + Avalonia.FuncUI) プロジェクトを作成し、ソリューションに追加して空ウィンドウが正常にビルド・起動することを検証する
+- [ ] 1.5 [Renamer テストプロジェクト新設] `test/TagBasedVideoManager.Renamer.Tests/` (F# .NET 10 + xUnit + FsUnit) テストプロジェクトを作成し、ソリューションに追加して `dotnet test` が通過することを検証する
 
 ## 2. Core: 設定管理とファイル走査・リネーム・Undoエンジン (TDD)
 
@@ -24,21 +27,15 @@
 - [ ] 4.1 [単体テスト・仕様検証] `DockerController` の `docker compose ps --format json` 出力パース（サービス `video-manager` 特定）および HTTPヘルスチェック疎通に対する失敗するテストを作成する（Red）
 - [ ] 4.2 [実装・リファクタ] `DockerController` を実装し、コンテナ状態特定（Running/Stopped/Unhealthy）および up/down/restart コマンド発行のテストをGreenにする
 
-## 5. Webアプリ: マウント異常検知
+## 5. Avalonia.FuncUI UI 実装と統合 (Elmish MVU)
 
-- [ ] 5.1 [単体テスト・回帰検証] Webアプリ側の `Scanner.fs` におけるマウントディレクトリ異常（未存在・0件）の検知ロジックに対するテストを追加する
-- [ ] 5.2 [実装] Webサーバー起動時にマウント状態を判定し、マウント異常時に Web UI（`src/wwwroot/index.html`, `app.js`）上部に警告バナーを表示する
+- [ ] 5.1 `State.fs` に Elmish の Model, Msg, init, update を実装し、初期閾値ロード・セッション内閾値変更・ワンアクション抽出＆提案・Undo履歴管理・Docker制御の状態遷移ロジックを構築する
+- [ ] 5.2 `Views.fs` に Docker コントローラーバー（稼働ステータスバッジ、Up/Down/Restartボタン）を構築し、非同期コマンドと連動させる
+- [ ] 5.3 `Views.fs` に 抽出基準数値入力欄（起動中一時変更・設定非保存）、命名規則マネージャーモーダル（作成・編集・削除・並び替え）を構築する
+- [ ] 5.4 `Views.fs` に Before / After 対比ビュー（表示形式トグル: 上下並び / 左右並び、インライン編集テキストボックス、問題時のみAIコメント表示、リアルタイム新パス長再計算）を構築する
+- [ ] 5.5 「リネームしてコンテナ再起動」および「直前のリネームを元に戻す (Undo)」のアクションを実装し、進捗表示および完了ダイアログを実装する
 
-## 6. Avalonia.FuncUI UI 実装と統合 (Elmish MVU)
+## 6. 自動E2Eテストの実装と総合検証
 
-- [ ] 6.1 `State.fs` に Elmish の Model, Msg, init, update を実装し、初期閾値ロード・セッション内閾値変更・ワンアクション抽出＆提案・Undo履歴管理・Docker制御の状態遷移ロジックを構築する
-- [ ] 6.2 `Views.fs` に Docker コントローラーバー（稼働ステータスバッジ、Up/Down/Restartボタン）を構築し、非同期コマンドと連動させる
-- [ ] 6.3 `Views.fs` に 抽出基準数値入力欄（起動中一時変更・設定非保存）、命名規則マネージャーモーダル（作成・編集・削除・並び替え）を構築する
-- [ ] 6.4 `Views.fs` に Before / After 対比ビュー（表示形式トグル: 上下並び / 左右並び、インライン編集テキストボックス、問題時のみAIコメント表示、リアルタイム新パス長再計算）を構築する
-- [ ] 6.5 「リネームしてコンテナ再起動」および「直前のリネームを元に戻す (Undo)」のアクションを実装し、進捗表示および完了ダイアログを実装する
-
-## 7. 自動E2Eテストの実装と総合検証
-
-- [ ] 7.1 [結合E2Eテスト] `TagBasedVideoManager.Companion.Tests` 内に、一時フォルダに240文字以上の長パスファイルを動的生成し、「走査 → AIモック提案（問題時コメント含む） → 物理リネーム → 整合性確認 → Undo復元検証」を一気通貫で自動検証する結合E2Eテストを実装する
-- [ ] 7.2 [Web E2Eテスト] Playwright を用いて、`VIDEO_DIR` が空の状態でWebアプリを起動した際に、トップ画面に「マウント異常・長パス警告バナー」が正しく描画されることを自動検証する E2E テストを実装する
-- [ ] 7.3 全単体テストおよびE2Eテストを実行し、TRXエビデンスおよびカバレッジレポートを出力して品質基準を満たしていることを検証する
+- [ ] 6.1 [結合E2Eテスト] `TagBasedVideoManager.Renamer.Tests` 内に、一時フォルダに240文字以上の長パスファイルを動的生成し、「走査 → AIモック提案（問題時コメント含む） → 物理リネーム → 整合性確認 → Undo復元検証」を一気通貫で自動検証する結合E2Eテストを実装する
+- [ ] 6.2 全単体テストおよび結合E2Eテスト、既存Webアプリ回帰テストを実行し、TRXエビデンスおよびカバレッジレポートを出力して品質基準を満たしていることを検証する

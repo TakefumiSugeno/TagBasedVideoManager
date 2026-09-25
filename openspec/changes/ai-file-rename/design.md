@@ -4,6 +4,7 @@
 
 Docker Containerのバインドマウント（WSL2 / 9p / virtiofs）において、パス長制限（MAX_PATH / NAME_MAX 260文字）を超えるファイルが存在するとマウント自体が失敗し、Webアプリから動画が参照できなくなる（GitHub Issue #1）。
 コンテナ内からは不可視となるため、ホストOS側で稼働する独立したデスクトップアプリ **TagBasedVideoManager - AI File Renamer** を新設し、ホストファイルシステムを直接走査してAIリネームおよびDockerコンテナ制御を行う。
+既存Webアプリ側には一切の機能・UI改修を行わず（案1採用）、完全独立したデスクトップツールとして提供する。
 
 ## Goals / Non-Goals
 
@@ -21,11 +22,13 @@ Docker Containerのバインドマウント（WSL2 / 9p / virtiofs）におい�
 - **100% F# (.NET 10) ＋ Avalonia.FuncUI (Elmish MVU)** による完全な関数型デスクトップアプリ
 - 安全な物理リネーム（重複チェック、エラーハンドリング、ロールバック）
 - `docker compose ps --format json` および HTTP疎通確認による確実なコンテナ状態特定と Up / Down / Restart 制御
-- Webアプリ起動時のマウント異常検知とUI警告バナー表示
-- 自動テストの徹底（TDD単体テスト ＋ 結合E2Eテスト ＋ Playwright E2Eテスト）
+- プロジェクトフォルダ構成の再編（`src/` 配下にWebとRenamer、`test/` 配下にWebテストとRenamerテストを並列化）
+- フォルダ移動に伴う Dockerfile / compose / slnx / テストスクリプトのパス更新と、**既存Web機能の全回帰テスト実行**
+- 自動テストの徹底（TDD単体テスト ＋ 結合E2Eテスト）
 
 **Non-Goals:**
 
+- 既存Webアプリのソースコード・UI改修（案1採用により変更ゼロ）
 - 起動中に変更した抽出基準文字数の設定ファイルへの自動保存（セッション限りの一時変更に留める）
 - 正常なファイルに対する不要なAIコメント表示（UIノイズ防止）
 - C# や XAML の導入（本プロジェクトの F# ネイティブ方針を堅持）
@@ -34,30 +37,58 @@ Docker Containerのバインドマウント（WSL2 / 9p / virtiofs）におい�
 
 ## Decisions
 
-### 1. 抽出基準（パス長閾値）の設計
+### 1. プロジェクト・フォルダ構成の再編と回帰テスト方針
+
+- **決定**: ソリューションおよびフォルダ構造を以下のように階層化・再編する。
+  ```
+  TagBasedVideoManager/
+  ├── TagBasedVideoManager.slnx
+  ├── Dockerfile
+  ├── docker-compose.yml
+  ├── src/
+  │   ├── TagBasedVideoManager/             # 既存 Web アプリケーション
+  │   │   ├── TagBasedVideoManager.fsproj
+  │   │   └── ...
+  │   └── TagBasedVideoManager.Renamer/     # 新設 デスクトップアプリ
+  │       ├── TagBasedVideoManager.Renamer.fsproj
+  │       └── ...
+  └── test/
+      ├── TagBasedVideoManager.Tests/       # 既存 Web アプリのテスト
+      │   ├── TagBasedVideoManager.Tests.fsproj
+      │   └── ...
+      └── TagBasedVideoManager.Renamer.Tests/ # 新設 デスクトップアプリのテスト
+          ├── TagBasedVideoManager.Renamer.Tests.fsproj
+          └── ...
+  ```
+- **移行手順と回帰検証**:
+  1. 既存ファイルをサブディレクトリに移動。
+  2. `Dockerfile`, `docker-compose.yml`, `TagBasedVideoManager.slnx`, `test/TagBasedVideoManager.Tests/TagBasedVideoManager.Tests.fsproj` 内のプロジェクト参照パスを同期更新。
+  3. `dotnet test test/TagBasedVideoManager.Tests/` を実行し、既存テストが100%パスすることを回帰テストとして確認する。
+
+### 2. 抽出基準（パス長閾値）の設計
 
 - **決定**: 設定ファイル `companion-settings.json` に `pathLengthThreshold: 240` を定義し、起動時に初期値として読み込む。UI上でユーザーが数値を一時変更できるが、**設定ファイルには書き戻さない（更新しない）**。
 - **理由**:
   - 毎回同じ安全基準（240文字）で即座にスキャンできる安定性を確保。
   - 特定のフォルダや一時的な確認で「200文字以上」「250文字以上」を見たい場合にも、設定ファイルを汚さずに柔軟にUI上で変更できる。
 
-### 2. AIコメントの条件付き描画
+### 3. AIコメントの条件付き描画
 
 - **決定**: 命名規則に正常に従えたファイルは `aiComment` を `None`（非表示）とし、元ファイル名がランダム英数字や記号等で親フォルダや更新日時から代替補完した場合のみ `Some("理由...")` を設定して `⚠️ AIコメント: ...` を表示する。
 - **理由**: 全件にコメントを出すとUIの縦幅が増加しノイズになるため、注意が必要な問題ファイルのみを目立たせる。
 
-### 3. Before / After のレイアウト切り替え ＆ 高さコンパクト化
+### 4. Before / After のレイアウト切り替え ＆ 高さコンパクト化
 
 - **決定**: 「上下並び」と「左右並び」のトグル切り替えを提供する。
 - **上下並びの最適化**:
   - 1カード内で、上行（BEFORE: 現パス長・赤バッジ・現ファイル名）と下行（AFTER: 新パス長・緑バッジ・新ファイル名インライン入力）を隣接配置。
   - 問題があるファイルにのみAIコメントを1行追加。
 
-### 4. リネームの Undo（元に戻す）機能
+### 5. リネームの Undo（元に戻す）機能
 
 - **決定**: アプリ起動中のリネーム履歴をメモリスタック（`undoHistory: { OriginalPath: string; RenamedPath: string } list`）として保持し、UI上の「元に戻す (Undo)」ボタンから逆リネームを実行できるようにする。
 
-### 5. 命名規則マネージャー画面
+### 6. 命名規則マネージャー画面
 
 - **決定**: メイン画面の「管理...」ボタンから開く命名規則マネージャーモーダルを新設する。
 - **機能**:
@@ -66,7 +97,7 @@ Docker Containerのバインドマウント（WSL2 / 9p / virtiofs）におい�
   - タグ挿入ボタン（`{{Date}}`, `{{ParentFolder}}`, `{{Summary}}`, `{{Seq}}`）
   - `companion-settings.json` への自動永続化
 
-### 6. 100% F# によるデスクトップGUI: Avalonia.FuncUI (Elmish MVU)
+### 7. 100% F# によるデスクトップGUI: Avalonia.FuncUI (Elmish MVU)
 
 - **決定**: C# / XAML を一切使用せず、**純粋な F# (.NET 10) ＋ Avalonia.FuncUI** を採用する。
 
@@ -135,6 +166,8 @@ Docker Containerのバインドマウント（WSL2 / 9p / virtiofs）におい�
 
 ## Risks / Trade-offs
 
+- **[Risk] フォルダ移動に伴う Docker ビルドやテスト実行の破綻**
+  → **Mitigation**: プロジェクト構築直後に、更新されたパス設定で既存全テストを実行し、100%パスする回帰検証エビデンスを取得する。
 - **[Risk] Undo実行時に元ファイル名が既に別のファイルで占有されている可能性**
   → **Mitigation**: Undo実行前にも `File.Exists` チェックを行い、衝突がある場合は警告ダイアログを表示して安全に中断する。
 - **[Risk] OpenRouter Freeモデルのレートリミットやダウンタイム**
