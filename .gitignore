@@ -78,3 +78,6 @@ test/thumbnails/
 .lsp/
 .clj-kondo/
 
+# Renamer local settings (contains API key)
+companion-settings.json
+

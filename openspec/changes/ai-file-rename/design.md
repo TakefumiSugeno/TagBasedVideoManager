@@ -157,6 +157,7 @@ type RenamerError =
 ### 3.1 設定ファイル スキーマ (`companion-settings.json`)
 
 アプリケーション設定は実行ファイルと同ディレクトリ（またはユーザープロファイル）の `companion-settings.json` にJSON形式で保存されます。
+※**セキュリティ配慮**: APIキー（`apiKey`）が保存される可能性があるため、本設定ファイル（実環境ファイル）は `.gitignore` に登録し、Git管理から除外します（プロジェクトにはテンプレート `companion-settings.example.json` を提供）。
 
 ```json
 {
@@ -229,6 +230,7 @@ type RenamerError =
 ### 3.3 Docker Compose コマンド仕様
 
 - **ステータス確認**: `docker compose ps --format json`
+  - **バージョン差異対応**: Docker Compose v2 のマイナーバージョン差異により、「単一JSON配列 `[{...}]`」で返る場合と「改行区切りNDJSON」で返る場合があります。デシリアライザーにて両形式（配列パース失敗時に行区切り分割パース）へ自動フォールバックして耐障害性を担保します。
 - **コンテナ再起動**: `docker compose restart tag-based-video-manager`
 - **コンテナ起動 / 停止**: `docker compose up -d` / `docker compose stop`
 
@@ -277,6 +279,7 @@ module FileScanner =
 - **アルゴリズム**:
   - `Directory.EnumerateFiles(targetDir, "*.*", SearchOption.AllDirectories)` を使用。
   - 対象拡張子: `.mp4`, `.mkv`, `.avi`, `.mov`, `.wmv`, `.webm`, `.flv`。
+  - **大文字小文字不問判定**: Windows/Linux間の差異を吸収するため、`StringComparison.OrdinalIgnoreCase` を用いて拡張子を判定。
   - 各ファイルの完全パス長（`file.Length`）を算出し、`length >= threshold` のものを抽出。
   - アクセス権限エラー（`UnauthorizedAccessException`）発生時は例外を握りつぶさず安全にスキップまたはログ記録。
 
@@ -438,6 +441,7 @@ type Msg =
 - **Footer Actions**:
   - 選択件数表示、`[ ↩ 直前のリネームを元に戻す (Undo) ]` ボタン（履歴あり時のみ活性化）
   - `[ リネームのみ実行 ]` ボタン ＆ `[ ⚡ リネームしてコンテナ再起動 (復旧) ]` ボタン
+  - **Undo確認ダイアログ**: Undo実行時は「変更前の長ファイル名に復元され、コンテナが再起動します」と明示して意図しない再起動による驚きを防止。
 
 ---
 
