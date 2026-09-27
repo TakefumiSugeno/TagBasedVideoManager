@@ -94,11 +94,12 @@ module State =
     }
 
     let init () : Model * Cmd<Msg> =
-        let initialSettings = Settings.defaultSettings ()
+        let initialSettings = Settings.loadConfiguration None None
+        let firstRuleId = initialSettings.Rules |> List.tryHead |> Option.map (fun r -> r.Id) |> Option.defaultValue ""
         let model = {
             Settings = initialSettings
             CurrentThreshold = initialSettings.PathLengthThreshold
-            SelectedRuleId = (List.tryHead initialSettings.Rules |> Option.map (fun r -> r.Id) |> Option.defaultValue "")
+            SelectedRuleId = firstRuleId
             IsScanning = false
             IsRequestingAi = false
             IsRenaming = false
@@ -114,9 +115,12 @@ module State =
             ConfirmDialog = None
         }
 
-        // 起動時に設定ファイルロードおよびDockerステータス確認を発行
+        // 起動時に外部設定ファイルロードおよびDockerステータス確認を発行
         let loadSettingsCmd =
-            Cmd.OfAsync.perform (fun () -> async { return Settings.load defaultSettingsPath }) () SettingsLoaded
+            Cmd.OfAsync.perform
+                (fun () -> async { return Settings.loadConfiguration (Some defaultSettingsPath) None })
+                ()
+                (fun cfg -> SettingsLoaded (Ok cfg))
 
         let checkDockerCmd =
             Cmd.OfAsync.perform (fun () -> DockerController.checkStatus None None (Directory.GetCurrentDirectory())) () DockerStatusUpdated
@@ -170,9 +174,23 @@ module State =
                     |> List.tryFind (fun r -> r.Id = model.SelectedRuleId)
                     |> Option.defaultValue (List.head model.Settings.Rules)
 
-                // まずローカル命名規則による短縮候補を即時生成して反映！
-                let localProposals =
-                    OpenRouterClient.generateLocalProposals selectedRule candidates
+                // 走査直後の初期候補データ（未提案状態・勝手なAIコメントなし・手動編集用）
+                let initialProposals =
+                    candidates
+                    |> List.map (fun c ->
+                        {
+                            OriginalFullPath = c.FullPath
+                            OriginalFileName = c.FileName
+                            DirectoryPath = c.DirectoryPath
+                            OriginalLength = c.PathLength
+                            ProposedFileName = c.FileName // 初期状態は元ファイル名（手動編集用）
+                            ProposedLength = c.PathLength
+                            AiComment = None              // 勝手な固定コメントを捏造しない
+                            IsSelected = true
+                            LastWriteTime = c.LastWriteTime
+                            IsAiProposed = false          // 未提案フラグ
+                        }
+                    )
                     |> FileScanner.sortCandidates model.SortCriterion
 
                 match model.Settings.ApiKey with
@@ -189,14 +207,14 @@ module State =
                             )
                             ()
                             AiProposeCompleted
-                    { model with IsScanning = false; IsRequestingAi = true; Candidates = localProposals }, aiCmd
+                    { model with IsScanning = false; IsRequestingAi = true; Candidates = initialProposals }, aiCmd
                 | _ ->
-                    // APIキー未設定時はローカル短縮ルールをそのまま採用し、直ちにリネーム可能にする
+                    // APIキー未設定時はAIのフリをせず、未提案状態としてユーザーに設定を案内
                     {
                         model with
                             IsScanning = false
-                            Candidates = localProposals
-                            ErrorMessage = Some "💡 命名規則に従って短縮ファイル名（BEFORE/AFTER）を自動生成しました。必要に応じて直接手動修正し、リネームを実行できます。"
+                            Candidates = initialProposals
+                            ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。AI自動命名を利用する場合は .env または companion-settings.json に設定してください。"
                     }, Cmd.none
 
         | ScanCompleted (Error (IoError (msg, _))) ->

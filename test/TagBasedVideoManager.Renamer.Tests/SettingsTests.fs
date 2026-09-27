@@ -118,3 +118,85 @@ module SettingsTests =
             if File.Exists(filePath) then File.Delete(filePath)
             let dir = Path.GetDirectoryName(filePath)
             if Directory.Exists(dir) then Directory.Delete(dir, true)
+
+    [<Fact>]
+    let ``loadConfiguration は .env から OPENROUTER_API_KEY と VIDEO_DIR を取得できる`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerEnvTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let envPath = Path.Combine(tempDir, ".env")
+        try
+            File.WriteAllLines(envPath, [
+                "PORT=5621"
+                "VIDEO_DIR=E:\\EnvVideos"
+                "OPENROUTER_API_KEY=sk-or-v1-from-env-test-key"
+                "OPENROUTER_MODEL=google/gemini-2.0-flash-exp:free"
+                "PATH_LENGTH_THRESHOLD=220"
+            ])
+
+            let loaded = Settings.loadConfiguration None (Some envPath)
+            loaded.TargetDirectory |> should equal "E:\\EnvVideos"
+            loaded.ApiKey |> should equal (Some "sk-or-v1-from-env-test-key")
+            loaded.SelectedModel |> should equal "google/gemini-2.0-flash-exp:free"
+            loaded.PathLengthThreshold |> should equal 220
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfiguration は companion-settings.json の設定を .env より優先する`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerPriorityTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let jsonPath = Path.Combine(tempDir, "companion-settings.json")
+        let envPath = Path.Combine(tempDir, ".env")
+        try
+            File.WriteAllLines(envPath, [
+                "VIDEO_DIR=E:\\FromEnv"
+                "OPENROUTER_API_KEY=key-from-env"
+            ])
+
+            let customJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "D:\\FromJson"
+                    ApiKey = Some "key-from-json"
+            }
+            Settings.save jsonPath customJson |> ignore
+
+            let loaded = Settings.loadConfiguration (Some jsonPath) (Some envPath)
+            loaded.TargetDirectory |> should equal "D:\\FromJson"
+            loaded.ApiKey |> should equal (Some "key-from-json")
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfiguration は外部ファイルの命名規則リストを保持し、先頭ルールを既定とする`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerRulesTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let jsonPath = Path.Combine(tempDir, "companion-settings.json")
+        try
+            let customRules = [
+                {
+                    Id = "custom-rule-external"
+                    Name = "外部定義カスタムルール"
+                    Pattern = "{Custom}_{Date}.mp4"
+                    PromptInstruction = "外部ファイルから読み込んだカスタムプロンプト"
+                    Order = 0
+                }
+                {
+                    Id = "rule-compact"
+                    Name = "短縮"
+                    Pattern = "{ShortTitle}.mp4"
+                    PromptInstruction = "短縮命名"
+                    Order = 1
+                }
+            ]
+            let customJson = {
+                Settings.defaultSettings () with
+                    Rules = customRules
+            }
+            Settings.save jsonPath customJson |> ignore
+
+            let loaded = Settings.loadConfiguration (Some jsonPath) None
+            loaded.Rules.Length |> should equal 2
+            loaded.Rules.Head.Id |> should equal "custom-rule-external"
+            loaded.Rules.Head.Name |> should equal "外部定義カスタムルール"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)

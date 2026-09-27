@@ -36,6 +36,7 @@ module FileRenamerTests =
                 ProposedFileName = proposedName
                 ProposedLength = expectedNewPath.Length
                 AiComment = None
+                IsAiProposed = true
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -75,6 +76,7 @@ module FileRenamerTests =
                 ProposedFileName = "Target.mp4"
                 ProposedLength = conflictTarget.Length
                 AiComment = None
+                IsAiProposed = true
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -110,6 +112,7 @@ module FileRenamerTests =
                 ProposedFileName = "New_Unselected.mp4"
                 ProposedLength = 10
                 AiComment = None
+                IsAiProposed = true
                 IsSelected = false
                 LastWriteTime = DateTime.UtcNow
             }
@@ -193,6 +196,7 @@ module FileRenamerTests =
                 ProposedFileName = "New.mp4"
                 ProposedLength = 10
                 AiComment = None
+                IsAiProposed = true
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }

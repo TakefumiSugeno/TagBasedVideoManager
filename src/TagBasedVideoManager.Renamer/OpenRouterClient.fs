@@ -178,6 +178,7 @@ module OpenRouterClient =
                                                 AiComment = normalizeAiComment comment
                                                 IsSelected = true
                                                 LastWriteTime = candidate.LastWriteTime
+                                                IsAiProposed = true
                                             }
                                         )
                                     )
@@ -192,8 +193,8 @@ module OpenRouterClient =
         }
 
     /// <summary>
-    /// APIキー未設定時またはオフライン用のローカル命名短縮ルール
-    /// 命名規則に従い、日時抽出とタイトル短縮（最大30文字）を施して240文字未満の安全なファイル名を生成する。
+    /// APIキー未設定時またはオフライン用の初期短縮ルール (未提案状態)
+    /// AI提案前の手動編集初期値として利用される。勝手なAIコメントは付与しない。
     /// </summary>
     let generateLocalProposals (rule: NamingRule) (candidates: ScanCandidate list) : RenameProposal list =
         let dateRegex = System.Text.RegularExpressions.Regex(@"(\d{4})[-_.](\d{2})[-_.](\d{2})")
@@ -203,15 +204,14 @@ module OpenRouterClient =
             let baseWithoutExt = Path.GetFileNameWithoutExtension(c.FileName)
             let dateMatch = dateRegex.Match(baseWithoutExt)
 
-            let datePrefix, comment =
+            let datePrefix =
                 if dateMatch.Success then
                     let y = dateMatch.Groups.[1].Value
                     let m = dateMatch.Groups.[2].Value
                     let d = dateMatch.Groups.[3].Value
-                    $"{y}-{m}-{d}", None
+                    $"{y}-{m}-{d}"
                 else
-                    let d = c.LastWriteTime.ToString("yyyy-MM-dd")
-                    d, Some "元ファイル名に撮影日時が含まれていないため、最終更新日時で補完しました。"
+                    c.LastWriteTime.ToString("yyyy-MM-dd")
 
             let cleanTitle =
                 if dateMatch.Success then
@@ -232,11 +232,12 @@ module OpenRouterClient =
                 OriginalFileName = c.FileName
                 DirectoryPath = c.DirectoryPath
                 OriginalLength = c.PathLength
-                ProposedFileName = proposedName
-                ProposedLength = proposedPath.Length
-                AiComment = comment
+                ProposedFileName = c.FileName // 初期状態は元ファイル名（手動編集用）
+                ProposedLength = c.PathLength
+                AiComment = None              // 勝手な固定コメントを捏造しない
                 IsSelected = true
                 LastWriteTime = c.LastWriteTime
+                IsAiProposed = false          // 未提案フラグ
             }
         )
 

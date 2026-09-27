@@ -32,6 +32,7 @@ type RenameProposal = {
     AiComment: string option // 問題・補完発生時のみ Some
     IsSelected: bool
     LastWriteTime: DateTime
+    IsAiProposed: bool      // LLMによる提案完了フラグ (未提案時はfalse)
 }
 
 /// リネームUndo履歴レコード

@@ -79,6 +79,7 @@ module RenameIntegrationE2ETests =
                     ProposedFileName = proposedName1
                     ProposedLength = proposedPath1.Length
                     AiComment = None // 正常時はコメントなし
+                    IsAiProposed = true
                     IsSelected = true
                     LastWriteTime = DateTime.UtcNow
                 }
@@ -91,6 +92,7 @@ module RenameIntegrationE2ETests =
                     ProposedFileName = proposedName2
                     ProposedLength = proposedPath2.Length
                     AiComment = Some aiComment2 // 問題時のみコメントあり
+                    IsAiProposed = true
                     IsSelected = true
                     LastWriteTime = DateTime.UtcNow
                 }
@@ -174,6 +176,7 @@ module RenameIntegrationE2ETests =
                 ProposedFileName = targetName
                 ProposedLength = targetPath.Length
                 AiComment = None
+                IsAiProposed = true
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -186,6 +189,7 @@ module RenameIntegrationE2ETests =
                 ProposedFileName = targetName
                 ProposedLength = targetPath.Length
                 AiComment = None
+                IsAiProposed = true
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -246,6 +250,7 @@ module RenameIntegrationE2ETests =
                 ProposedFileName = "2024-01-01_nature_doc_part1.mp4"
                 ProposedLength = 39
                 AiComment = None
+                IsAiProposed = true
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -257,6 +262,7 @@ module RenameIntegrationE2ETests =
                 ProposedFileName = "2026-09-26_strange_title_fixed.mp4"
                 ProposedLength = 41
                 AiComment = Some "元ファイル名に撮影日時が含まれていなかったため、本日の日付で補完しました。"
+                IsAiProposed = true
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -369,6 +375,28 @@ module RenameIntegrationE2ETests =
         }
         renderAndCapture longPathModel "E2E_06_Long_Path_No_Overflow.png"
 
+        // 7. APIキー未設定・未接続時の未提案状態（方式A: 未提案グレーバッジ・警告案内・元ファイル名保持）
+        let unproposedCandidates : RenameProposal list = [
+            {
+                OriginalFullPath = "D:\\Videos\\unproposed_sample_video_long_name_test.mp4"
+                OriginalFileName = "unproposed_sample_video_long_name_test.mp4"
+                DirectoryPath = "D:\\Videos"
+                OriginalLength = 250
+                ProposedFileName = "unproposed_sample_video_long_name_test.mp4"
+                ProposedLength = 250
+                AiComment = None
+                IsAiProposed = false
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+            }
+        ]
+        let unproposedModel = {
+            baseModel with
+                Candidates = unproposedCandidates
+                ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定のため、AI提案はスキップされました。設定画面でAPIキーを登録するか、AFTERファイル名を手動編集してください。"
+        }
+        renderAndCapture unproposedModel "E2E_07_Unproposed_No_ApiKey.png"
+
 
     [<Fact>]
     let ``E2E: Zero-configuration user journey (no API key, scan long paths, fallback proposal, manual edit, physical rename and undo)`` () =
@@ -397,23 +425,27 @@ module RenameIntegrationE2ETests =
                 candidates.Length |> should equal 2
 
                 // 4. State.update で ScanCompleted を処理
-                // (APIキー未設定のため、ローカル短縮フォールバックが起動)
+                // (APIキー未設定のため、LLMを偽装せず未提案として元ファイル名を保持し警告を表示)
                 let model2, cmd = State.update (ScanCompleted (Ok candidates)) model1
                 
-                // ローカル短縮候補が Candidates に格納されていることを検証
+                // 候補が Candidates に格納されていることを検証
                 model2.Candidates.Length |> should equal 2
                 
                 let prop1 = model2.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath1)
                 let prop2 = model2.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath2)
 
-                // 正常系 (日付あり): AIコメントなし、30文字程度に短縮
-                prop1.ProposedFileName |> should startWith "2024-05-01"
+                // LLM未接続のため「未提案」状態（IsAiProposed = false）
+                prop1.IsAiProposed |> should equal false
+                prop2.IsAiProposed |> should equal false
+                // 勝手なAIコメントは捏造しない
                 prop1.AiComment |> should equal None
-                (prop1.ProposedLength < 240) |> should equal true
-
-                // 変則系 (日付なし): AIコメントあり、本日の日付で補完
-                prop2.AiComment |> should not' (equal None)
-                (prop2.ProposedLength < 240) |> should equal true
+                prop2.AiComment |> should equal None
+                // 初期提案名は元ファイル名（手動編集用）
+                prop1.ProposedFileName |> should equal longName1
+                prop2.ProposedFileName |> should equal longName2
+                // 警告案内メッセージが表示されていること
+                model2.ErrorMessage |> should not' (equal None)
+                model2.ErrorMessage.Value |> should contain "APIキーが未設定"
 
                 // 5. ユーザーによる手動ファイル名編集のシミュレート (UpdateProposedName)
                 let customName1 = "2024-05-01_my_edited_title.mp4"
@@ -421,10 +453,13 @@ module RenameIntegrationE2ETests =
                 let updatedProp1 = model3.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath1)
                 updatedProp1.ProposedFileName |> should equal customName1
 
+                let customName2 = "2026-09-28_custom_title.mp4"
+                let model3b, _ = State.update (UpdateProposedName (longPath2, customName2)) model3
+
                 // 6. リネーム実行 (State.update ExecuteRenameOnly)
-                let model4, _ = State.update ExecuteRenameOnly model3
+                let model4, _ = State.update ExecuteRenameOnly model3b
                 // 物理リネームの実行 (FileRenamer.executeRename)
-                let renameRes = FileRenamer.executeRename model3.Candidates
+                let renameRes = FileRenamer.executeRename model3b.Candidates
                 match renameRes with
                 | Error err -> failwith $"リネーム失敗: {err}"
                 | Ok undoRecords ->
@@ -432,7 +467,7 @@ module RenameIntegrationE2ETests =
 
                     // 物理ファイルの存在検証
                     let renamedPath1 = Path.Combine(tempDir, customName1)
-                    let renamedPath2 = Path.Combine(tempDir, prop2.ProposedFileName)
+                    let renamedPath2 = Path.Combine(tempDir, customName2)
                     File.Exists(longPath1) |> should equal false
                     File.Exists(longPath2) |> should equal false
                     File.Exists(renamedPath1) |> should equal true

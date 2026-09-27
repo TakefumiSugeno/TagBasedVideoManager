@@ -1,5 +1,6 @@
 namespace TagBasedVideoManager.Renamer.Tests
 
+open System
 open Xunit
 open FsUnit
 open TagBasedVideoManager.Renamer
@@ -37,6 +38,7 @@ module StateTests =
             ProposedFileName = "Short.mp4"
             ProposedLength = 19
             AiComment = None
+            IsAiProposed = true
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -61,6 +63,7 @@ module StateTests =
             ProposedFileName = "n1.mp4"
             ProposedLength = 15
             AiComment = None
+            IsAiProposed = true
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -116,6 +119,7 @@ module StateTests =
             ProposedFileName = "Short.mp4"
             ProposedLength = 20
             AiComment = None
+            IsAiProposed = true
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -127,6 +131,7 @@ module StateTests =
             ProposedFileName = "VeryLongLongName.mp4"
             ProposedLength = 35
             AiComment = None
+            IsAiProposed = true
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -173,5 +178,37 @@ module StateTests =
         let movedModel, _ = State.update (MoveRuleOrder ("r2", -1)) modelWithRules
         movedModel.Settings.Rules.Head.Id |> should equal "r2"
         movedModel.Settings.Rules.[1].Id |> should equal "r1"
+
+    [<Fact>]
+    let ``ScanCompleted は APIキー未設定時にAIのフリをせず、未提案状態として保持し警告案内を表示する`` () =
+        let initialModel, _ = State.init ()
+        let modelWithoutKey = {
+            initialModel with
+                Settings = { initialModel.Settings with ApiKey = None }
+        }
+
+        let dummyCandidate = {
+            FullPath = "E:\\test\\very_long_file_name_over_limit_testing_sample.mp4"
+            FileName = "very_long_file_name_over_limit_testing_sample.mp4"
+            DirectoryPath = "E:\\test"
+            PathLength = 265
+            FileSizeBytes = 1024L
+            LastWriteTime = DateTime(2025, 8, 12)
+        }
+
+        let updatedModel, cmd = State.update (ScanCompleted (Ok [ dummyCandidate ])) modelWithoutKey
+        updatedModel.Candidates.Length |> should equal 1
+        let proposal = updatedModel.Candidates.Head
+
+        // 重要: LLM未接続なので「AI提案済」ではなく未提案状態
+        proposal.IsAiProposed |> should equal false
+        // 重要: 勝手な固定コメントを捏造しない
+        proposal.AiComment |> should equal None
+        // 初期状態は元ファイル名（手動編集用）
+        proposal.ProposedFileName |> should equal dummyCandidate.FileName
+        // 警告案内メッセージを表示
+        updatedModel.ErrorMessage |> should not' (equal None)
+        let errMsg = updatedModel.ErrorMessage.Value
+        errMsg.Contains("OpenRouter APIキーが未設定") |> should equal true
 
 

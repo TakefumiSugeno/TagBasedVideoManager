@@ -353,6 +353,26 @@
             </div>
           </div>
 
+          <!-- API Key Warning Banner (APIキー未設定・未接続時に表示) -->
+          <div
+            x-show="!isApiKeyConfigured"
+            class="bg-amber-950/40 border-b border-amber-900/60 px-4 py-2 flex items-center justify-between text-[11px] text-amber-200"
+          >
+            <div class="flex items-center gap-2">
+              <span class="text-amber-400 font-bold">⚠️</span>
+              <span
+                >OpenRouter
+                APIキーが未設定のため、AI提案はスキップされました。設定画面でAPIキーを登録するか、AFTERファイル名を手動編集してください。</span
+              >
+            </div>
+            <button
+              @click="showRuleManager = true"
+              class="px-2 py-0.5 bg-amber-900/60 hover:bg-amber-800 border border-amber-700/80 rounded text-[10px] text-amber-100 font-medium"
+            >
+              設定を開く
+            </button>
+          </div>
+
           <!-- Scrollable Comparison List -->
           <div class="flex-1 overflow-y-auto p-2.5 space-y-2">
             <template x-if="!filesLoaded">
@@ -410,7 +430,7 @@
                         </div>
                         <div class="flex items-center space-x-2 flex-shrink-0">
                           <span
-                            class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 inline-flex items-center leading-none"
+                            class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 inline-flex items-center leading-none"
                             x-text="'-' + (file.beforeLength - file.afterLength) + '字 (' + Math.round((1 - file.afterLength/file.beforeLength)*100) + '%短縮)'"
                           ></span>
                           <span class="text-emerald-400 font-bold text-[10px]"
@@ -442,25 +462,32 @@
 
                       <!-- Line 3: AFTER (変更後 - ラベル幅130px固定・高さh-8・等幅フォント・コピー可) -->
                       <div
-                        class="flex items-center space-x-2 bg-emerald-950/20 border border-emerald-900/30 rounded p-1 overflow-hidden"
+                        class="flex items-center space-x-2 border rounded p-1 overflow-hidden"
+                        :class="file.isAiProposed ? 'bg-emerald-950/20 border-emerald-900/30' : 'bg-zinc-900/40 border-zinc-800'"
                       >
                         <div
-                          class="w-[130px] h-8 flex-shrink-0 px-2 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-900 flex items-center justify-center text-center"
+                          class="w-[130px] h-8 flex-shrink-0 px-2 rounded text-[10px] font-bold border flex items-center justify-center text-center"
+                          :class="file.isAiProposed ? 'bg-emerald-950 text-emerald-400 border-emerald-900' : 'bg-zinc-800 text-zinc-400 border-zinc-700'"
                         >
                           AFTER (<span x-text="file.afterLength"></span>字
-                          [安全])
+                          <span
+                            x-text="file.afterLength <= 240 ? '[安全]' : '[警告]'"
+                          ></span
+                          >)
                         </div>
                         <input
                           type="text"
                           x-model="file.afterFileName"
                           @input="recalculateLength(file)"
-                          class="flex-1 h-8 bg-black/80 border border-emerald-600/80 rounded px-2.5 text-xs font-mono text-emerald-300 focus:outline-none focus:ring-1 focus:ring-emerald-400 select-text"
+                          class="flex-1 h-8 bg-black/80 border rounded px-2.5 text-xs font-mono focus:outline-none focus:ring-1 select-text"
+                          :class="file.isAiProposed ? 'border-emerald-600/80 text-emerald-300 focus:ring-emerald-400' : 'border-zinc-700 text-zinc-200 focus:ring-blue-400'"
                           placeholder="新ファイル名..."
                         />
                         <span
-                          class="h-8 text-[10px] text-blue-400 font-bold bg-blue-950 px-2 rounded border border-blue-800 flex items-center justify-center flex-shrink-0"
-                          >AI提案済</span
-                        >
+                          class="h-8 text-[10px] font-bold px-2 rounded border flex items-center justify-center flex-shrink-0"
+                          :class="file.isAiProposed ? 'text-blue-400 bg-blue-950 border-blue-800' : 'text-zinc-400 bg-zinc-800 border-zinc-700'"
+                          x-text="file.isAiProposed ? 'AI提案済' : '未提案'"
+                        ></span>
                       </div>
 
                       <!-- Line 4: AI Comment Box (問題・補完があった時のみ表示) -->
@@ -503,7 +530,7 @@
                           ></span>
                         </div>
                         <span
-                          class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800"
+                          class="px-2 py-0.5 rounded text-[11px] font-sans font-bold bg-emerald-950 text-emerald-400 border border-emerald-800"
                           x-text="'-' + (file.beforeLength - file.afterLength) + '字短縮 (' + Math.round((1 - file.afterLength/file.beforeLength)*100) + '%削減)'"
                         ></span>
                       </div>
@@ -530,23 +557,28 @@
 
                         <!-- After Box -->
                         <div
-                          class="bg-emerald-950/20 border border-emerald-900/40 rounded p-2 space-y-1.5 flex flex-col justify-between"
+                          class="border rounded p-2 space-y-1.5 flex flex-col justify-between"
+                          :class="file.isAiProposed ? 'bg-emerald-950/20 border-emerald-900/40' : 'bg-zinc-900/40 border-zinc-800'"
                         >
                           <div>
                             <div class="flex justify-between text-[11px] mb-1">
-                              <span class="text-emerald-400 font-bold"
-                                >✓ AFTER (AI提案 / 編集可)</span
-                              >
                               <span
-                                class="font-mono text-emerald-400 font-bold"
-                                x-text="file.afterLength + '字 [安全]'"
+                                class="font-bold"
+                                :class="file.isAiProposed ? 'text-emerald-400' : 'text-zinc-400'"
+                                x-text="file.isAiProposed ? '✓ AFTER (AI提案 / 編集可)' : 'AFTER (未提案 / 編集可)'"
+                              ></span>
+                              <span
+                                class="font-mono font-bold"
+                                :class="file.isAiProposed ? 'text-emerald-400' : 'text-zinc-400'"
+                                x-text="file.afterLength + '字 ' + (file.afterLength <= 240 ? '[安全]' : '[警告]')"
                               ></span>
                             </div>
                             <input
                               type="text"
                               x-model="file.afterFileName"
                               @input="recalculateLength(file)"
-                              class="w-full bg-black/80 border border-emerald-600/80 rounded px-2 py-1 text-xs font-mono text-emerald-300 focus:outline-none"
+                              class="w-full bg-black/80 border rounded px-2 py-1 text-xs font-mono focus:outline-none"
+                              :class="file.isAiProposed ? 'border-emerald-600/80 text-emerald-300' : 'border-zinc-700 text-zinc-200'"
                             />
                           </div>
                           <!-- AI Comment Box (問題があった時のみ表示) -->
@@ -858,6 +890,9 @@
           undoAvailable: false,
           undoHistory: [],
 
+          // API Key configuration status (false allows testing "Zero-configuration" journey)
+          isApiKeyConfigured: false,
+
           // Settings loaded automatically on startup
           targetDir: "C:\\Users\\Public\\Videos\\Touring_2025_Summer",
           selectedModel: "meta-llama/llama-3.3-70b-instruct:free",
@@ -903,6 +938,7 @@
               beforeLength: 251,
               afterFileName: "20250812_Hokkaido_Soya_Cape.mp4",
               afterLength: 124,
+              isAiProposed: true,
               aiComment: null, // Normal file, no comment needed
             },
             {
@@ -915,6 +951,7 @@
               beforeLength: 247,
               afterFileName: "20250812_Family_Camp_BBQ.mp4",
               afterLength: 120,
+              isAiProposed: true,
               aiComment: null, // Normal file, no comment needed
             },
             {
@@ -927,6 +964,7 @@
               beforeLength: 249,
               afterFileName: "20250814_Furano_Lavender.mp4",
               afterLength: 119,
+              isAiProposed: true,
               // Irregular file: AI comment is provided explaining fallback
               aiComment:
                 "元ファイル名に日付・撮影地が不記載のため、親フォルダ名「Furano」と更新日時(2025/08/14)から補完命名しました。",
@@ -941,8 +979,23 @@
               beforeLength: 340,
               afterFileName: "20250815_Ultra_Long_Path_Fixed.mp4",
               afterLength: 135,
+              isAiProposed: true,
               aiComment:
                 "パス長340文字の超長大ファイルを検出。外枠の見切れなく正常にクリップ・短縮提案を生成しました。",
+            },
+            {
+              id: 5,
+              selected: true,
+              folderPath:
+                "C:\\Users\\Public\\Videos\\Touring_2025_Summer\\Zero_Config_No_Key_Test_Directory",
+              beforeFileName:
+                "SAMPLE_FILE_WITH_NO_API_KEY_CONNECTED_SHOWING_ORIGINAL_NAME_AS_UNPROPOSED_FALLBACK_AND_EDITABLE_TEXTBOX.mp4",
+              beforeLength: 255,
+              afterFileName:
+                "SAMPLE_FILE_WITH_NO_API_KEY_CONNECTED_SHOWING_ORIGINAL_NAME_AS_UNPROPOSED_FALLBACK_AND_EDITABLE_TEXTBOX.mp4",
+              afterLength: 255,
+              isAiProposed: false, // API未接続時の未提案状態
+              aiComment: null, // 勝手なコメント捏造なし
             },
           ],
 

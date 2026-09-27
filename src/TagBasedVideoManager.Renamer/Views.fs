@@ -481,7 +481,7 @@ module Views =
             Border.borderBrush (SolidColorBrush (if c.IsSelected then accentBlue else borderZinc800))
             Border.borderThickness (if c.IsSelected then 1.5 else 1.0)
             Border.cornerRadius 6.0
-            Border.margin (0.0, 0.0, 0.0, 8.0)
+            Border.margin (0.0, 0.0, 4.0, 8.0)
             Border.padding 8.0
             Border.clipToBounds true
             Border.child (
@@ -509,7 +509,7 @@ module Views =
                                                 TextBlock.create [
                                                     TextBlock.text $"-{reduction}字 ({reductionPercent}%%短縮)"
                                                     TextBlock.fontSize 10.0
-                                                    TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                                    TextBlock.fontFamily (FontFamily "Yu Gothic UI, Segoe UI, sans-serif")
                                                     TextBlock.fontWeight FontWeight.Bold
                                                     TextBlock.foreground (SolidColorBrush textAfterLabel)
                                                     TextBlock.verticalAlignment VerticalAlignment.Center
@@ -550,6 +550,7 @@ module Views =
                                             TextBlock.fontSize 10.0
                                             TextBlock.foreground (SolidColorBrush textZinc500)
                                             TextBlock.verticalAlignment VerticalAlignment.Center
+                                            TextBlock.textTrimming TextTrimming.CharacterEllipsis
                                         ]
                                     ]
                                 ]
@@ -643,18 +644,18 @@ module Views =
                                         ]
                                         Border.create [
                                             DockPanel.dock Dock.Right
-                                            Border.background (SolidColorBrush (Color.Parse("#172554")))
-                                            Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
+                                            Border.background (SolidColorBrush (if c.IsAiProposed then Color.Parse("#172554") else Color.Parse("#27272a")))
+                                            Border.borderBrush (SolidColorBrush (if c.IsAiProposed then Color.Parse("#1e40af") else Color.Parse("#3f3f46")))
                                             Border.borderThickness 1.0
                                             Border.cornerRadius 3.0
                                             Border.padding (6.0, 2.0)
                                             Border.margin (8.0, 0.0, 0.0, 0.0)
                                             Border.child (
                                                 TextBlock.create [
-                                                    TextBlock.text "AI提案済"
+                                                    TextBlock.text (if c.IsAiProposed then "AI提案済" else "未提案")
                                                     TextBlock.fontSize 10.0
                                                     TextBlock.fontWeight FontWeight.Bold
-                                                    TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                    TextBlock.foreground (SolidColorBrush (if c.IsAiProposed then Color.Parse("#60a5fa") else Color.Parse("#a1a1aa")))
                                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                                 ]
                                             )
@@ -682,7 +683,7 @@ module Views =
                             )
                         ]
 
-                        // Line 4: AI Comment Box (問題・補完があった時のみ表示)
+                        // Line 4: AI Comment Box (問題・補完があった時のみ表示。親幅超過を防ぐDockPanel構成)
                         match c.AiComment with
                         | Some comment when not (String.IsNullOrWhiteSpace(comment)) ->
                             Border.create [
@@ -691,16 +692,17 @@ module Views =
                                 Border.borderThickness 1.0
                                 Border.cornerRadius 4.0
                                 Border.padding (8.0, 4.0)
+                                Border.clipToBounds true
                                 Border.child (
-                                    StackPanel.create [
-                                        StackPanel.orientation Orientation.Horizontal
-                                        StackPanel.spacing 6.0
-                                        StackPanel.children [
+                                    DockPanel.create [
+                                        DockPanel.children [
                                             TextBlock.create [
+                                                DockPanel.dock Dock.Left
                                                 TextBlock.text "⚠️ AIコメント:"
                                                 TextBlock.fontSize 11.0
                                                 TextBlock.foreground (SolidColorBrush textAiComment)
                                                 TextBlock.fontWeight FontWeight.Bold
+                                                TextBlock.margin (0.0, 0.0, 6.0, 0.0)
                                             ]
                                             TextBlock.create [
                                                 TextBlock.text comment
@@ -732,8 +734,9 @@ module Views =
             Border.borderBrush (SolidColorBrush (if c.IsSelected then accentBlue else borderZinc800))
             Border.borderThickness (if c.IsSelected then 1.5 else 1.0)
             Border.cornerRadius 6.0
-            Border.margin (0.0, 0.0, 0.0, 8.0)
+            Border.margin (0.0, 0.0, 4.0, 8.0)
             Border.padding 8.0
+            Border.clipToBounds true
             Border.child (
                 StackPanel.create [
                     StackPanel.spacing 6.0
@@ -750,9 +753,9 @@ module Views =
                                     Border.padding (6.0, 2.0)
                                     Border.child (
                                         TextBlock.create [
-                                            TextBlock.text $"-{reduction}字短縮 ({reductionPercent}%%削減)"
+                                            TextBlock.text $"-{reduction}字 ({reductionPercent}%%短縮)"
                                             TextBlock.fontSize 10.0
-                                            TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                            TextBlock.fontFamily (FontFamily "Yu Gothic UI, Segoe UI, sans-serif")
                                             TextBlock.fontWeight FontWeight.Bold
                                             TextBlock.foreground (SolidColorBrush textAfterLabel)
                                         ]
@@ -781,6 +784,7 @@ module Views =
                                             TextBlock.fontSize 10.0
                                             TextBlock.foreground (SolidColorBrush textZinc500)
                                             TextBlock.verticalAlignment VerticalAlignment.Center
+                                            TextBlock.textTrimming TextTrimming.CharacterEllipsis
                                         ]
                                     ]
                                 ]
@@ -800,6 +804,7 @@ module Views =
                                     Border.cornerRadius 4.0
                                     Border.padding 8.0
                                     Border.margin (0.0, 0.0, 4.0, 0.0)
+                                    Border.clipToBounds true
                                     Border.child (
                                         StackPanel.create [
                                             StackPanel.spacing 4.0
@@ -851,6 +856,7 @@ module Views =
                                     Border.cornerRadius 4.0
                                     Border.padding 8.0
                                     Border.margin (4.0, 0.0, 0.0, 0.0)
+                                    Border.clipToBounds true
                                     Border.child (
                                         StackPanel.create [
                                             StackPanel.spacing 4.0
@@ -859,10 +865,10 @@ module Views =
                                                     DockPanel.children [
                                                         TextBlock.create [
                                                             DockPanel.dock Dock.Left
-                                                            TextBlock.text "✓ AFTER (AI提案 / 編集可)"
+                                                            TextBlock.text (if c.IsAiProposed then "✓ AFTER (AI提案 / 編集可)" else "AFTER (未提案 / 編集可)")
                                                             TextBlock.fontSize 10.0
                                                             TextBlock.fontWeight FontWeight.Bold
-                                                            TextBlock.foreground (SolidColorBrush textAfterLabel)
+                                                            TextBlock.foreground (SolidColorBrush (if c.IsAiProposed then textAfterLabel else Color.Parse("#a1a1aa")))
                                                         ]
                                                         TextBlock.create [
                                                             DockPanel.dock Dock.Right
@@ -870,7 +876,7 @@ module Views =
                                                             TextBlock.fontSize 10.0
                                                             TextBlock.fontFamily (FontFamily "Consolas, monospace")
                                                             TextBlock.fontWeight FontWeight.Bold
-                                                            TextBlock.foreground (SolidColorBrush textAfterLabel)
+                                                            TextBlock.foreground (SolidColorBrush (if c.IsAiProposed then textAfterLabel else Color.Parse("#a1a1aa")))
                                                         ]
                                                     ]
                                                 ]
@@ -897,13 +903,25 @@ module Views =
                                                         Border.borderThickness 1.0
                                                         Border.cornerRadius 3.0
                                                         Border.padding (6.0, 3.0)
+                                                        Border.clipToBounds true
                                                         Border.child (
-                                                            TextBlock.create [
-                                                                TextBlock.text $"⚠️ AIコメント: {comment}"
-                                                                TextBlock.fontSize 10.0
-                                                                TextBlock.foreground (SolidColorBrush textAiComment)
-                                                                TextBlock.fontStyle FontStyle.Italic
-                                                                TextBlock.textWrapping TextWrapping.Wrap
+                                                            DockPanel.create [
+                                                                DockPanel.children [
+                                                                    TextBlock.create [
+                                                                        DockPanel.dock Dock.Left
+                                                                        TextBlock.text "⚠️ AIコメント: "
+                                                                        TextBlock.fontSize 10.0
+                                                                        TextBlock.foreground (SolidColorBrush textAiComment)
+                                                                        TextBlock.fontWeight FontWeight.Bold
+                                                                    ]
+                                                                    TextBlock.create [
+                                                                        TextBlock.text comment
+                                                                        TextBlock.fontSize 10.0
+                                                                        TextBlock.foreground (SolidColorBrush textAiComment)
+                                                                        TextBlock.fontStyle FontStyle.Italic
+                                                                        TextBlock.textWrapping TextWrapping.Wrap
+                                                                    ]
+                                                                ]
                                                             ]
                                                         )
                                                     ]
@@ -1093,6 +1111,7 @@ module Views =
 
                         // リスト本体 (ScrollViewer)
                         ScrollViewer.create [
+                            ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Disabled
                             ScrollViewer.padding 10.0
                             ScrollViewer.content (
                                 if model.Candidates.IsEmpty then

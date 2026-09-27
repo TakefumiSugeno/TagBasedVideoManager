@@ -187,6 +187,7 @@ module FileScannerTests =
             ProposedFileName = "2026-09-28_AAA.mp4"
             ProposedLength = 20
             AiComment = None
+            IsAiProposed = true
             IsSelected = true
             LastWriteTime = now.AddDays(-2.0)
         }
@@ -198,6 +199,7 @@ module FileScannerTests =
             ProposedFileName = "2026-09-28_BBB.mp4"
             ProposedLength = 20
             AiComment = None
+            IsAiProposed = true
             IsSelected = true
             LastWriteTime = now.AddDays(-1.0)
         }
@@ -209,6 +211,7 @@ module FileScannerTests =
             ProposedFileName = "2026-09-28_CCC.mp4"
             ProposedLength = 20
             AiComment = None
+            IsAiProposed = true
             IsSelected = true
             LastWriteTime = now
         }
