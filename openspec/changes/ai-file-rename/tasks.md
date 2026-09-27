@@ -59,3 +59,13 @@
 - [x] 8.5 [実装・リファクタ] `Views.fs` の BEFORE 行 `SelectableTextBlock` を横スクロール対応コンテナでラップし、長大ファイル名時でも青い外枠がウィンドウ内に収まるよう修正してテストをGreenにする
 - [x] 8.6 [モック更新] `openspec/changes/ai-file-rename/mockup.html` を最新仕様（ソートComboBox、等幅フォント、垂直整列、短縮バッジ、管理モーダル、参照ボタン）に更新する
 - [x] 8.7 [GUI実画面E2E検証] `RenameIntegrationE2ETests.fs` を拡張し、管理モーダル描画キャプチャ（`E2E_05_Rule_Manager_Modal.png`）および長パス外枠非見切れキャプチャ（`E2E_06_Long_Path_No_Overflow.png`）を出力・検証する
+
+## 9. 外部設定ロード・AI提案ステータス正常化・外枠完全描画とフォントメトリクス揃え (TDD)
+
+- [ ] 9.1 [単体テスト・仕様検証] `Settings.loadConfiguration` における外部 `.env` および `companion-settings.json` からの設定読み込み優先度、および外部ファイル先頭ルールの既定選択テストを作成する（Red）
+- [ ] 9.2 [単体テスト・仕様検証] APIキー未設定時に「AI提案済」バッジや固定AIコメントが付与されず「未提案」状態（`IsAiProposed = false`, `AiComment = None`, `ProposedFileName = OriginalFileName`）となることの仕様検証テストを作成する（Red）
+- [ ] 9.3 [単体テスト・仕様検証] 短縮文字数バッジのフォント（`Yu Gothic UI`）およびカード内各行が親幅を超過しないレイアウト検証テストを作成する（Red）
+- [ ] 9.4 [実装・リファクタ] `Settings.fs`, `OpenRouterClient.fs`, `State.fs` に外部 `.env` / JSON 設定ロード、外部定義命名規則のデフォルト適用、APIキー未設定時の正直な「未提案」状態管理・案内メッセージを実装し、テストをGreenにする
+- [ ] 9.5 [実装・リファクタ] `Views.fs` の短縮バッジフォント修正、Line 1 / Line 4 の幅制約（`DockPanel` 化・`TextWrapping`）、親 `ScrollViewer` の水平スクロール抑止による青枠見切れ完全解消を実装し、テストをGreenにする
+- [ ] 9.6 [モック更新] `openspec/changes/ai-file-rename/mockup.html` を更新し、LLM未接続時の「未提案」表示および枠線・フォント修正を最新同期する
+- [ ] 9.7 [GUI実画面E2E検証] `RenameIntegrationE2ETests.fs` を拡張し、青い外枠が完全に閉じていること、短縮バッジの文字と数字が揃っていること、およびAPIキー未設定時の未提案表示の実画面キャプチャ（PNG）を出力・検証する

@@ -504,7 +504,38 @@ type Msg =
 - `openspec/changes/ai-file-rename/mockup.html` を最新の仕様（ソートドロップダウン、等幅フォント、垂直整列、短縮文字数バッジ整列、管理モーダル、参照ボタン）を忠実に反映したデザインに更新。
 - `RenameIntegrationE2ETests.fs` において、管理モーダルの描画状態（`E2E_05_Rule_Manager_Modal.png`）および長パス時のカード外枠非見切れ（`E2E_06_Long_Path_No_Overflow.png`）の実画面キャプチャを自動出力・ビジュアル検証する。
 
----
+### 5.8 外部設定ファイル（.env / JSON）ロードと命名規則デフォルト化設計
+
+- **設定読み込みアーキテクチャ (`Settings.loadConfiguration`)**:
+  - 優先順位 1: `companion-settings.json`（exe 同一フォルダ）が存在する場合は最優先で読み込み。
+  - 優先順位 2: プロジェクトルートまたは上位ディレクトリの `.env` ファイルを探索し、`OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `VIDEO_DIR`, `PATH_LENGTH_THRESHOLD` をパースして未設定項目へフォールバック補完。
+  - 優先順位 3: OS環境変数（`System.Environment.GetEnvironmentVariable`）。
+  - 優先順位 4: アプリケーション組み込み既定値（`Settings.defaultSettings`）。
+- **外部ファイルによるデフォルト命名規則の適用**:
+  - `companion-settings.json`（または外部設定）に定義された `rules` 配列の先頭ルール（`Order = 0`）を、起動時のデフォルト命名規則（`SelectedRuleId`）として自動選択。
+  - ユーザーが外部 JSON ファイルを直接編集・ルール追加・順序変更した場合でも、次回起動時にその外部定義が反映される。
+  - exe 同一フォルダに `companion-settings.json` が未存在の場合は、外部ファイル編集のガイドとなるテンプレート JSON を自動初期化出力し、外部ファイルからの設定を容易にする。
+
+### 5.9 AI提案ステータス正常化とフォントメトリクス・外枠完全描画設計
+
+- **AI提案ステータスの正常化と未接続時の正直な表現**:
+  - `RenameProposal` に `ProposalStatus`（`AiGenerated` | `NotProposed`）を持たせるか、`ApiKey` の有無および実際の LLM API 応答成否に基づいて判定。
+  - **APIキー未設定 / 未通信時**:
+    - バッジ表示: `[ 未提案 ]`（背景: 濃灰 `#27272a`、テキスト: 薄灰 `#a1a1aa`）。絶対に「AI提案済」と偽らない。
+    - AFTER ファイル名: 初期値は元のファイル名（未変更状態）とし、ユーザーの手動編集を待つ。
+    - AIコメント: `None`（勝手な固定コメントを捏造しない）。
+    - 案内バナー: 画面上部に「⚠️ OpenRouter APIキーが未設定です。.env または companion-settings.json に設定してください（手動編集または抽出は可能です）」と明示。
+  - **APIキー設定済み・LLM正常応答時**:
+    - バッジ表示: `[ AI提案済 ]`（青バッジ `#1e40af`）。
+    - AFTER ファイル名: LLM が返した新短縮ファイル名。
+    - AIコメント: LLM が返した問題点・補完理由（正常時は非表示）。
+- **フォントメトリクス揃え（数字と文字の上下高さ完全一致）**:
+  - 短縮バッジ（`-〇〇字 (〇〇%短縮)`）のフォントファミリーを `"Yu Gothic UI", "Segoe UI", sans-serif"` に変更。
+  - 欧文専用フォント `Consolas` を廃止することで、フォントフォールバックによる英数字と漢字の行メトリクス（アセント/ベースライン）のズレを解消し、数字と日本語のベースラインおよび高さを完全に整流。
+- **カード枠線（青）の完全描画（見切れ解消）**:
+  - `candidateCardVertical` 内の Line 1（パス部）: `SelectableTextBlock` に `TextTrimming.CharacterEllipsis` を指定し、右側の短縮バッジを侵食しないよう DockPanel でレイアウト。
+  - Line 4（AIコメント部）: `StackPanel (Horizontal)` を廃止し、`DockPanel`（左にラベル、中央に残りの Wrap テキスト）に変更。親幅を超えて横に飛び出す現象を根本排除。
+  - 親 `ScrollViewer` の `HorizontalScrollBarVisibility = Disabled` を明示し、子要素が親コンテナ幅（ウィンドウ幅）を突破することを物理的に不可能にし、カードの青い枠線（Border）の右端および下端が常に画面内に綺麗に描画されることを保証。
 
 ## 6. テスト・品質検証設計
 
