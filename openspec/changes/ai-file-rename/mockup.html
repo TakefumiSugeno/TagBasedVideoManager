@@ -430,12 +430,15 @@
                         </div>
                         <div class="flex items-center space-x-2 flex-shrink-0">
                           <span
-                            class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 inline-flex items-center leading-none"
-                            x-text="'-' + (file.beforeLength - file.afterLength) + '字 (' + Math.round((1 - file.afterLength/file.beforeLength)*100) + '%短縮)'"
+                            class="px-2 py-0.5 rounded text-[10px] font-sans font-bold inline-flex items-center leading-none"
+                            :class="file.afterLength > file.beforeLength ? 'bg-red-950 text-red-400 border border-red-800' : (file.afterLength === file.beforeLength ? 'bg-zinc-800 text-zinc-400 border border-zinc-700' : 'bg-emerald-950 text-emerald-400 border border-emerald-800')"
+                            x-text="file.afterLength > file.beforeLength ? ('+' + (file.afterLength - file.beforeLength) + '字 (増加)') : (file.afterLength === file.beforeLength ? '±0字 (未短縮)' : ('-' + (file.beforeLength - file.afterLength) + '字 (' + Math.round((1 - file.afterLength/file.beforeLength)*100) + '%短縮)'))"
                           ></span>
-                          <span class="text-emerald-400 font-bold text-[10px]"
-                            >✓ 安全</span
-                          >
+                          <span
+                            class="font-bold text-[10px]"
+                            :class="file.afterLength > file.beforeLength || file.afterLength >= currentThreshold ? 'text-red-400' : (file.afterLength === file.beforeLength ? 'text-amber-400' : 'text-emerald-400')"
+                            x-text="file.afterLength > file.beforeLength ? '⚠️ 文字数増加' : (file.afterLength >= currentThreshold ? '⚠️ 要短縮' : (file.afterLength === file.beforeLength ? '⚠️ 未短縮' : '✓ 安全'))"
+                          ></span>
                         </div>
                       </div>
 
@@ -463,15 +466,15 @@
                       <!-- Line 3: AFTER (変更後 - ラベル幅130px固定・高さh-8・等幅フォント・コピー可) -->
                       <div
                         class="flex items-center space-x-2 border rounded p-1 overflow-hidden"
-                        :class="file.isAiProposed ? 'bg-emerald-950/20 border-emerald-900/30' : 'bg-zinc-900/40 border-zinc-800'"
+                        :class="file.afterLength > file.beforeLength || file.afterLength >= currentThreshold ? 'bg-red-950/20 border-red-900/30' : (file.afterLength === file.beforeLength ? 'bg-zinc-900/40 border-zinc-800' : 'bg-emerald-950/20 border-emerald-900/30')"
                       >
                         <div
                           class="w-[130px] h-8 flex-shrink-0 px-2 rounded text-[10px] font-bold border flex items-center justify-center text-center"
-                          :class="file.isAiProposed ? 'bg-emerald-950 text-emerald-400 border-emerald-900' : 'bg-zinc-800 text-zinc-400 border-zinc-700'"
+                          :class="file.afterLength > file.beforeLength || file.afterLength >= currentThreshold ? 'bg-red-950 text-red-400 border-red-900' : (file.afterLength === file.beforeLength ? 'bg-zinc-800 text-zinc-400 border-zinc-700' : 'bg-emerald-950 text-emerald-400 border-emerald-900')"
                         >
                           AFTER (<span x-text="file.afterLength"></span>字
                           <span
-                            x-text="file.afterLength <= 240 ? '[安全]' : '[警告]'"
+                            x-text="file.afterLength > file.beforeLength ? '[増加]' : (file.afterLength >= currentThreshold ? '[危険]' : (file.afterLength === file.beforeLength ? '[未短縮]' : '[安全]'))"
                           ></span
                           >)
                         </div>
@@ -480,7 +483,7 @@
                           x-model="file.afterFileName"
                           @input="recalculateLength(file)"
                           class="flex-1 h-8 bg-black/80 border rounded px-2.5 text-xs font-mono focus:outline-none focus:ring-1 select-text"
-                          :class="file.isAiProposed ? 'border-emerald-600/80 text-emerald-300 focus:ring-emerald-400' : 'border-zinc-700 text-zinc-200 focus:ring-blue-400'"
+                          :class="file.afterLength > file.beforeLength || file.afterLength >= currentThreshold ? 'border-red-900/40 text-red-200 focus:ring-red-400' : (file.isAiProposed ? 'border-emerald-600/80 text-emerald-300 focus:ring-emerald-400' : 'border-zinc-700 text-zinc-200 focus:ring-blue-400')"
                           placeholder="新ファイル名..."
                         />
                         <span
@@ -529,10 +532,18 @@
                             x-text="file.folderPath"
                           ></span>
                         </div>
-                        <span
-                          class="px-2 py-0.5 rounded text-[11px] font-sans font-bold bg-emerald-950 text-emerald-400 border border-emerald-800"
-                          x-text="'-' + (file.beforeLength - file.afterLength) + '字短縮 (' + Math.round((1 - file.afterLength/file.beforeLength)*100) + '%削減)'"
-                        ></span>
+                        <div class="flex items-center space-x-2 flex-shrink-0">
+                          <span
+                            class="px-2 py-0.5 rounded text-[10px] font-sans font-bold inline-flex items-center leading-none"
+                            :class="file.afterLength > file.beforeLength ? 'bg-red-950 text-red-400 border border-red-800' : (file.afterLength === file.beforeLength ? 'bg-zinc-800 text-zinc-400 border border-zinc-700' : 'bg-emerald-950 text-emerald-400 border border-emerald-800')"
+                            x-text="file.afterLength > file.beforeLength ? ('+' + (file.afterLength - file.beforeLength) + '字 (増加)') : (file.afterLength === file.beforeLength ? '±0字 (未短縮)' : ('-' + (file.beforeLength - file.afterLength) + '字 (' + Math.round((1 - file.afterLength/file.beforeLength)*100) + '%短縮)'))"
+                          ></span>
+                          <span
+                            class="font-bold text-[10px]"
+                            :class="file.afterLength > file.beforeLength || file.afterLength >= currentThreshold ? 'text-red-400' : (file.afterLength === file.beforeLength ? 'text-amber-400' : 'text-emerald-400')"
+                            x-text="file.afterLength > file.beforeLength ? '⚠️ 文字数増加' : (file.afterLength >= currentThreshold ? '⚠️ 要短縮' : (file.afterLength === file.beforeLength ? '⚠️ 未短縮' : '✓ 安全'))"
+                          ></span>
+                        </div>
                       </div>
 
                       <div class="grid grid-cols-2 gap-2">
@@ -558,19 +569,19 @@
                         <!-- After Box -->
                         <div
                           class="border rounded p-2 space-y-1.5 flex flex-col justify-between"
-                          :class="file.isAiProposed ? 'bg-emerald-950/20 border-emerald-900/40' : 'bg-zinc-900/40 border-zinc-800'"
+                          :class="file.afterLength > file.beforeLength || file.afterLength >= currentThreshold ? 'bg-red-950/20 border-red-900/40' : (file.afterLength === file.beforeLength ? 'bg-zinc-900/40 border-zinc-800' : 'bg-emerald-950/20 border-emerald-900/40')"
                         >
                           <div>
                             <div class="flex justify-between text-[11px] mb-1">
                               <span
                                 class="font-bold"
-                                :class="file.isAiProposed ? 'text-emerald-400' : 'text-zinc-400'"
-                                x-text="file.isAiProposed ? '✓ AFTER (AI提案 / 編集可)' : 'AFTER (未提案 / 編集可)'"
+                                :class="file.afterLength > file.beforeLength || file.afterLength >= currentThreshold ? 'text-red-400' : (file.afterLength === file.beforeLength ? 'text-zinc-400' : 'text-emerald-400')"
+                                x-text="file.afterLength > file.beforeLength ? 'AFTER (文字数増加 / 編集可)' : (file.afterLength >= currentThreshold ? 'AFTER (要短縮 / 編集可)' : (file.afterLength === file.beforeLength ? 'AFTER (未短縮 / 編集可)' : (file.isAiProposed ? '✓ AFTER (AI提案 / 編集可)' : 'AFTER (編集可)')))"
                               ></span>
                               <span
                                 class="font-mono font-bold"
-                                :class="file.isAiProposed ? 'text-emerald-400' : 'text-zinc-400'"
-                                x-text="file.afterLength + '字 ' + (file.afterLength <= 240 ? '[安全]' : '[警告]')"
+                                :class="file.afterLength > file.beforeLength || file.afterLength >= currentThreshold ? 'text-red-400' : (file.afterLength === file.beforeLength ? 'text-zinc-400' : 'text-emerald-400')"
+                                x-text="file.afterLength + '字 ' + (file.afterLength > file.beforeLength ? '[増加]' : (file.afterLength >= currentThreshold ? '[危険]' : (file.afterLength === file.beforeLength ? '[未短縮]' : '[安全]')))"
                               ></span>
                             </div>
                             <input
@@ -578,7 +589,7 @@
                               x-model="file.afterFileName"
                               @input="recalculateLength(file)"
                               class="w-full bg-black/80 border rounded px-2 py-1 text-xs font-mono focus:outline-none"
-                              :class="file.isAiProposed ? 'border-emerald-600/80 text-emerald-300' : 'border-zinc-700 text-zinc-200'"
+                              :class="file.afterLength > file.beforeLength || file.afterLength >= currentThreshold ? 'border-red-900/40 text-red-200' : (file.isAiProposed ? 'border-emerald-600/80 text-emerald-300' : 'border-zinc-700 text-zinc-200')"
                             />
                           </div>
                           <!-- AI Comment Box (問題があった時のみ表示) -->
@@ -615,10 +626,11 @@
                 x-text="selectedCount + ' 件'"
               ></span>
               <span
-                class="text-emerald-400 text-xs font-semibold"
+                class="text-xs font-semibold"
+                :class="filteredFiles.some(f => f.selected && (f.afterLength > f.beforeLength || f.afterLength >= currentThreshold)) ? 'text-red-400' : (filteredFiles.some(f => f.selected && f.afterLength === f.beforeLength) ? 'text-amber-400' : 'text-emerald-400')"
                 x-show="filesLoaded"
-                >✓ 260文字制限を完全クリア</span
-              >
+                x-text="filteredFiles.some(f => f.selected && f.afterLength > f.beforeLength) ? '⚠️ 文字数増加ファイルが含まれています' : (filteredFiles.some(f => f.selected && f.afterLength >= currentThreshold) ? '⚠️ 要短縮ファイルが含まれています (基準超過)' : (filteredFiles.some(f => f.selected && f.afterLength === f.beforeLength) ? '⚠️ 未短縮ファイルが含まれています' : '✓ 260文字制限を完全クリア (全件短縮済)'))"
+              ></span>
 
               <!-- UNDO BUTTON -->
               <button

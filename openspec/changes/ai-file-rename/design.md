@@ -539,9 +539,85 @@ type Msg =
   - 短縮バッジ（`-〇〇字 (〇〇%短縮)`）のフォントファミリーを `"Yu Gothic UI", "Segoe UI", sans-serif"` に変更。
   - 欧文専用フォント `Consolas` を廃止することで、フォントフォールバックによる英数字と漢字の行メトリクス（アセント/ベースライン）のズレを解消し、数字と日本語のベースラインおよび高さを完全に整流。
 - **カード枠線（青）の完全描画（見切れ解消）**:
-  - `candidateCardVertical` 内の Line 1（パス部）: `SelectableTextBlock` に `TextTrimming.CharacterEllipsis` を指定し、右側の短縮バッジを侵食しないよう DockPanel でレイアウト。
+  - `candidateCardVertical` 内の Line 1（パス部）: `DockPanel`（左: CheckBox, 番号 / 右: バッジ / 残り中央: `SelectableTextBlock`）に再構成。`StackPanel (Horizontal)` による無限幅要求を根絶。
+  - Line 2（BEFORE ファイル名部）: `ScrollViewer (Hidden)` による無限 DesiredWidth 要求を排除し、`DockPanel` の残余領域に直接 `SelectableTextBlock`（`TextTrimming.CharacterEllipsis`）を配置。親幅に 100% 従属。
   - Line 4（AIコメント部）: `StackPanel (Horizontal)` を廃止し、`DockPanel`（左にラベル、中央に残りの Wrap テキスト）に変更。親幅を超えて横に飛び出す現象を根本排除。
-  - 親 `ScrollViewer` の `HorizontalScrollBarVisibility = Disabled` を明示し、子要素が親コンテナ幅（ウィンドウ幅）を突破することを物理的に不可能にし、カードの青い枠線（Border）の右端および下端が常に画面内に綺麗に描画されることを保証。
+  - `ScrollViewer` のパディング（10.0）とカードの左右マージン（0.0）を均等にし、左右対称なレイアウトを確保。
+  - 任意のウィンドウ幅（800px〜1600px+）において、カードの右辺および下辺の青い枠線（Border）が親コンテナ内に完全に閉じて描画されることを保証。
+
+### 5.10 未短縮・基準超過時の正直な危険警告ステータス設計
+
+- **背景**:
+  LLM未接続時（未提案）や手動編集後であっても、文字数が抽出基準（`CurrentThreshold = 240`）以上である場合、以前の実装では固定で「[安全]」「✓ 安全」「✓ 260文字制限を完全クリア」と表示されていたため、ユーザーに誤解を与える不具合が発生していた。
+- **改修方針**:
+  - **パス長が危険文字数（`c.ProposedLength >= model.CurrentThreshold`）の場合**:
+    - **Line 1 右側ステータス**:
+      - 短縮文字数が 0 以下のとき: `[ ±0字 (未短縮) ]`（グレー系バッジ）
+      - ステータスバッジ: `⚠️ 要短縮 (危険)` または `⚠️ 基準超過`（薄赤 `#f87171`、太字）
+    - **Line 3 (AFTER 行)**:
+      - 背景・枠線: 薄赤系（`bgBefore` / `borderBefore`）
+      - ラベル: `AFTER ({c.ProposedLength}字 [危険])`（薄赤バッジ、テキスト: `#f87171`）
+    - **左右並び（Horizontal）**:
+      - AFTER ラベル右側: `${c.ProposedLength}字 [危険]`（薄赤 `#f87171`）
+      - 背景・枠線: 薄赤系
+  - **パス長が安全文字数（`c.ProposedLength < model.CurrentThreshold`）の場合**:
+    - Line 1 右側: `[ -〇〇字 (〇〇%短縮) ]`（緑バッジ）＋ `✓ 安全`（緑）
+    - Line 3 AFTER: 背景・枠線 薄緑、ラベル `AFTER ({c.ProposedLength}字 [安全])`（緑）
+    - 左右並び: `${c.ProposedLength}字 [安全]`（緑）
+  - **フッターのアクションバー（`footerActions`）**:
+    - 選択中の全候補が `c.ProposedLength < model.CurrentThreshold` かつ `c.ProposedLength < c.OriginalLength` の場合のみ「✓ 260文字制限を完全クリア (全件短縮済)」（緑）を表示。
+    - 1件でも `c.ProposedLength > c.OriginalLength`（文字数増加）の候補がある場合は「⚠️ 文字数増加ファイルが含まれています」（薄赤・警告）を表示。
+    - 1件でも `c.ProposedLength >= model.CurrentThreshold` の候補がある場合は「⚠️ 要短縮ファイルが含まれています (基準超過)」（薄赤・警告）を表示。
+    - 1件でも未短縮（`c.ProposedLength = c.OriginalLength`）の候補がある場合は「⚠️ 未短縮ファイルが含まれています」（警告色）を表示。
+
+### 5.11 手動編集時の文字数増減・安全性の動的評価設計
+
+手動入力テキストボックス（`TextBox.onTextChanged` → `UpdateProposedName`）によるリアルタイム変更に対応し、カード内の各要素（短縮バッジ、ステータス、AFTERラベル、背景枠線）を以下の4状態に動的に評価・切り替える。
+
+| 状態条件                                                                              | 短縮バッジ                            | ステータスバッジ                                 | AFTERラベル                                                | 背景・ボーダー                       |
+| :------------------------------------------------------------------------------------ | :------------------------------------ | :----------------------------------------------- | :--------------------------------------------------------- | :----------------------------------- |
+| **文字数増加**<br>`c.ProposedLength > c.OriginalLength`                               | `+{diff}字 (増加)`<br>(赤系バッジ)    | `⚠️ 文字数増加`<br>(赤系 `#f87171`)              | `〇〇字 [増加]` または<br>`〇〇字 [危険]` (閾値以上)       | 赤系 (`bgBefore` / `borderBefore`)   |
+| **未短縮**<br>`c.ProposedLength = c.OriginalLength`                                   | `±0字 (未短縮)`<br>(グレーバッジ)     | `⚠️ 要短縮` (閾値以上)<br>`⚠️ 未短縮` (閾値未満) | `〇〇字 [危険]` (閾値以上)<br>`〇〇字 [未短縮]` (閾値未満) | 閾値以上: 赤系<br>閾値未満: グレー系 |
+| **短縮不足**<br>`c.ProposedLength < c.OriginalLength` かつ `>= CurrentThreshold`      | `-{diff}字 (〇%短縮)`<br>(緑系バッジ) | `⚠️ 要短縮 (基準超過)`<br>(赤系 `#f87171`)       | `〇〇字 [危険]`<br>(赤系)                                  | 赤系 (`bgBefore` / `borderBefore`)   |
+| **短縮成功・安全**<br>`c.ProposedLength < c.OriginalLength` かつ `< CurrentThreshold` | `-{diff}字 (〇%短縮)`<br>(緑系バッジ) | `✓ 安全`<br>(緑系 `#4ade80`)                     | `〇〇字 [安全]`<br>(緑系)                                  | 緑系 (`bgAfter` / `borderAfter`)     |
+
+### 5.12 appsettings.json サンプル配備設計
+
+`src/TagBasedVideoManager.Renamer/appsettings.json` に以下の構成で標準設定サンプルを配備する。
+
+```json
+{
+  "targetDirectory": "D:\\videos",
+  "pathLengthThreshold": 240,
+  "selectedModel": "meta-llama/llama-3.3-70b-instruct:free",
+  "apiKey": null,
+  "rules": [
+    {
+      "id": "rule-date-action",
+      "name": "日付_撮影地_行動 (推奨)",
+      "pattern": "{Date}_{Location}_{Activity}.mp4",
+      "promptInstruction": "ファイル名から撮影日(YYYYMMDD)、撮影場所、主な行動/内容を抽出しアンダースコア繋ぎで命名してください。情報が不足している場合は親ディレクトリ名や更新日時から推測してください。",
+      "order": 0
+    },
+    {
+      "id": "rule-compact",
+      "name": "短縮 (タイトルのみ)",
+      "pattern": "{ShortTitle}.mp4",
+      "promptInstruction": "動画の内容を表す最も重要で短いキーワード（20文字以内）で命名してください。",
+      "order": 1
+    },
+    {
+      "id": "rule-title-date",
+      "name": "タイトル_日付",
+      "pattern": "{Title}_{Date}.mp4",
+      "promptInstruction": "ファイル名からタイトルと日付を抽出し命名してください。",
+      "order": 2
+    }
+  ]
+}
+```
+
+- `TagBasedVideoManager.Renamer.fsproj` に `<None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />` を定義し、ビルド時に実行フォルダへ自動コピーされるように構成する。
 
 ## 6. テスト・品質検証設計
 

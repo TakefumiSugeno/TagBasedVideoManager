@@ -292,10 +292,10 @@ module RenameIntegrationE2ETests =
             ConfirmDialog = None
         }
 
-        let renderAndCapture (m: Model) (fileName: string) =
+        let renderAndCaptureWithCustomSize (m: Model) (fileName: string) (width: float) (height: float) =
             let w = new Avalonia.FuncUI.Hosts.HostWindow()
-            w.Width <- 1100.0
-            w.Height <- 720.0
+            w.Width <- width
+            w.Height <- height
             w.Background <- Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#1a1a1a"))
 
             Elmish.Program.mkProgram (fun () -> m, Elmish.Cmd.none) State.update Views.view
@@ -305,7 +305,7 @@ module RenameIntegrationE2ETests =
             w.Show()
             w.UpdateLayout()
 
-            let pixelSize = Avalonia.PixelSize(1100, 720)
+            let pixelSize = Avalonia.PixelSize(int width, int height)
             let dpi = Avalonia.Vector(96.0, 96.0)
             let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
             rtb.Render(w)
@@ -324,6 +324,9 @@ module RenameIntegrationE2ETests =
 
             File.Exists(outputPath) |> should equal true
             FileInfo(outputPath).Length |> should be (greaterThan 1000L)
+
+        let renderAndCapture (m: Model) (fileName: string) =
+            renderAndCaptureWithCustomSize m fileName 1100.0 720.0
 
         // 1. 初期画面 (0件)
         renderAndCapture baseModel "E2E_01_Initial_State.png"
@@ -396,6 +399,50 @@ module RenameIntegrationE2ETests =
                 ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定のため、AI提案はスキップされました。設定画面でAPIキーを登録するか、AFTERファイル名を手動編集してください。"
         }
         renderAndCapture unproposedModel "E2E_07_Unproposed_No_ApiKey.png"
+        renderAndCapture unproposedModel "E2E_07b_Unshortened_Danger_Warning.png"
+
+        // 8. 手動編集による文字数増加警告状態 (ProposedLength > OriginalLength)
+        let increasedCandidates : RenameProposal list = [
+            {
+                OriginalFullPath = "D:\\Videos\\normal_sample_video.mp4"
+                OriginalFileName = "normal_sample_video.mp4"
+                DirectoryPath = "D:\\Videos"
+                OriginalLength = 200
+                ProposedFileName = "manually_edited_much_longer_file_name_that_increases_path_length.mp4"
+                ProposedLength = 245
+                AiComment = None
+                IsAiProposed = false
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+            }
+        ]
+        let increasedModel = {
+            baseModel with
+                Candidates = increasedCandidates
+                CurrentThreshold = 240
+        }
+        renderAndCapture increasedModel "E2E_08_Manual_Length_Increase_Warning.png"
+
+        // 9. 複数ウィンドウ幅（800px, 1100px, 1600px）での青枠完全描画キャプチャ
+        let multiWidthCandidates : RenameProposal list = [
+            {
+                OriginalFullPath = "D:\\Videos\\nested_directory_structure\\2024-01-01_" + String('x', 200) + ".mp4"
+                OriginalFileName = "2024-01-01_" + String('x', 200) + ".mp4"
+                DirectoryPath = "D:\\Videos\\nested_directory_structure"
+                OriginalLength = 260
+                ProposedFileName = "2024-01-01_short.mp4"
+                ProposedLength = 60
+                AiComment = Some "長いAIコメント：撮影地と日付を補完し、親コンテナ幅制約を検証します。"
+                IsAiProposed = true
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+            }
+        ]
+        let multiWidthModel = { baseModel with Candidates = multiWidthCandidates }
+        renderAndCaptureWithCustomSize multiWidthModel "E2E_09a_Width_800.png" 800.0 650.0
+        renderAndCaptureWithCustomSize multiWidthModel "E2E_09b_Width_1100.png" 1100.0 650.0
+        renderAndCaptureWithCustomSize multiWidthModel "E2E_09c_Width_1600.png" 1600.0 650.0
+
 
 
     [<Fact>]
@@ -494,4 +541,205 @@ module RenameIntegrationE2ETests =
                         File.ReadAllText(longPath1) |> should equal "initial-video-data-1"
                         File.ReadAllText(longPath2) |> should equal "initial-video-data-2"
         )
+
+    [<Fact>]
+    let ``GUI: unproposed or unshortened candidate displays danger warning instead of safe badge`` () =
+        ensureAppInitialized ()
+        let baseModel, _ = State.init ()
+        let candidate: RenameProposal = {
+            OriginalFullPath = "E:\\videos\\unshortened_danger_path_exceeding_threshold_by_far_test.mp4"
+            OriginalFileName = "unshortened_danger_path_exceeding_threshold_by_far_test.mp4"
+            DirectoryPath = "E:\\videos"
+            OriginalLength = 255
+            ProposedFileName = "unshortened_danger_path_exceeding_threshold_by_far_test.mp4"
+            ProposedLength = 255
+            AiComment = None
+            IsAiProposed = false
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+        }
+        let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
+
+        let w = new Avalonia.FuncUI.Hosts.HostWindow()
+        w.Width <- 1100.0
+        w.Height <- 720.0
+        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+        |> Avalonia.FuncUI.Elmish.Program.withHost w
+        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+        w.Show()
+        w.UpdateLayout()
+
+        // ビジュアルツリーから全 TextBlock の文字列を収集
+        let rec collectTexts (control: Avalonia.Controls.Control) : string list =
+            let currentText =
+                match control with
+                | :? Avalonia.Controls.TextBlock as tb -> [ tb.Text ]
+                | _ -> []
+            let childTexts =
+                match control with
+                | :? Avalonia.Controls.Panel as panel ->
+                    panel.Children |> Seq.collect collectTexts |> Seq.toList
+                | :? Avalonia.Controls.ContentControl as cc ->
+                    match cc.Content with
+                    | :? Avalonia.Controls.Control as c -> collectTexts c
+                    | _ -> []
+                | :? Avalonia.Controls.Decorator as dec when dec.Child <> null ->
+                    collectTexts dec.Child
+                | _ -> []
+            currentText @ childTexts
+
+        let allTexts = collectTexts w
+        w.Close()
+
+        // 閾値以上（255字 >= 240字）の場合:
+        // AFTER行のラベルは「[安全]」ではなく「[危険]」と表示されるべき
+        allTexts |> List.exists (fun t -> t <> null && t.Contains("AFTER (255字 [危険])")) |> should equal true
+        // 「✓ 安全」や「AFTER (255字 [安全])」は絶対に存在してはならない
+        allTexts |> List.exists (fun t -> t <> null && t.Contains("AFTER (255字 [安全])")) |> should equal false
+        allTexts |> List.exists (fun t -> t <> null && t.Contains("✓ 安全")) |> should equal false
+        // ステータスに「要短縮」が含まれるべき
+        allTexts |> List.exists (fun t -> t <> null && t.Contains("要短縮")) |> should equal true
+
+    [<Fact>]
+    let ``GUI: candidate card border right boundary stays within container across various window widths`` () =
+        ensureAppInitialized ()
+        let baseModel, _ = State.init ()
+        let candidate: RenameProposal = {
+            OriginalFullPath = "E:\\videos\\sub_directory_with_quite_long_nested_path_structure\\2024-01-01_" + String('x', 260) + "_extremely_long_video_name.mp4"
+            OriginalFileName = "2024-01-01_" + String('x', 260) + "_extremely_long_video_name.mp4"
+            DirectoryPath = "E:\\videos\\sub_directory_with_quite_long_nested_path_structure"
+            OriginalLength = 350
+            ProposedFileName = "2024-01-01_short.mp4"
+            ProposedLength = 70
+            AiComment = Some "長いAIコメント：元ファイル名に撮影日時が含まれていなかったため補完しました。さらに親コンテナ幅制約を検証するための長文コメントです。"
+            IsAiProposed = true
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+        }
+        let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
+
+        for testWidth in [ 800.0; 1100.0; 1600.0 ] do
+            let w = new Avalonia.FuncUI.Hosts.HostWindow()
+            w.Width <- testWidth
+            w.Height <- 720.0
+            Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+            |> Avalonia.FuncUI.Elmish.Program.withHost w
+            |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+            w.Show()
+            w.UpdateLayout()
+
+            // ビジュアルツリーから全 Border を走査し、青い外枠（accentBlue）の Border を特定
+            let rec findSelectedCards (control: Avalonia.Controls.Control) : Avalonia.Controls.Border list =
+                let current =
+                    match control with
+                    | :? Avalonia.Controls.Border as b when b.BorderBrush <> null && b.BorderBrush.ToString().Contains("2563eb") ->
+                        [ b ]
+                    | _ -> []
+                let children =
+                    match control with
+                    | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect findSelectedCards |> Seq.toList
+                    | :? Avalonia.Controls.ContentControl as cc ->
+                        match cc.Content with
+                        | :? Avalonia.Controls.Control as c -> findSelectedCards c
+                        | _ -> []
+                    | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
+                        findSelectedCards d.Child
+                    | _ -> []
+                current @ children
+
+            let cards = findSelectedCards w
+            cards.Length |> should be (greaterThan 0)
+            for card in cards do
+                // カードの幅がウィンドウ幅より小さく（マージンやパディングがあるため）、右端がはみ出ていないこと
+                card.Bounds.Width |> should be (lessThan testWidth)
+                card.Bounds.Right |> should be (lessThanOrEqualTo testWidth)
+            w.Close()
+
+    [<Fact>]
+    let ``GUI: manually increased proposed name length displays danger warning badges instead of safe`` () =
+        ensureAppInitialized ()
+        let baseModel, _ = State.init ()
+        // 元200文字（閾値240未満）だが、手動編集で220文字に増加した候補（ProposedLength > OriginalLength）
+        let candidate: RenameProposal = {
+            OriginalFullPath = "D:\\videos\\short_original_video.mp4"
+            OriginalFileName = "short_original_video.mp4"
+            DirectoryPath = "D:\\videos"
+            OriginalLength = 200
+            ProposedFileName = "manually_edited_longer_name_sample_video.mp4"
+            ProposedLength = 220 // 元より20文字増加
+            AiComment = None
+            IsAiProposed = false
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+        }
+        let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
+
+        let w = new Avalonia.FuncUI.Hosts.HostWindow()
+        w.Width <- 1000.0
+        w.Height <- 700.0
+        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+        |> Avalonia.FuncUI.Elmish.Program.withHost w
+        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+        w.Show()
+        w.UpdateLayout()
+
+        let rec collectTextBlocks (control: Avalonia.Controls.Control) : string list =
+            let text =
+                match control with
+                | :? Avalonia.Controls.TextBlock as tb -> [ tb.Text ]
+                | _ -> []
+            let children =
+                match control with
+                | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectTextBlocks |> Seq.toList
+                | :? Avalonia.Controls.ContentControl as cc ->
+                    match cc.Content with
+                    | :? Avalonia.Controls.Control as c -> collectTextBlocks c
+                    | _ -> []
+                | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
+                    collectTextBlocks d.Child
+                | _ -> []
+            text @ children
+
+        let allTexts = collectTextBlocks w
+        w.Close()
+
+        // 元より文字数が増加しているため、「[安全]」や「✓ 安全」は絶対に存在してはならない
+        allTexts |> List.exists (fun t -> t <> null && t.Contains("[安全]")) |> should equal false
+        allTexts |> List.exists (fun t -> t <> null && t.Contains("✓ 安全")) |> should equal false
+
+        // 「増加」または「+20字」のバッジが存在すること
+        allTexts |> List.exists (fun t -> t <> null && (t.Contains("増加") || t.Contains("+20字"))) |> should equal true
+        // ステータスに「文字数増加」が含まれること
+        allTexts |> List.exists (fun t -> t <> null && t.Contains("文字数増加")) |> should equal true
+
+    [<Fact>]
+    let ``Settings: appsettings.json sample exists in project root and can be deserialized`` () =
+        // プロジェクトルートの appsettings.json を探索
+        let projectJsonPath =
+            let rec findRoot (dir: DirectoryInfo) (depth: int) =
+                if depth <= 0 || box dir = null then None
+                else
+                    let candidate = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.json")
+                    if File.Exists(candidate) then Some candidate
+                    else findRoot dir.Parent (depth - 1)
+            let current = DirectoryInfo(Directory.GetCurrentDirectory())
+            let baseDir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
+            findRoot current 8
+            |> Option.orElseWith (fun () -> findRoot baseDir 8)
+            |> Option.orElseWith (fun () ->
+                let direct = Path.Combine("src", "TagBasedVideoManager.Renamer", "appsettings.json")
+                if File.Exists(direct) then Some (Path.GetFullPath(direct)) else None
+            )
+
+        match projectJsonPath with
+        | None -> failwith "src/TagBasedVideoManager.Renamer/appsettings.json が存在しません。"
+        | Some path ->
+            let result = Settings.load path
+            match result with
+            | Error err -> failwith $"appsettings.json のロードに失敗しました: {err}"
+            | Ok s ->
+                s.PathLengthThreshold |> should equal 240
+                s.Rules.Length |> should be (greaterThanOrEqualTo 2)
+
+
 

@@ -77,3 +77,20 @@
 - [x] 10.3 [実装・リファクタ] `State.fs` の設定保存・読み込みパスを `appsettings.json` へ移行し、案内メッセージ内のファイル名表示を更新する
 - [x] 10.4 [ドキュメント更新] `README.md` に AI File Renamer の設定セクション（`appsettings.json` の書式・探索/格納先パス・優先順位、`.env` 対応表、OS環境変数非参照方針）を追記する
 - [x] 10.5 [回帰検証・全テスト実行] 全テスト（Renamer 52件、既存Webアプリ 44件）を実行し、TRXエビデンスおよびカバレッジレポートを出力して品質基準を満たしていることを検証する
+
+## 11. 青枠完全描画（任意ウィンドウ幅対応）および未短縮時危険警告ステータス正常化 (TDD)
+
+- [x] 11.1 [単体・レイアウトテスト作成] 異なるウィンドウ幅（800px, 1100px, 1600px）および長大パスにおけるカード枠幅制約アサーション、および未短縮（`ProposedLength >= CurrentThreshold`）時に「[安全]」ではなく「[危険]」「⚠️ 要短縮」となる失敗するテストを作成する（Red）
+- [x] 11.2 [実装・リファクタ] `Views.fs` の `candidateCardVertical`, `candidateCardHorizontal`, `footerActions` を修正し、Line 1 / Line 2 / Line 4 の完全幅制約、未短縮時の警告色（薄赤背景・ボーダー・[危険]ラベル・要短縮バッジ）、およびフッターの警告文言切り替えを実装してテストをGreenにする
+- [x] 11.3 [モック更新] `openspec/changes/ai-file-rename/mockup.html` を更新し、未短縮時の「AFTER (〇〇字 [危険])」「⚠️ 要短縮」表示および最新スタイルを反映する
+- [x] 11.4 [GUI実画面E2E検証] `RenameIntegrationE2ETests.fs` を拡張し、複数ウィンドウ幅（800px, 1100px, 1600px）での青枠完全描画キャプチャ、および未短縮時警告キャプチャを出力・検証する
+- [x] 11.5 [回帰検証・Applyレビュー] 全テストを実行して全件合格を確認し、QA/PG Agent Apply レビューを記録する
+
+## 12. appsettings.json サンプル配備および手動編集時の文字数増加・短縮状態に応じた動的評価正常化 (TDD)
+
+- [x] 12.1 [単体テスト・仕様検証] AFTER手動ファイル名変更で文字数が増加した場合（`ProposedLength > OriginalLength`）に「+〇字 (増加)」「⚠️ 文字数増加」「[増加]/[危険]」となり、絶対に「[安全]」とならないことの失敗するテストを作成する（Red）
+- [x] 12.2 [実装・リファクタ] `Views.fs` の `candidateCardVertical` / `candidateCardHorizontal` / `footerActions` に文字数増加・未短縮・短縮不足・短縮成功の4状態判定ロジックを実装し、テストをGreenにする
+- [x] 12.3 [サンプル配備・プロジェクト構成] `src/TagBasedVideoManager.Renamer/appsettings.json` のサンプルファイルを作成し、`TagBasedVideoManager.Renamer.fsproj` に出力コピー設定を追加する
+- [x] 12.4 [モック更新] `openspec/changes/ai-file-rename/mockup.html` に文字数増加警告状態（`+〇字 (増加)`, `⚠️ 文字数増加`, `[増加]`）のUIサンプルとスタイルを反映する
+- [x] 12.5 [GUI実画面E2E検証] `RenameIntegrationE2ETests.fs` を拡張し、手動文字数増加時の警告表示の実画面キャプチャ（PNG）を出力・検証する
+- [x] 12.6 [回帰検証・Applyレビュー] 全テストを実行して全件合格を確認し、QA/PG Agent Apply レビューを記録する

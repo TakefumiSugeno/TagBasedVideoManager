@@ -469,56 +469,98 @@ module Views =
     // ==========================================
 
     /// 上下並び (Vertical) - mockup.html MODE A
-    let candidateCardVertical (index: int) (c: RenameProposal) (dispatch: Msg -> unit) =
-        let reduction = c.OriginalLength - c.ProposedLength
+    let candidateCardVertical (index: int) (c: RenameProposal) (currentThreshold: int) (dispatch: Msg -> unit) =
+        let isIncrease = c.ProposedLength > c.OriginalLength
+        let isUnshortened = c.ProposedLength = c.OriginalLength
+        let isDanger = c.ProposedLength >= currentThreshold
+        let diff = c.OriginalLength - c.ProposedLength
         let reductionPercent =
             if c.OriginalLength > 0 then
                 int (Math.Round((1.0 - (float c.ProposedLength / float c.OriginalLength)) * 100.0))
             else 0
+
+        let badgeBg, badgeBorder, badgeText, badgeFg =
+            if isIncrease then
+                Color.Parse("#3f1d1d"), Color.Parse("#7f1d1d"), $"+{c.ProposedLength - c.OriginalLength}字 (増加)", Color.Parse("#fca5a5")
+            elif isUnshortened then
+                Color.Parse("#27272a"), Color.Parse("#3f3f46"), "±0字 (未短縮)", Color.Parse("#a1a1aa")
+            else
+                badgeBgAfter, borderAfter, $"-{diff}字 ({reductionPercent}%%短縮)", textAfterLabel
+
+        let statusText, statusFg =
+            if isIncrease then
+                "⚠️ 文字数増加", Color.Parse("#f87171")
+            elif isDanger then
+                "⚠️ 要短縮", Color.Parse("#f87171")
+            elif isUnshortened then
+                "⚠️ 未短縮", Color.Parse("#fbbf24")
+            else
+                "✓ 安全", textAfterLabel
+
+        let afterBg, afterBorder =
+            if isIncrease || isDanger then bgBefore, borderBefore
+            elif isUnshortened then Color.Parse("#18181b"), Color.Parse("#3f3f46")
+            else bgAfter, borderAfter
+
+        let afterBadgeBg, afterBadgeBorder =
+            if isIncrease || isDanger then badgeBgBefore, borderBefore
+            elif isUnshortened then Color.Parse("#27272a"), Color.Parse("#3f3f46")
+            else badgeBgAfter, borderAfter
+
+        let afterLabelText, afterLabelFg =
+            if isIncrease then
+                (if isDanger then $"AFTER ({c.ProposedLength}字 [危険 (増加)])" else $"AFTER ({c.ProposedLength}字 [増加])"), Color.Parse("#f87171")
+            elif isDanger then
+                $"AFTER ({c.ProposedLength}字 [危険])", textBeforeLabel
+            elif isUnshortened then
+                $"AFTER ({c.ProposedLength}字 [未短縮])", Color.Parse("#a1a1aa")
+            else
+                $"AFTER ({c.ProposedLength}字 [安全])", textAfterLabel
 
         Border.create [
             Border.background (SolidColorBrush bgInput)
             Border.borderBrush (SolidColorBrush (if c.IsSelected then accentBlue else borderZinc800))
             Border.borderThickness (if c.IsSelected then 1.5 else 1.0)
             Border.cornerRadius 6.0
-            Border.margin (0.0, 0.0, 4.0, 8.0)
+            Border.margin (0.0, 0.0, 0.0, 8.0)
             Border.padding 8.0
             Border.clipToBounds true
             Border.child (
                 StackPanel.create [
                     StackPanel.spacing 5.0
                     StackPanel.children [
-                        // Line 1: Header / Checkbox / Folder & Metrics
+                        // Line 1: Header / Checkbox / Folder & Metrics (完全DockPanel構成で親幅超過を根絶)
                         DockPanel.create [
                             DockPanel.children [
-                                // 右側: 削減バッジ & 安全バッジ
+                                // 右側: 削減バッジ & ステータスバッジ
                                 StackPanel.create [
                                     DockPanel.dock Dock.Right
                                     StackPanel.orientation Orientation.Horizontal
                                     StackPanel.spacing 8.0
                                     StackPanel.verticalAlignment VerticalAlignment.Center
+                                    StackPanel.margin (8.0, 0.0, 0.0, 0.0)
                                     StackPanel.children [
                                         Border.create [
-                                            Border.background (SolidColorBrush badgeBgAfter)
-                                            Border.borderBrush (SolidColorBrush borderAfter)
+                                            Border.background (SolidColorBrush badgeBg)
+                                            Border.borderBrush (SolidColorBrush badgeBorder)
                                             Border.borderThickness 1.0
                                             Border.cornerRadius 4.0
                                             Border.padding (6.0, 2.0)
                                             Border.verticalAlignment VerticalAlignment.Center
                                             Border.child (
                                                 TextBlock.create [
-                                                    TextBlock.text $"-{reduction}字 ({reductionPercent}%%短縮)"
+                                                    TextBlock.text badgeText
                                                     TextBlock.fontSize 10.0
                                                     TextBlock.fontFamily (FontFamily "Yu Gothic UI, Segoe UI, sans-serif")
                                                     TextBlock.fontWeight FontWeight.Bold
-                                                    TextBlock.foreground (SolidColorBrush textAfterLabel)
+                                                    TextBlock.foreground (SolidColorBrush badgeFg)
                                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                                 ]
                                             )
                                         ]
                                         TextBlock.create [
-                                            TextBlock.text "✓ 安全"
-                                            TextBlock.foreground (SolidColorBrush textAfterLabel)
+                                            TextBlock.text statusText
+                                            TextBlock.foreground (SolidColorBrush statusFg)
                                             TextBlock.fontWeight FontWeight.Bold
                                             TextBlock.fontSize 10.0
                                             TextBlock.verticalAlignment VerticalAlignment.Center
@@ -526,38 +568,40 @@ module Views =
                                     ]
                                 ]
 
-                                // 左側: チェックボックス + #番号 + フォルダパス (SelectableTextBlock でコピー可能)
-                                StackPanel.create [
-                                    StackPanel.orientation Orientation.Horizontal
-                                    StackPanel.spacing 8.0
-                                    StackPanel.verticalAlignment VerticalAlignment.Center
-                                    StackPanel.children [
-                                        CheckBox.create [
-                                            CheckBox.isChecked c.IsSelected
-                                            CheckBox.onIsCheckedChanged (fun _ -> dispatch (ToggleCandidateSelect c.OriginalFullPath))
-                                            CheckBox.verticalAlignment VerticalAlignment.Center
-                                        ]
-                                        TextBlock.create [
-                                            TextBlock.text $"#{index + 1}"
-                                            TextBlock.fontWeight FontWeight.Bold
-                                            TextBlock.fontSize 11.0
-                                            TextBlock.foreground (SolidColorBrush textZinc400)
-                                            TextBlock.verticalAlignment VerticalAlignment.Center
-                                        ]
-                                        SelectableTextBlock.create [
-                                            TextBlock.text (c.DirectoryPath + "\\")
-                                            TextBlock.fontFamily (FontFamily "Consolas, monospace")
-                                            TextBlock.fontSize 10.0
-                                            TextBlock.foreground (SolidColorBrush textZinc500)
-                                            TextBlock.verticalAlignment VerticalAlignment.Center
-                                            TextBlock.textTrimming TextTrimming.CharacterEllipsis
-                                        ]
-                                    ]
+                                // 左側固定: チェックボックス
+                                CheckBox.create [
+                                    DockPanel.dock Dock.Left
+                                    CheckBox.isChecked c.IsSelected
+                                    CheckBox.onIsCheckedChanged (fun _ -> dispatch (ToggleCandidateSelect c.OriginalFullPath))
+                                    CheckBox.verticalAlignment VerticalAlignment.Center
+                                    CheckBox.margin (0.0, 0.0, 8.0, 0.0)
+                                ]
+
+                                // 左側固定: #番号
+                                TextBlock.create [
+                                    DockPanel.dock Dock.Left
+                                    TextBlock.text $"#{index + 1}"
+                                    TextBlock.fontWeight FontWeight.Bold
+                                    TextBlock.fontSize 11.0
+                                    TextBlock.foreground (SolidColorBrush textZinc400)
+                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                    TextBlock.margin (0.0, 0.0, 8.0, 0.0)
+                                ]
+
+                                // 残余領域: フォルダパス (親幅内でトリミングされ親幅を突破しない)
+                                SelectableTextBlock.create [
+                                    TextBlock.text (c.DirectoryPath + "\\")
+                                    TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                    TextBlock.fontSize 10.0
+                                    TextBlock.foreground (SolidColorBrush textZinc500)
+                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                    TextBlock.textTrimming TextTrimming.CharacterEllipsis
+                                    TextBlock.textWrapping TextWrapping.NoWrap
                                 ]
                             ]
                         ]
 
-                        // Line 2: BEFORE (薄赤背景・行高さ 32px 統一・ラベル幅 140px 固定・ScrollViewer で外枠見切れ防止)
+                        // Line 2: BEFORE (薄赤背景・行高さ 32px 統一・ラベル幅 140px 固定・親幅制約)
                         Border.create [
                             Border.background (SolidColorBrush bgBefore)
                             Border.borderBrush (SolidColorBrush borderBefore)
@@ -589,31 +633,25 @@ module Views =
                                                 ]
                                             )
                                         ]
-                                        // BEFORE ファイル名: SelectableTextBlock でコピー可能、等幅フォント、ScrollViewer で外枠見切れ防止
-                                        ScrollViewer.create [
-                                            ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Hidden
-                                            ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Disabled
-                                            ScrollViewer.clipToBounds true
-                                            ScrollViewer.content (
-                                                SelectableTextBlock.create [
-                                                    TextBlock.text c.OriginalFileName
-                                                    TextBlock.fontFamily (FontFamily "Consolas, monospace")
-                                                    TextBlock.fontSize 11.0
-                                                    TextBlock.foreground (SolidColorBrush textBeforeFile)
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                    TextBlock.textWrapping TextWrapping.NoWrap
-                                                ]
-                                            )
+                                        // BEFORE ファイル名: SelectableTextBlock で親幅残余領域に直接配置（親幅を突破しない）
+                                        SelectableTextBlock.create [
+                                            TextBlock.text c.OriginalFileName
+                                            TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                            TextBlock.fontSize 11.0
+                                            TextBlock.foreground (SolidColorBrush textBeforeFile)
+                                            TextBlock.verticalAlignment VerticalAlignment.Center
+                                            TextBlock.textTrimming TextTrimming.CharacterEllipsis
+                                            TextBlock.textWrapping TextWrapping.NoWrap
                                         ]
                                     ]
                                 ]
                             )
                         ]
 
-                        // Line 3: AFTER (薄緑背景・行高さ 32px 統一・ラベル幅 140px 固定)
+                        // Line 3: AFTER (行高さ 32px 統一・ラベル幅 140px 固定・動的評価連動)
                         Border.create [
-                            Border.background (SolidColorBrush bgAfter)
-                            Border.borderBrush (SolidColorBrush borderAfter)
+                            Border.background (SolidColorBrush afterBg)
+                            Border.borderBrush (SolidColorBrush afterBorder)
                             Border.borderThickness 1.0
                             Border.cornerRadius 4.0
                             Border.padding (6.0, 2.0)
@@ -626,18 +664,18 @@ module Views =
                                         Border.create [
                                             DockPanel.dock Dock.Left
                                             Border.width 140.0
-                                            Border.background (SolidColorBrush badgeBgAfter)
-                                            Border.borderBrush (SolidColorBrush borderAfter)
+                                            Border.background (SolidColorBrush afterBadgeBg)
+                                            Border.borderBrush (SolidColorBrush afterBadgeBorder)
                                             Border.borderThickness 1.0
                                             Border.cornerRadius 3.0
                                             Border.padding (6.0, 2.0)
                                             Border.margin (0.0, 0.0, 8.0, 0.0)
                                             Border.child (
                                                 TextBlock.create [
-                                                    TextBlock.text $"AFTER ({c.ProposedLength}字 [安全])"
+                                                    TextBlock.text afterLabelText
                                                     TextBlock.fontSize 10.0
                                                     TextBlock.fontWeight FontWeight.Bold
-                                                    TextBlock.foreground (SolidColorBrush textAfterLabel)
+                                                    TextBlock.foreground (SolidColorBrush afterLabelFg)
                                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                                 ]
                                             )
@@ -667,9 +705,9 @@ module Views =
                                             TextBox.verticalAlignment VerticalAlignment.Center
                                             TextBox.verticalContentAlignment VerticalAlignment.Center
                                             TextBox.background (SolidColorBrush bgBlack)
-                                            TextBox.foreground (SolidColorBrush textAfterFile)
+                                            TextBox.foreground (SolidColorBrush (if isIncrease || isDanger then textBeforeFile else textAfterFile))
                                             TextBox.fontFamily (FontFamily "Consolas, monospace")
-                                            TextBox.borderBrush (SolidColorBrush borderAfterInput)
+                                            TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then borderBefore else borderAfterInput))
                                             TextBox.borderThickness 1.0
                                             TextBox.cornerRadius 3.0
                                             TextBox.padding (6.0, 2.0)
@@ -722,71 +760,132 @@ module Views =
         ]
 
     /// 左右並び (Horizontal) - mockup.html MODE B
-    let candidateCardHorizontal (index: int) (c: RenameProposal) (dispatch: Msg -> unit) =
-        let reduction = c.OriginalLength - c.ProposedLength
+    let candidateCardHorizontal (index: int) (c: RenameProposal) (currentThreshold: int) (dispatch: Msg -> unit) =
+        let isIncrease = c.ProposedLength > c.OriginalLength
+        let isUnshortened = c.ProposedLength = c.OriginalLength
+        let isDanger = c.ProposedLength >= currentThreshold
+        let diff = c.OriginalLength - c.ProposedLength
         let reductionPercent =
             if c.OriginalLength > 0 then
                 int (Math.Round((1.0 - (float c.ProposedLength / float c.OriginalLength)) * 100.0))
             else 0
+
+        let badgeBg, badgeBorder, badgeText, badgeFg =
+            if isIncrease then
+                Color.Parse("#3f1d1d"), Color.Parse("#7f1d1d"), $"+{c.ProposedLength - c.OriginalLength}字 (増加)", Color.Parse("#fca5a5")
+            elif isUnshortened then
+                Color.Parse("#27272a"), Color.Parse("#3f3f46"), "±0字 (未短縮)", Color.Parse("#a1a1aa")
+            else
+                badgeBgAfter, borderAfter, $"-{diff}字 ({reductionPercent}%%短縮)", textAfterLabel
+
+        let statusText, statusFg =
+            if isIncrease then
+                "⚠️ 文字数増加", Color.Parse("#f87171")
+            elif isDanger then
+                "⚠️ 要短縮", Color.Parse("#f87171")
+            elif isUnshortened then
+                "⚠️ 未短縮", Color.Parse("#fbbf24")
+            else
+                "✓ 安全", textAfterLabel
+
+        let afterBg, afterBorder =
+            if isIncrease || isDanger then bgBefore, borderBefore
+            elif isUnshortened then Color.Parse("#18181b"), Color.Parse("#3f3f46")
+            else bgAfter, borderAfter
+
+        let afterLabelTitle, afterLabelFg =
+            if isIncrease then
+                "AFTER (文字数増加 / 編集可)", Color.Parse("#f87171")
+            elif isDanger then
+                "AFTER (要短縮 / 編集可)", textBeforeLabel
+            elif isUnshortened then
+                "AFTER (未短縮 / 編集可)", Color.Parse("#a1a1aa")
+            elif c.IsAiProposed then
+                "✓ AFTER (AI提案 / 編集可)", textAfterLabel
+            else
+                "AFTER (未提案 / 編集可)", Color.Parse("#a1a1aa")
+
+        let afterLengthText, afterLengthFg =
+            if isIncrease then
+                (if isDanger then $"{c.ProposedLength}字 [危険 (増加)]" else $"{c.ProposedLength}字 [増加]"), Color.Parse("#f87171")
+            elif isDanger then
+                $"{c.ProposedLength}字 [危険]", textBeforeLabel
+            elif isUnshortened then
+                $"{c.ProposedLength}字 [未短縮]", Color.Parse("#a1a1aa")
+            else
+                $"{c.ProposedLength}字 [安全]", textAfterLabel
 
         Border.create [
             Border.background (SolidColorBrush bgInput)
             Border.borderBrush (SolidColorBrush (if c.IsSelected then accentBlue else borderZinc800))
             Border.borderThickness (if c.IsSelected then 1.5 else 1.0)
             Border.cornerRadius 6.0
-            Border.margin (0.0, 0.0, 4.0, 8.0)
+            Border.margin (0.0, 0.0, 0.0, 8.0)
             Border.padding 8.0
             Border.clipToBounds true
             Border.child (
                 StackPanel.create [
                     StackPanel.spacing 6.0
                     StackPanel.children [
-                        // Line 1: Header / Checkbox / Folder & Reduction
+                        // Line 1: Header / Checkbox / Folder & Reduction (完全DockPanel構成)
                         DockPanel.create [
                             DockPanel.children [
-                                Border.create [
-                                    DockPanel.dock Dock.Right
-                                    Border.background (SolidColorBrush badgeBgAfter)
-                                    Border.borderBrush (SolidColorBrush borderAfter)
-                                    Border.borderThickness 1.0
-                                    Border.cornerRadius 4.0
-                                    Border.padding (6.0, 2.0)
-                                    Border.child (
-                                        TextBlock.create [
-                                            TextBlock.text $"-{reduction}字 ({reductionPercent}%%短縮)"
-                                            TextBlock.fontSize 10.0
-                                            TextBlock.fontFamily (FontFamily "Yu Gothic UI, Segoe UI, sans-serif")
-                                            TextBlock.fontWeight FontWeight.Bold
-                                            TextBlock.foreground (SolidColorBrush textAfterLabel)
-                                        ]
-                                    )
-                                ]
                                 StackPanel.create [
+                                    DockPanel.dock Dock.Right
                                     StackPanel.orientation Orientation.Horizontal
                                     StackPanel.spacing 8.0
                                     StackPanel.verticalAlignment VerticalAlignment.Center
+                                    StackPanel.margin (8.0, 0.0, 0.0, 0.0)
                                     StackPanel.children [
-                                        CheckBox.create [
-                                            CheckBox.isChecked c.IsSelected
-                                            CheckBox.onIsCheckedChanged (fun _ -> dispatch (ToggleCandidateSelect c.OriginalFullPath))
-                                            CheckBox.verticalAlignment VerticalAlignment.Center
+                                        Border.create [
+                                            Border.background (SolidColorBrush badgeBg)
+                                            Border.borderBrush (SolidColorBrush badgeBorder)
+                                            Border.borderThickness 1.0
+                                            Border.cornerRadius 4.0
+                                            Border.padding (6.0, 2.0)
+                                            Border.child (
+                                                TextBlock.create [
+                                                    TextBlock.text badgeText
+                                                    TextBlock.fontSize 10.0
+                                                    TextBlock.fontFamily (FontFamily "Yu Gothic UI, Segoe UI, sans-serif")
+                                                    TextBlock.fontWeight FontWeight.Bold
+                                                    TextBlock.foreground (SolidColorBrush badgeFg)
+                                                ]
+                                            )
                                         ]
                                         TextBlock.create [
-                                            TextBlock.text $"#{index + 1}"
+                                            TextBlock.text statusText
+                                            TextBlock.foreground (SolidColorBrush statusFg)
                                             TextBlock.fontWeight FontWeight.Bold
-                                            TextBlock.fontSize 11.0
-                                            TextBlock.foreground (SolidColorBrush textZinc400)
-                                            TextBlock.verticalAlignment VerticalAlignment.Center
-                                        ]
-                                        SelectableTextBlock.create [
-                                            TextBlock.text c.DirectoryPath
-                                            TextBlock.fontFamily (FontFamily "Consolas, monospace")
                                             TextBlock.fontSize 10.0
-                                            TextBlock.foreground (SolidColorBrush textZinc500)
                                             TextBlock.verticalAlignment VerticalAlignment.Center
-                                            TextBlock.textTrimming TextTrimming.CharacterEllipsis
                                         ]
                                     ]
+                                ]
+                                CheckBox.create [
+                                    DockPanel.dock Dock.Left
+                                    CheckBox.isChecked c.IsSelected
+                                    CheckBox.onIsCheckedChanged (fun _ -> dispatch (ToggleCandidateSelect c.OriginalFullPath))
+                                    CheckBox.verticalAlignment VerticalAlignment.Center
+                                    CheckBox.margin (0.0, 0.0, 8.0, 0.0)
+                                ]
+                                TextBlock.create [
+                                    DockPanel.dock Dock.Left
+                                    TextBlock.text $"#{index + 1}"
+                                    TextBlock.fontWeight FontWeight.Bold
+                                    TextBlock.fontSize 11.0
+                                    TextBlock.foreground (SolidColorBrush textZinc400)
+                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                    TextBlock.margin (0.0, 0.0, 8.0, 0.0)
+                                ]
+                                SelectableTextBlock.create [
+                                    TextBlock.text c.DirectoryPath
+                                    TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                    TextBlock.fontSize 10.0
+                                    TextBlock.foreground (SolidColorBrush textZinc500)
+                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                    TextBlock.textTrimming TextTrimming.CharacterEllipsis
+                                    TextBlock.textWrapping TextWrapping.NoWrap
                                 ]
                             ]
                         ]
@@ -847,11 +946,11 @@ module Views =
                                     )
                                 ]
 
-                                // 右列: AFTER
+                                // 右列: AFTER (動的評価連動)
                                 Border.create [
                                     Grid.column 1
-                                    Border.background (SolidColorBrush bgAfter)
-                                    Border.borderBrush (SolidColorBrush borderAfter)
+                                    Border.background (SolidColorBrush afterBg)
+                                    Border.borderBrush (SolidColorBrush afterBorder)
                                     Border.borderThickness 1.0
                                     Border.cornerRadius 4.0
                                     Border.padding 8.0
@@ -865,18 +964,18 @@ module Views =
                                                     DockPanel.children [
                                                         TextBlock.create [
                                                             DockPanel.dock Dock.Left
-                                                            TextBlock.text (if c.IsAiProposed then "✓ AFTER (AI提案 / 編集可)" else "AFTER (未提案 / 編集可)")
+                                                            TextBlock.text afterLabelTitle
                                                             TextBlock.fontSize 10.0
                                                             TextBlock.fontWeight FontWeight.Bold
-                                                            TextBlock.foreground (SolidColorBrush (if c.IsAiProposed then textAfterLabel else Color.Parse("#a1a1aa")))
+                                                            TextBlock.foreground (SolidColorBrush afterLabelFg)
                                                         ]
                                                         TextBlock.create [
                                                             DockPanel.dock Dock.Right
-                                                            TextBlock.text $"{c.ProposedLength}字 [安全]"
+                                                            TextBlock.text afterLengthText
                                                             TextBlock.fontSize 10.0
                                                             TextBlock.fontFamily (FontFamily "Consolas, monospace")
                                                             TextBlock.fontWeight FontWeight.Bold
-                                                            TextBlock.foreground (SolidColorBrush (if c.IsAiProposed then textAfterLabel else Color.Parse("#a1a1aa")))
+                                                            TextBlock.foreground (SolidColorBrush afterLengthFg)
                                                         ]
                                                     ]
                                                 ]
@@ -884,9 +983,9 @@ module Views =
                                                     TextBox.text c.ProposedFileName
                                                     TextBox.height 30.0
                                                     TextBox.background (SolidColorBrush bgBlack)
-                                                    TextBox.foreground (SolidColorBrush textAfterFile)
+                                                    TextBox.foreground (SolidColorBrush (if isIncrease || isDanger then textBeforeFile else textAfterFile))
                                                     TextBox.fontFamily (FontFamily "Consolas, monospace")
-                                                    TextBox.borderBrush (SolidColorBrush borderAfterInput)
+                                                    TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then borderBefore else borderAfterInput))
                                                     TextBox.borderThickness 1.0
                                                     TextBox.cornerRadius 3.0
                                                     TextBox.padding (6.0, 3.0)
@@ -1149,8 +1248,8 @@ module Views =
                                         StackPanel.children [
                                             for idx, c in List.indexed model.Candidates do
                                                 match model.Layout with
-                                                | Vertical -> candidateCardVertical idx c dispatch
-                                                | Horizontal -> candidateCardHorizontal idx c dispatch
+                                                | Vertical -> candidateCardVertical idx c model.CurrentThreshold dispatch
+                                                | Horizontal -> candidateCardHorizontal idx c model.CurrentThreshold dispatch
                                         ]
                                     ]
                             )
@@ -1199,9 +1298,26 @@ module Views =
                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                 ]
                                 if model.Candidates.Length > 0 then
+                                    let targets =
+                                        let selected = model.Candidates |> List.filter (fun c -> c.IsSelected)
+                                        if selected.IsEmpty then model.Candidates else selected
+                                    let hasIncrease = targets |> List.exists (fun c -> c.ProposedLength > c.OriginalLength)
+                                    let hasThresholdExceeded = targets |> List.exists (fun c -> c.ProposedLength >= model.CurrentThreshold)
+                                    let hasUnshortened = targets |> List.exists (fun c -> c.ProposedLength = c.OriginalLength)
+
+                                    let footerText, footerFg =
+                                        if hasIncrease then
+                                            "⚠️ 文字数増加ファイルが含まれています", Color.Parse("#f87171")
+                                        elif hasThresholdExceeded then
+                                            "⚠️ 要短縮ファイルが含まれています (基準超過)", Color.Parse("#f87171")
+                                        elif hasUnshortened then
+                                            "⚠️ 未短縮ファイルが含まれています", Color.Parse("#fbbf24")
+                                        else
+                                            "✓ 260文字制限を完全クリア (全件短縮済)", textAfterLabel
+
                                     TextBlock.create [
-                                        TextBlock.text "✓ 260文字制限を完全クリア"
-                                        TextBlock.foreground (SolidColorBrush textAfterLabel)
+                                        TextBlock.text footerText
+                                        TextBlock.foreground (SolidColorBrush footerFg)
                                         TextBlock.fontSize 11.0
                                         TextBlock.fontWeight FontWeight.SemiBold
                                         TextBlock.verticalAlignment VerticalAlignment.Center
