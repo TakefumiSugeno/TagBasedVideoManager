@@ -476,6 +476,34 @@ type Msg =
   - `[ リネームのみ実行 ]` ボタン ＆ `[ ⚡ リネームしてコンテナ再起動 (復旧) ]` ボタン
   - **Undo確認ダイアログ**: Undo実行時は「変更前の長ファイル名に復元され、コンテナが再起動します」と明示して意図しない再起動による驚きを防止。
 
+### 5.4 フォルダ選択ピッカー連携設計 (`StorageProvider`)
+
+- `TopLevel.GetTopLevel(control).StorageProvider` または `ApplicationLifetime` から `StorageProvider` を取得。
+- 「参照...」ボタン押下時に非同期で `OpenFolderPickerAsync` を呼び出し、ユーザーが選択したディレクトリの絶対パスを取得して `TargetDirectoryChanged` メッセージをディスパッチ。
+- ユーザーがキャンセルした場合は何もしない（状態変更なし）。
+
+### 5.5 命名規則マネージャーモーダル設計 (`ruleManagerModal`)
+
+- `model.IsRuleManagerOpen = true` のとき、最前面に暗色のオーバーレイ背景とともにモーダルダイアログを描画。
+- **ルール一覧表示**: 各ルールの名称、パターン、説明、先頭バッジ（「★ 既定ルール」）。
+- **順序入れ替え**: 各行に `[▲] [▼]` ボタンを配置し、`MoveRuleOrder (id, direction)` をディスパッチ。先頭のルールが常に起動時既定値となる。
+- **ルールの追加・編集・削除**: `SaveRule`, `DeleteRule` メッセージによる設定ファイル（`companion-settings.json`）の即時永続化。
+- **モーダル終了**: `[✕]` ボタンまたは `[閉じる]` ボタンで `CloseRuleManager` をディスパッチ。
+
+### 5.6 長ファイル名表示時の親コンテナ幅維持・外枠見切れ防止設計
+
+- **問題の根本原因**: `SelectableTextBlock` は `TextWrapping.NoWrap` のとき、親コンテナに関係なくテキスト長（240文字超なら1800px以上）を要求（DesiredWidth）し、親の `Border`（青い外枠）を画面外へ押し広げてしまう。
+- **解決アプローチ**:
+  - BEFORE 行の `SelectableTextBlock` を `ScrollViewer`（`HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden`, `VerticalScrollBarVisibility = ScrollBarVisibility.Disabled`）でラップ。
+  - 親の `Border` の `ClipToBounds = true` を設定。
+  - これにより、`SelectableTextBlock` の横幅が親カード（ウィンドウ幅に収まる）を突き破ることが物理的に不可能になり、青い選択枠の右端が確実に画面内に描画される。
+  - ユーザーはテキストをドラッグ選択して最後まで閲覧・コピー（Ctrl+C）可能。
+
+### 5.7 モックアップ (`mockup.html`) と E2E テストの同期
+
+- `openspec/changes/ai-file-rename/mockup.html` を最新の仕様（ソートドロップダウン、等幅フォント、垂直整列、短縮文字数バッジ整列、管理モーダル、参照ボタン）を忠実に反映したデザインに更新。
+- `RenameIntegrationE2ETests.fs` において、管理モーダルの描画状態（`E2E_05_Rule_Manager_Modal.png`）および長パス時のカード外枠非見切れ（`E2E_06_Long_Path_No_Overflow.png`）の実画面キャプチャを自動出力・ビジュアル検証する。
+
 ---
 
 ## 6. テスト・品質検証設計
