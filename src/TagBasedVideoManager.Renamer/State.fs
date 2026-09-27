@@ -33,6 +33,7 @@ and Model = {
 
     // UI表示設定
     Layout: LayoutMode
+    SortCriterion: SortCriterion
     IsRuleManagerOpen: bool
     EditingRule: NamingRule option
     ConfirmDialog: DialogConfig option
@@ -50,10 +51,11 @@ and Msg =
     | ScanCompleted of Result<ScanCandidate list, RenamerError>
     | AiProposeCompleted of Result<RenameProposal list, RenamerError>
 
-    // 候補編集
+    // 候補編集・ソート
     | ToggleCandidateSelect of fullPath: string
     | SelectAllCandidates of bool
     | UpdateProposedName of fullPath: string * newName: string
+    | ChangeSortCriterion of SortCriterion
 
     // リネーム実行 & Undo
     | ExecuteRenameOnly
@@ -106,6 +108,7 @@ module State =
             UndoStack = []
             Docker = initialDockerStatus
             Layout = Vertical
+            SortCriterion = PathLengthDesc
             IsRuleManagerOpen = false
             EditingRule = None
             ConfirmDialog = None
@@ -168,7 +171,9 @@ module State =
                     |> Option.defaultValue (List.head model.Settings.Rules)
 
                 // まずローカル命名規則による短縮候補を即時生成して反映！
-                let localProposals = OpenRouterClient.generateLocalProposals selectedRule candidates
+                let localProposals =
+                    OpenRouterClient.generateLocalProposals selectedRule candidates
+                    |> FileScanner.sortCandidates model.SortCriterion
 
                 match model.Settings.ApiKey with
                 | Some key when not (String.IsNullOrWhiteSpace(key)) ->
@@ -202,7 +207,7 @@ module State =
         | AiProposeCompleted (Ok proposals) ->
             let merged =
                 if List.isEmpty proposals then model.Candidates
-                else proposals
+                else proposals |> FileScanner.sortCandidates model.SortCriterion
             { model with IsRequestingAi = false; Candidates = merged }, Cmd.none
 
         | AiProposeCompleted (Error (OpenRouterError (code, msg))) ->
@@ -219,7 +224,7 @@ module State =
                     ErrorMessage = Some ($"⚠️ AI提案の取得に失敗したため、ローカル短縮候補を維持しました: {other}")
             }, Cmd.none
 
-        // 候補編集
+        // 候補編集・ソート
         | ToggleCandidateSelect fullPath ->
             let updated =
                 model.Candidates
@@ -232,6 +237,10 @@ module State =
         | SelectAllCandidates selectAll ->
             let updated = model.Candidates |> List.map (fun c -> { c with IsSelected = selectAll })
             { model with Candidates = updated }, Cmd.none
+
+        | ChangeSortCriterion newCriterion ->
+            let sorted = FileScanner.sortCandidates newCriterion model.Candidates
+            { model with SortCriterion = newCriterion; Candidates = sorted }, Cmd.none
 
         | UpdateProposedName (fullPath, newName) ->
             let updated =

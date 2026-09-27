@@ -177,6 +177,7 @@ module OpenRouterClient =
                                                 ProposedLength = proposedPath.Length
                                                 AiComment = normalizeAiComment comment
                                                 IsSelected = true
+                                                LastWriteTime = candidate.LastWriteTime
                                             }
                                         )
                                     )
@@ -235,6 +236,7 @@ module OpenRouterClient =
                 ProposedLength = proposedPath.Length
                 AiComment = comment
                 IsSelected = true
+                LastWriteTime = c.LastWriteTime
             }
         )
 

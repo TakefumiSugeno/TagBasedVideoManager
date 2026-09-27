@@ -38,6 +38,7 @@ module StateTests =
             ProposedLength = 19
             AiComment = None
             IsSelected = true
+            LastWriteTime = System.DateTime.UtcNow
         }
         let modelWithCandidate = { initialModel with Candidates = [ sampleProposal ] }
 
@@ -61,6 +62,7 @@ module StateTests =
             ProposedLength = 15
             AiComment = None
             IsSelected = true
+            LastWriteTime = System.DateTime.UtcNow
         }
         let p2 = { p1 with OriginalFullPath = "C:\\Videos\\v2.mp4"; OriginalFileName = "v2.mp4" }
         let modelWithCandidates = { initialModel with Candidates = [ p1; p2 ] }
@@ -102,3 +104,41 @@ module StateTests =
 
         let verticalModel, _ = State.update (SetLayoutMode Vertical) horizontalModel
         verticalModel.Layout |> should equal Vertical
+
+    [<Fact>]
+    let ``ChangeSortCriterion は SortCriterion を更新し候補を即座に並び替える`` () =
+        let initialModel, _ = State.init ()
+        let pShort = {
+            OriginalFullPath = "C:\\Videos\\Short.mp4"
+            OriginalFileName = "Short.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 20
+            ProposedFileName = "Short.mp4"
+            ProposedLength = 20
+            AiComment = None
+            IsSelected = true
+            LastWriteTime = System.DateTime.UtcNow
+        }
+        let pLong = {
+            OriginalFullPath = "C:\\Videos\\VeryLongLongName.mp4"
+            OriginalFileName = "VeryLongLongName.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 35
+            ProposedFileName = "VeryLongLongName.mp4"
+            ProposedLength = 35
+            AiComment = None
+            IsSelected = true
+            LastWriteTime = System.DateTime.UtcNow
+        }
+        let modelWithCandidates = { initialModel with Candidates = [ pShort; pLong ] }
+
+        // PathLengthDesc (降順) に切り替え -> Long(35) が先頭
+        let descModel, _ = State.update (ChangeSortCriterion PathLengthDesc) modelWithCandidates
+        descModel.SortCriterion |> should equal PathLengthDesc
+        descModel.Candidates.Head.OriginalFileName |> should equal "VeryLongLongName.mp4"
+
+        // PathLengthAsc (昇順) に切り替え -> Short(20) が先頭
+        let ascModel, _ = State.update (ChangeSortCriterion PathLengthAsc) descModel
+        ascModel.SortCriterion |> should equal PathLengthAsc
+        ascModel.Candidates.Head.OriginalFileName |> should equal "Short.mp4"
+

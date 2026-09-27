@@ -31,6 +31,7 @@ type RenameProposal = {
     ProposedLength: int
     AiComment: string option // 問題・補完発生時のみ Some
     IsSelected: bool
+    LastWriteTime: DateTime
 }
 
 /// リネームUndo履歴レコード
@@ -64,6 +65,15 @@ type RenamerSettings = {
     ApiKey: string option
     Rules: NamingRule list
 }
+
+/// 抽出結果一覧のソート基準
+type SortCriterion =
+    | PathLengthDesc    // パス長 (降順) - 既定（危険度の高い順）
+    | PathLengthAsc     // パス長 (昇順)
+    | FileNameAsc       // 元ファイル名 (昇順)
+    | FileNameDesc      // 元ファイル名 (降順)
+    | LastModifiedDesc  // 更新日時 (新しい順)
+    | LastModifiedAsc   // 更新日時 (古い順)
 
 /// 表示レイアウト種別
 type LayoutMode =

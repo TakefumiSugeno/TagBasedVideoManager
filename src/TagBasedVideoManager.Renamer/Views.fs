@@ -478,6 +478,7 @@ module Views =
                                             Border.borderThickness 1.0
                                             Border.cornerRadius 4.0
                                             Border.padding (6.0, 2.0)
+                                            Border.verticalAlignment VerticalAlignment.Center
                                             Border.child (
                                                 TextBlock.create [
                                                     TextBlock.text $"-{reduction}字 ({reductionPercent}%%短縮)"
@@ -485,6 +486,7 @@ module Views =
                                                     TextBlock.fontFamily (FontFamily "Consolas, monospace")
                                                     TextBlock.fontWeight FontWeight.Bold
                                                     TextBlock.foreground (SolidColorBrush textAfterLabel)
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
                                                 ]
                                             )
                                         ]
@@ -498,7 +500,7 @@ module Views =
                                     ]
                                 ]
 
-                                // 左側: チェックボックス + #番号 + フォルダパス
+                                // 左側: チェックボックス + #番号 + フォルダパス (SelectableTextBlock でコピー可能)
                                 StackPanel.create [
                                     StackPanel.orientation Orientation.Horizontal
                                     StackPanel.spacing 8.0
@@ -516,7 +518,7 @@ module Views =
                                             TextBlock.foreground (SolidColorBrush textZinc400)
                                             TextBlock.verticalAlignment VerticalAlignment.Center
                                         ]
-                                        TextBlock.create [
+                                        SelectableTextBlock.create [
                                             TextBlock.text (c.DirectoryPath + "\\")
                                             TextBlock.fontFamily (FontFamily "Consolas, monospace")
                                             TextBlock.fontSize 10.0
@@ -528,18 +530,21 @@ module Views =
                             ]
                         ]
 
-                        // Line 2: BEFORE (薄赤背景)
+                        // Line 2: BEFORE (薄赤背景・行高さ 32px 統一・ラベル幅 140px 固定)
                         Border.create [
                             Border.background (SolidColorBrush bgBefore)
                             Border.borderBrush (SolidColorBrush borderBefore)
                             Border.borderThickness 1.0
                             Border.cornerRadius 4.0
-                            Border.padding (6.0, 4.0)
+                            Border.padding (6.0, 2.0)
+                            Border.height 32.0
                             Border.child (
                                 DockPanel.create [
                                     DockPanel.children [
+                                        // ラベル幅 140px 固定（AFTER行と垂直開始位置を一致させる）
                                         Border.create [
                                             DockPanel.dock Dock.Left
+                                            Border.width 140.0
                                             Border.background (SolidColorBrush badgeBgBefore)
                                             Border.borderBrush (SolidColorBrush borderBefore)
                                             Border.borderThickness 1.0
@@ -552,10 +557,12 @@ module Views =
                                                     TextBlock.fontSize 10.0
                                                     TextBlock.fontWeight FontWeight.Bold
                                                     TextBlock.foreground (SolidColorBrush textBeforeLabel)
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
                                                 ]
                                             )
                                         ]
-                                        TextBlock.create [
+                                        // BEFORE ファイル名: SelectableTextBlock でコピー可能、等幅フォント
+                                        SelectableTextBlock.create [
                                             TextBlock.text c.OriginalFileName
                                             TextBlock.fontFamily (FontFamily "Consolas, monospace")
                                             TextBlock.fontSize 11.0
@@ -568,18 +575,21 @@ module Views =
                             )
                         ]
 
-                        // Line 3: AFTER (薄緑背景 + 入力ボックス)
+                        // Line 3: AFTER (薄緑背景・行高さ 32px 統一・ラベル幅 140px 固定)
                         Border.create [
                             Border.background (SolidColorBrush bgAfter)
                             Border.borderBrush (SolidColorBrush borderAfter)
                             Border.borderThickness 1.0
                             Border.cornerRadius 4.0
-                            Border.padding (6.0, 4.0)
+                            Border.padding (6.0, 2.0)
+                            Border.height 32.0
                             Border.child (
                                 DockPanel.create [
                                     DockPanel.children [
+                                        // ラベル幅 140px 固定（BEFORE行と垂直開始位置を一致させる）
                                         Border.create [
                                             DockPanel.dock Dock.Left
+                                            Border.width 140.0
                                             Border.background (SolidColorBrush badgeBgAfter)
                                             Border.borderBrush (SolidColorBrush borderAfter)
                                             Border.borderThickness 1.0
@@ -592,6 +602,7 @@ module Views =
                                                     TextBlock.fontSize 10.0
                                                     TextBlock.fontWeight FontWeight.Bold
                                                     TextBlock.foreground (SolidColorBrush textAfterLabel)
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
                                                 ]
                                             )
                                         ]
@@ -609,12 +620,14 @@ module Views =
                                                     TextBlock.fontSize 10.0
                                                     TextBlock.fontWeight FontWeight.Bold
                                                     TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
                                                 ]
                                             )
                                         ]
+                                        // AFTER ファイル名: 編集可能 TextBox、等幅フォント、高さ 26px
                                         TextBox.create [
                                             TextBox.text c.ProposedFileName
-                                            TextBox.height 28.0
+                                            TextBox.height 26.0
                                             TextBox.verticalAlignment VerticalAlignment.Center
                                             TextBox.verticalContentAlignment VerticalAlignment.Center
                                             TextBox.background (SolidColorBrush bgBlack)
@@ -727,7 +740,7 @@ module Views =
                                             TextBlock.foreground (SolidColorBrush textZinc400)
                                             TextBlock.verticalAlignment VerticalAlignment.Center
                                         ]
-                                        TextBlock.create [
+                                        SelectableTextBlock.create [
                                             TextBlock.text c.DirectoryPath
                                             TextBlock.fontFamily (FontFamily "Consolas, monospace")
                                             TextBlock.fontSize 10.0
@@ -780,7 +793,7 @@ module Views =
                                                     Border.cornerRadius 3.0
                                                     Border.padding 6.0
                                                     Border.child (
-                                                        TextBlock.create [
+                                                        SelectableTextBlock.create [
                                                             TextBlock.text c.OriginalFileName
                                                             TextBlock.fontFamily (FontFamily "Consolas, monospace")
                                                             TextBlock.fontSize 11.0
@@ -896,55 +909,112 @@ module Views =
                             Border.child (
                                 DockPanel.create [
                                     DockPanel.children [
-                                        // 右側: 表示形式切替 (上下並び / 左右並び)
+                                        // 右側: ソート順指定 ＆ 表示形式切替 (上下並び / 左右並び)
                                         StackPanel.create [
                                             DockPanel.dock Dock.Right
                                             StackPanel.orientation Orientation.Horizontal
-                                            StackPanel.spacing 6.0
+                                            StackPanel.spacing 12.0
                                             StackPanel.verticalAlignment VerticalAlignment.Center
                                             StackPanel.children [
-                                                TextBlock.create [
-                                                    TextBlock.text "表示形式:"
-                                                    TextBlock.foreground (SolidColorBrush textSub)
-                                                    TextBlock.fontSize 11.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                Border.create [
-                                                    Border.background (SolidColorBrush btnDark)
-                                                    Border.borderBrush (SolidColorBrush borderZinc700)
-                                                    Border.borderThickness 1.0
-                                                    Border.cornerRadius 4.0
-                                                    Border.padding 2.0
-                                                    Border.child (
-                                                        StackPanel.create [
-                                                            StackPanel.orientation Orientation.Horizontal
-                                                            StackPanel.spacing 2.0
-                                                            StackPanel.children [
-                                                                Button.create [
-                                                                    Button.content "▤ 上下並び"
-                                                                    Button.fontSize 10.0
-                                                                    Button.padding (8.0, 3.0)
-                                                                    Button.background (SolidColorBrush (if model.Layout = Vertical then accentBlue else Colors.Transparent))
-                                                                    Button.foreground (SolidColorBrush (if model.Layout = Vertical then textWhite else textZinc400))
-                                                                    Button.fontWeight (if model.Layout = Vertical then FontWeight.Bold else FontWeight.Normal)
-                                                                    Button.cornerRadius 3.0
-                                                                    Button.borderThickness 0.0
-                                                                    Button.onClick (fun _ -> dispatch (SetLayoutMode Vertical))
-                                                                ]
-                                                                Button.create [
-                                                                    Button.content "◫ 左右並び"
-                                                                    Button.fontSize 10.0
-                                                                    Button.padding (8.0, 3.0)
-                                                                    Button.background (SolidColorBrush (if model.Layout = Horizontal then accentBlue else Colors.Transparent))
-                                                                    Button.foreground (SolidColorBrush (if model.Layout = Horizontal then textWhite else textZinc400))
-                                                                    Button.fontWeight (if model.Layout = Horizontal then FontWeight.Bold else FontWeight.Normal)
-                                                                    Button.cornerRadius 3.0
-                                                                    Button.borderThickness 0.0
-                                                                    Button.onClick (fun _ -> dispatch (SetLayoutMode Horizontal))
-                                                                ]
-                                                            ]
+                                                // ソート順選択
+                                                StackPanel.create [
+                                                    StackPanel.orientation Orientation.Horizontal
+                                                    StackPanel.spacing 6.0
+                                                    StackPanel.verticalAlignment VerticalAlignment.Center
+                                                    StackPanel.children [
+                                                        TextBlock.create [
+                                                            TextBlock.text "ソート順:"
+                                                            TextBlock.foreground (SolidColorBrush textSub)
+                                                            TextBlock.fontSize 11.0
+                                                            TextBlock.verticalAlignment VerticalAlignment.Center
                                                         ]
-                                                    )
+                                                        let sortOptions = [
+                                                            "パス長 (降順)", PathLengthDesc
+                                                            "パス長 (昇順)", PathLengthAsc
+                                                            "元ファイル名 (昇順)", FileNameAsc
+                                                            "元ファイル名 (降順)", FileNameDesc
+                                                            "更新日時 (新しい順)", LastModifiedDesc
+                                                            "更新日時 (古い順)", LastModifiedAsc
+                                                        ]
+                                                        let currentSortText =
+                                                            sortOptions
+                                                            |> List.tryFind (fun (_, crit) -> crit = model.SortCriterion)
+                                                            |> Option.map fst
+                                                            |> Option.defaultValue "パス長 (降順)"
+
+                                                        ComboBox.create [
+                                                            ComboBox.dataItems (sortOptions |> List.map fst)
+                                                            ComboBox.selectedItem currentSortText
+                                                            ComboBox.onSelectedItemChanged (fun item ->
+                                                                if item <> null then
+                                                                    let itemStr = string item
+                                                                    sortOptions
+                                                                    |> List.tryFind (fun (name, _) -> name = itemStr)
+                                                                    |> Option.iter (fun (_, crit) -> dispatch (ChangeSortCriterion crit))
+                                                            )
+                                                            ComboBox.fontSize 11.0
+                                                            ComboBox.height 26.0
+                                                            ComboBox.verticalAlignment VerticalAlignment.Center
+                                                            ComboBox.background (SolidColorBrush btnDark)
+                                                            ComboBox.foreground (SolidColorBrush textWhite)
+                                                            ComboBox.borderBrush (SolidColorBrush borderZinc700)
+                                                            ComboBox.borderThickness 1.0
+                                                            ComboBox.cornerRadius 4.0
+                                                            ComboBox.padding (6.0, 2.0)
+                                                        ]
+                                                    ]
+                                                ]
+
+                                                // 表示形式切替
+                                                StackPanel.create [
+                                                    StackPanel.orientation Orientation.Horizontal
+                                                    StackPanel.spacing 6.0
+                                                    StackPanel.verticalAlignment VerticalAlignment.Center
+                                                    StackPanel.children [
+                                                        TextBlock.create [
+                                                            TextBlock.text "表示形式:"
+                                                            TextBlock.foreground (SolidColorBrush textSub)
+                                                            TextBlock.fontSize 11.0
+                                                            TextBlock.verticalAlignment VerticalAlignment.Center
+                                                        ]
+                                                        Border.create [
+                                                            Border.background (SolidColorBrush btnDark)
+                                                            Border.borderBrush (SolidColorBrush borderZinc700)
+                                                            Border.borderThickness 1.0
+                                                            Border.cornerRadius 4.0
+                                                            Border.padding 2.0
+                                                            Border.child (
+                                                                StackPanel.create [
+                                                                    StackPanel.orientation Orientation.Horizontal
+                                                                    StackPanel.spacing 2.0
+                                                                    StackPanel.children [
+                                                                        Button.create [
+                                                                            Button.content "▤ 上下並び"
+                                                                            Button.fontSize 10.0
+                                                                            Button.padding (8.0, 3.0)
+                                                                            Button.background (SolidColorBrush (if model.Layout = Vertical then accentBlue else Colors.Transparent))
+                                                                            Button.foreground (SolidColorBrush (if model.Layout = Vertical then textWhite else textZinc400))
+                                                                            Button.fontWeight (if model.Layout = Vertical then FontWeight.Bold else FontWeight.Normal)
+                                                                            Button.cornerRadius 3.0
+                                                                            Button.borderThickness 0.0
+                                                                            Button.onClick (fun _ -> dispatch (SetLayoutMode Vertical))
+                                                                        ]
+                                                                        Button.create [
+                                                                            Button.content "◫ 左右並び"
+                                                                            Button.fontSize 10.0
+                                                                            Button.padding (8.0, 3.0)
+                                                                            Button.background (SolidColorBrush (if model.Layout = Horizontal then accentBlue else Colors.Transparent))
+                                                                            Button.foreground (SolidColorBrush (if model.Layout = Horizontal then textWhite else textZinc400))
+                                                                            Button.fontWeight (if model.Layout = Horizontal then FontWeight.Bold else FontWeight.Normal)
+                                                                            Button.cornerRadius 3.0
+                                                                            Button.borderThickness 0.0
+                                                                            Button.onClick (fun _ -> dispatch (SetLayoutMode Horizontal))
+                                                                        ]
+                                                                    ]
+                                                                ]
+                                                            )
+                                                        ]
+                                                    ]
                                                 ]
                                             ]
                                         ]

@@ -116,3 +116,132 @@ module FileScannerTests =
         | Ok _ -> failwith "Expected failure for non-existent directory"
         | Error (IoError (msg, _)) -> msg |> should not' (be EmptyString)
         | Error other -> failwith $"Unexpected error type: {other}"
+
+    let private createJunction (linkPath: string) (targetPath: string) =
+        if OperatingSystem.IsWindows() then
+            let psi = Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{linkPath}\" \"{targetPath}\"")
+            psi.CreateNoWindow <- true
+            psi.UseShellExecute <- false
+            use proc = Diagnostics.Process.Start(psi)
+            proc.WaitForExit()
+
+    [<Fact>]
+    let ``scanLongPaths はディレクトリジャンクション配下の動画ファイルを正しく走査・抽出する`` () =
+        if not (OperatingSystem.IsWindows()) then ()
+        else
+            let root = Path.Combine(Path.GetTempPath(), "JunctionTestRoot_" + Guid.NewGuid().ToString("N"))
+            let externalDir = Path.Combine(Path.GetTempPath(), "JunctionExternal_" + Guid.NewGuid().ToString("N"))
+            Directory.CreateDirectory(root) |> ignore
+            Directory.CreateDirectory(externalDir) |> ignore
+            try
+                let externalVideo = Path.Combine(externalDir, "external_target_video.mp4")
+                File.WriteAllText(externalVideo, "external dummy")
+
+                let junctionLink = Path.Combine(root, "JunctionDir")
+                createJunction junctionLink externalDir
+
+                let result = FileScanner.scanLongPaths root 10
+                match result with
+                | Error err -> failwith $"scanLongPaths failed: {err}"
+                | Ok candidates ->
+                    let files = candidates |> List.map (fun c -> c.FileName)
+                    files |> should contain "external_target_video.mp4"
+            finally
+                cleanup root
+                cleanup externalDir
+
+    [<Fact>]
+    let ``scanLongPaths は循環参照（親を参照するジャンクション）が存在しても無限ループせず安全に走査を完了する`` () =
+        if not (OperatingSystem.IsWindows()) then ()
+        else
+            let root = Path.Combine(Path.GetTempPath(), "LoopJunctionRoot_" + Guid.NewGuid().ToString("N"))
+            let childDir = Path.Combine(root, "Child")
+            Directory.CreateDirectory(childDir) |> ignore
+            try
+                let childVideo = Path.Combine(childDir, "child_video.mp4")
+                File.WriteAllText(childVideo, "child dummy")
+
+                // childDir 配下に root を指す循環ジャンクションを作成
+                let loopLink = Path.Combine(childDir, "LoopToRoot")
+                createJunction loopLink root
+
+                let result = FileScanner.scanLongPaths root 10
+                match result with
+                | Error err -> failwith $"scanLongPaths failed on loop: {err}"
+                | Ok candidates ->
+                    let files = candidates |> List.map (fun c -> c.FileName)
+                    files |> should contain "child_video.mp4"
+                    // 循環参照により無限に多重抽出されていないことを確認（1件のみ）
+                    candidates.Length |> should equal 1
+            finally
+                cleanup root
+
+    [<Fact>]
+    let ``sortCandidates は各 SortCriterion に従って正しく並び替える`` () =
+        let now = DateTime(2026, 9, 28, 12, 0, 0)
+        let itemA: RenameProposal = {
+            OriginalFullPath = "C:/Videos/Sub/AAA_Middle.mp4"
+            OriginalFileName = "AAA_Middle.mp4"
+            DirectoryPath = "C:/Videos/Sub"
+            OriginalLength = 28
+            ProposedFileName = "2026-09-28_AAA.mp4"
+            ProposedLength = 20
+            AiComment = None
+            IsSelected = true
+            LastWriteTime = now.AddDays(-2.0)
+        }
+        let itemB: RenameProposal = {
+            OriginalFullPath = "C:/Videos/Sub/BBB_Longest_File_Name_Here.mp4"
+            OriginalFileName = "BBB_Longest_File_Name_Here.mp4"
+            DirectoryPath = "C:/Videos/Sub"
+            OriginalLength = 45
+            ProposedFileName = "2026-09-28_BBB.mp4"
+            ProposedLength = 20
+            AiComment = None
+            IsSelected = true
+            LastWriteTime = now.AddDays(-1.0)
+        }
+        let itemC: RenameProposal = {
+            OriginalFullPath = "C:/Videos/CCC_Short.mp4"
+            OriginalFileName = "CCC_Short.mp4"
+            DirectoryPath = "C:/Videos"
+            OriginalLength = 23
+            ProposedFileName = "2026-09-28_CCC.mp4"
+            ProposedLength = 20
+            AiComment = None
+            IsSelected = true
+            LastWriteTime = now
+        }
+        let list = [ itemA; itemB; itemC ]
+
+        // 1. PathLengthDesc (既定): B(45) -> A(28) -> C(23)
+        let sortedLenDesc = FileScanner.sortCandidates PathLengthDesc list
+        sortedLenDesc |> List.map (fun x -> x.OriginalFileName)
+        |> should equal [ "BBB_Longest_File_Name_Here.mp4"; "AAA_Middle.mp4"; "CCC_Short.mp4" ]
+
+        // 2. PathLengthAsc: C(23) -> A(28) -> B(45)
+        let sortedLenAsc = FileScanner.sortCandidates PathLengthAsc list
+        sortedLenAsc |> List.map (fun x -> x.OriginalFileName)
+        |> should equal [ "CCC_Short.mp4"; "AAA_Middle.mp4"; "BBB_Longest_File_Name_Here.mp4" ]
+
+        // 3. FileNameAsc: AAA -> BBB -> CCC
+        let sortedNameAsc = FileScanner.sortCandidates FileNameAsc list
+        sortedNameAsc |> List.map (fun x -> x.OriginalFileName)
+        |> should equal [ "AAA_Middle.mp4"; "BBB_Longest_File_Name_Here.mp4"; "CCC_Short.mp4" ]
+
+        // 4. FileNameDesc: CCC -> BBB -> AAA
+        let sortedNameDesc = FileScanner.sortCandidates FileNameDesc list
+        sortedNameDesc |> List.map (fun x -> x.OriginalFileName)
+        |> should equal [ "CCC_Short.mp4"; "BBB_Longest_File_Name_Here.mp4"; "AAA_Middle.mp4" ]
+
+        // 5. LastModifiedDesc (新しい順): C(now) -> B(now-1d) -> A(now-2d)
+        let sortedModDesc = FileScanner.sortCandidates LastModifiedDesc list
+        sortedModDesc |> List.map (fun x -> x.OriginalFileName)
+        |> should equal [ "CCC_Short.mp4"; "BBB_Longest_File_Name_Here.mp4"; "AAA_Middle.mp4" ]
+
+        // 6. LastModifiedAsc (古い順): A(now-2d) -> B(now-1d) -> C(now)
+        let sortedModAsc = FileScanner.sortCandidates LastModifiedAsc list
+        sortedModAsc |> List.map (fun x -> x.OriginalFileName)
+        |> should equal [ "AAA_Middle.mp4"; "BBB_Longest_File_Name_Here.mp4"; "CCC_Short.mp4" ]
+
+

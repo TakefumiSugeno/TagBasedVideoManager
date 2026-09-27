@@ -80,6 +80,7 @@ module RenameIntegrationE2ETests =
                     ProposedLength = proposedPath1.Length
                     AiComment = None // 正常時はコメントなし
                     IsSelected = true
+                    LastWriteTime = DateTime.UtcNow
                 }
 
                 let proposal2: RenameProposal = {
@@ -91,6 +92,7 @@ module RenameIntegrationE2ETests =
                     ProposedLength = proposedPath2.Length
                     AiComment = Some aiComment2 // 問題時のみコメントあり
                     IsSelected = true
+                    LastWriteTime = DateTime.UtcNow
                 }
 
                 // AIコメントの条件付き格納検証
@@ -173,6 +175,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = targetPath.Length
                 AiComment = None
                 IsSelected = true
+                LastWriteTime = DateTime.UtcNow
             }
 
             let propB: RenameProposal = {
@@ -184,6 +187,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = targetPath.Length
                 AiComment = None
                 IsSelected = true
+                LastWriteTime = DateTime.UtcNow
             }
 
             // リネーム実行: 自動で 2件目が _1 に一意化される
@@ -243,6 +247,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 39
                 AiComment = None
                 IsSelected = true
+                LastWriteTime = DateTime.UtcNow
             }
             {
                 OriginalFullPath = "D:\\Videos\\strange_title_without_date_recorded_by_random_camera_device_and_extremely_long_filename_that_exceeds_threshold_character_limit_for_docker_mount_failure_demonstration_file_sample_data.mp4"
@@ -253,6 +258,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 41
                 AiComment = Some "元ファイル名に撮影日時が含まれていなかったため、本日の日付で補完しました。"
                 IsSelected = true
+                LastWriteTime = DateTime.UtcNow
             }
         ]
 
@@ -274,6 +280,7 @@ module RenameIntegrationE2ETests =
                 LastChecked = DateTime.UtcNow
             }
             Layout = Vertical
+            SortCriterion = PathLengthDesc
             IsRuleManagerOpen = false
             EditingRule = None
             ConfirmDialog = None

@@ -37,6 +37,7 @@ module FileRenamerTests =
                 ProposedLength = expectedNewPath.Length
                 AiComment = None
                 IsSelected = true
+                LastWriteTime = DateTime.UtcNow
             }
 
             let result = FileRenamer.executeRename [ proposal ]
@@ -75,6 +76,7 @@ module FileRenamerTests =
                 ProposedLength = conflictTarget.Length
                 AiComment = None
                 IsSelected = true
+                LastWriteTime = DateTime.UtcNow
             }
 
             let result = FileRenamer.executeRename [ proposal ]
@@ -109,6 +111,7 @@ module FileRenamerTests =
                 ProposedLength = 10
                 AiComment = None
                 IsSelected = false
+                LastWriteTime = DateTime.UtcNow
             }
 
             let result = FileRenamer.executeRename [ proposal ]
@@ -191,6 +194,7 @@ module FileRenamerTests =
                 ProposedLength = 10
                 AiComment = None
                 IsSelected = true
+                LastWriteTime = DateTime.UtcNow
             }
 
             let result = FileRenamer.executeRename [ proposal ]
