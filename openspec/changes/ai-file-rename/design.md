@@ -513,8 +513,8 @@ type Msg =
 - **設定読み込みアーキテクチャ (`Settings.loadConfiguration`)**:
   - 優先順位 1: `%APPDATA%\TagBasedVideoManager\appsettings.json`、`./appsettings.json`、または `{AppDirectory}\appsettings.json`（.NET標準探索順）。
   - 優先順位 2: プロジェクトルートまたは上位ディレクトリの `.env` ファイルを探索し、`OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `VIDEO_DIR`, `PATH_LENGTH_THRESHOLD` をパースして未設定項目へフォールバック補完。
-  - 優先順位 3: OS環境変数（`System.Environment.GetEnvironmentVariable`）。
-  - 優先順位 4: アプリケーション組み込み既定値（`Settings.defaultSettings`）。
+  - 優先順位 3: アプリケーション組み込み既定値（`Settings.defaultSettings`）。
+  - ※**OS環境変数の非参照**: システム全体や別アプリの環境変数混入を防ぐため、`System.Environment.GetEnvironmentVariable` は呼び出さず、明示的な設定ファイル（`appsettings.json` / `.env`）のみから設定値をロードする。
 - **外部ファイルによるデフォルト命名規則の適用**:
   - `appsettings.json`（または外部設定）に定義された `rules` 配列の先頭ルール（`Order = 0`）を、起動時のデフォルト命名規則（`SelectedRuleId`）として自動選択。
   - ユーザーが外部 JSON ファイルを直接編集・ルール追加・順序変更した場合でも、次回起動時にその外部定義が反映される。

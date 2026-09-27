@@ -84,7 +84,7 @@ and Msg =
 module State =
 
     let private defaultSettingsPath =
-        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "companion-settings.json")
+        Settings.defaultSavePath ()
 
     let private initialDockerStatus: DockerStatus = {
         State = NotFound
@@ -118,7 +118,7 @@ module State =
         // 起動時に外部設定ファイルロードおよびDockerステータス確認を発行
         let loadSettingsCmd =
             Cmd.OfAsync.perform
-                (fun () -> async { return Settings.loadConfiguration (Some defaultSettingsPath) None })
+                (fun () -> async { return Settings.loadConfiguration None None })
                 ()
                 (fun cfg -> SettingsLoaded (Ok cfg))
 
@@ -214,7 +214,7 @@ module State =
                         model with
                             IsScanning = false
                             Candidates = initialProposals
-                            ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。AI自動命名を利用する場合は .env または companion-settings.json に設定してください。"
+                            ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。AI自動命名を利用する場合は .env または appsettings.json に設定してください。"
                     }, Cmd.none
 
         | ScanCompleted (Error (IoError (msg, _))) ->

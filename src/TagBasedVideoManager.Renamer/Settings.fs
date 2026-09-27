@@ -116,20 +116,17 @@ module Settings =
             with _ -> Map.empty
 
     /// <summary>
-    /// 外部ファイル（.env / companion-settings.json）および環境変数を統合ロードする
-    /// 優先順位: JSON > .env > OS環境変数 > 組み込み既定値
+    /// 外部ファイル（appsettings.json / .env）を統合ロードする
+    /// 優先順位: appsettings.json > .env > 組み込み既定値（※OS環境変数は参照しない）
     /// </summary>
     let loadConfiguration (jsonPathOpt: string option) (envPathOpt: string option) : RenamerSettings =
         let baseSettings = defaultSettings ()
         let envMap = parseDotEnv envPathOpt
 
-        // 1. 環境変数 & .env からの値取得
+        // 1. .env からの値取得（※OS環境変数は意図しない混入を防ぐため参照しない）
         let getVal key =
             Map.tryFind key envMap
-            |> Option.orElseWith (fun () ->
-                let v = Environment.GetEnvironmentVariable(key)
-                if not (String.IsNullOrWhiteSpace(v)) then Some v else None
-            )
+            |> Option.bind (fun v -> if not (String.IsNullOrWhiteSpace(v)) then Some v else None)
 
         let envTargetDir = getVal "VIDEO_DIR" |> Option.defaultValue baseSettings.TargetDirectory
         let envApiKey = getVal "OPENROUTER_API_KEY"
@@ -147,7 +144,13 @@ module Settings =
                 PathLengthThreshold = envThreshold
         }
 
-        // 2. companion-settings.json からの読み込み（最優先）
+        // 2. appsettings.json からの読み込み（最優先）
+        // 探索優先度:
+        //   明示指定 (jsonPathOpt)
+        //   > envPathOpt 親ディレクトリ
+        //   > %APPDATA%\TagBasedVideoManager\appsettings.json
+        //   > カレントディレクトリ ./appsettings.json
+        //   > 実行ディレクトリ {BaseDirectory}\appsettings.json
         let resolvedJsonPath =
             match jsonPathOpt with
             | Some p -> Some p
@@ -156,15 +159,18 @@ module Settings =
                 | Some ep ->
                     let dir = Path.GetDirectoryName(ep)
                     if not (String.IsNullOrWhiteSpace(dir)) then
-                        let candidate = Path.Combine(dir, "companion-settings.json")
+                        let candidate = Path.Combine(dir, "appsettings.json")
                         if File.Exists(candidate) then Some candidate else None
                     else None
                 | None ->
-                    let current = Path.Combine(Directory.GetCurrentDirectory(), "companion-settings.json")
-                    if File.Exists(current) then Some current
+                    let appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TagBasedVideoManager", "appsettings.json")
+                    if File.Exists(appDataPath) then Some appDataPath
                     else
-                        let baseDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "companion-settings.json")
-                        if File.Exists(baseDir) then Some baseDir else None
+                        let current = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json")
+                        if File.Exists(current) then Some current
+                        else
+                            let baseDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "appsettings.json")
+                            if File.Exists(baseDir) then Some baseDir else None
 
         match resolvedJsonPath with
         | Some path ->
@@ -187,6 +193,25 @@ module Settings =
                 interimSettings
         | None ->
             interimSettings
+
+    /// <summary>
+    /// 設定ファイル（appsettings.json）の保存先パスを決定する
+    /// 1. アプリ実行ディレクトリ（BaseDirectory）に既に appsettings.json が存在する場合はそこへ上書き（ポータブル優先）
+    /// 2. 存在しない場合はユーザー標準設定ディレクトリ（%APPDATA%\TagBasedVideoManager\appsettings.json）へ保存
+    /// </summary>
+    let resolveSavePath (baseDirOpt: string option) : string =
+        let baseDir = baseDirOpt |> Option.defaultValue AppDomain.CurrentDomain.BaseDirectory
+        let baseCandidate = Path.Combine(baseDir, "appsettings.json")
+        if File.Exists(baseCandidate) then
+            baseCandidate
+        else
+            let appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TagBasedVideoManager")
+            if not (Directory.Exists(appDataDir)) then
+                try Directory.CreateDirectory(appDataDir) |> ignore with _ -> ()
+            Path.Combine(appDataDir, "appsettings.json")
+
+    /// 既定の保存先パス
+    let defaultSavePath () : string = resolveSavePath None
 
     /// 命名ルールの並び順を更新する
     let reorderRules (ruleIdsInOrder: string list) (settings: RenamerSettings) : RenamerSettings =

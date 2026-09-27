@@ -70,10 +70,10 @@
 - [x] 9.6 [モック更新] `openspec/changes/ai-file-rename/mockup.html` を更新し、LLM未接続時の「未提案」表示および枠線・フォント修正を最新同期する
 - [x] 9.7 [GUI実画面E2E検証] `RenameIntegrationE2ETests.fs` を拡張し、青い外枠が完全に閉じていること、短縮バッジの文字と数字が揃っていること、およびAPIキー未設定時の未提案表示の実画面キャプチャ（PNG）を出力・検証する
 
-## 10. 設定ファイル標準化 (appsettings.json 改名および AppData/BaseDirectory 格納先パス対応) (TDD)
+## 10. 設定ファイル標準化 (appsettings.json 改名・AppData格納先対応・OS環境変数非参照化) (TDD)
 
-- [ ] 10.1 [単体テスト・仕様検証] `Settings.loadConfiguration` および `Settings.defaultSavePath` において、`appsettings.json` の探索優先順位（AppData > カレント > BaseDirectory）および保存先パス決定ロジックの失敗するテストを作成する（Red）
-- [ ] 10.2 [実装・リファクタ] `Settings.fs` に `appsettings.json` の名称適用、AppData ディレクトリ自動生成、および保存先決定ロジック（`defaultSavePath`）を実装し、テストをGreenにする
-- [ ] 10.3 [実装・リファクタ] `State.fs` の設定保存・読み込みパスを `appsettings.json` へ移行し、案内メッセージ内のファイル名表示を更新する
-- [ ] 10.4 [ドキュメント更新] `README.md` に AI File Renamer の設定セクション（`appsettings.json` の書式・探索/格納先パス・優先順位、および `.env` 環境変数対応表）を追記する
-- [ ] 10.5 [回帰検証・全テスト実行] 全テスト（Renamer 49件＋新設テスト、既存Webアプリ 44件）を実行し、TRXエビデンスおよびカバレッジレポートを出力して品質基準を満たしていることを検証する
+- [x] 10.1 [単体テスト・仕様検証] `Settings.loadConfiguration` および `Settings.defaultSavePath` において、`appsettings.json` の探索優先順位（AppData > カレント > BaseDirectory）、保存先パス決定ロジック、およびOS環境変数を参照しないこと（`.env` / JSON のみ取得）の失敗するテストを作成する（Red）
+- [x] 10.2 [実装・リファクタ] `Settings.fs` に `appsettings.json` の名称適用、AppData ディレクトリ自動生成、保存先決定ロジック（`defaultSavePath`）、および OS環境変数（`Environment.GetEnvironmentVariable`）非参照化を実装し、テストをGreenにする
+- [x] 10.3 [実装・リファクタ] `State.fs` の設定保存・読み込みパスを `appsettings.json` へ移行し、案内メッセージ内のファイル名表示を更新する
+- [x] 10.4 [ドキュメント更新] `README.md` に AI File Renamer の設定セクション（`appsettings.json` の書式・探索/格納先パス・優先順位、`.env` 対応表、OS環境変数非参照方針）を追記する
+- [x] 10.5 [回帰検証・全テスト実行] 全テスト（Renamer 52件、既存Webアプリ 44件）を実行し、TRXエビデンスおよびカバレッジレポートを出力して品質基準を満たしていることを検証する

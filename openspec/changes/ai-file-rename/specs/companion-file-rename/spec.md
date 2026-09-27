@@ -125,12 +125,12 @@
 
 ### Requirement: .NET標準外部設定ファイル（appsettings.json / .env）からの各種設定値取得と既定命名規則および格納先パス
 
-システムは、.NETにおける一般的な標準構成ファイル名である `appsettings.json`、環境設定ファイル（`.env`）、およびOS環境変数から各種設定値（`OPENROUTER_API_KEY`, `VIDEO_DIR`, `PATH_LENGTH_THRESHOLD`, `SelectedModel`, `Rules`）を自動取得・統合しなければならない（SHALL）。設定ファイルの探索・読み込みは、①ユーザー個別設定（`%APPDATA%\TagBasedVideoManager\appsettings.json`）、②作業ディレクトリ（`./appsettings.json`）、③実行ディレクトリ（`{AppDirectory}\appsettings.json`）、④`.env`、⑤OS環境変数、⑥組み込み既定値の順に優先適用しなければならない（SHALL）。また、GUI等で設定を永続化する際は、実行ディレクトリに既存設定がある場合はそれを更新し、それ以外は `%APPDATA%\TagBasedVideoManager\appsettings.json` へ保存しなければならない（SHALL）。設定ファイルに定義された命名規則リストの先頭ルールを、起動時のデフォルト命名規則として自動適用しなければならない（SHALL）。
+システムは、.NETにおける一般的な標準構成ファイル名である `appsettings.json` および環境設定ファイル（`.env`）から各種設定値（`OPENROUTER_API_KEY`, `VIDEO_DIR`, `PATH_LENGTH_THRESHOLD`, `SelectedModel`, `Rules`）を自動取得・統合しなければならない（SHALL）。OS環境変数は意図しない設定混入を防ぐため参照してはならず（SHALL NOT）、明示的な設定ファイルのみから読み込まなければならない（SHALL）。設定ファイルの探索・読み込みは、①ユーザー個別設定（`%APPDATA%\TagBasedVideoManager\appsettings.json`）、②作業ディレクトリ（`./appsettings.json`）、③実行ディレクトリ（`{AppDirectory}\appsettings.json`）、④`.env`、⑤組み込み既定値の順に優先適用しなければならない（SHALL）。また、GUI等で設定を永続化する際は、実行ディレクトリに既存設定がある場合はそれを更新し、それ以外は `%APPDATA%\TagBasedVideoManager\appsettings.json` へ保存しなければならない（SHALL）。設定ファイルに定義された命名規則リストの先頭ルールを、起動時のデフォルト命名規則として自動適用しなければならない（SHALL）。
 
-#### Scenario: appsettings.json および .env からの設定読み込みと既定ルール適用
+#### Scenario: appsettings.json および .env からの設定読み込みと既定ルール適用（OS環境変数の非参照）
 
-- **WHEN** AppDataまたは実行ディレクトリの `appsettings.json` や `.env` に設定値（APIキーや命名規則リスト）が記述されている状態でアプリを起動したとき
-- **THEN** .NET標準の探索順序に従って外部設定値が優先ロードされ、外部ファイルで定義された先頭の命名規則が起動時のデフォルト命名規則として自動選択されること
+- **WHEN** OS環境変数が設定されている場合でも、AppDataまたは実行ディレクトリの `appsettings.json` や `.env` に設定値が記述されている状態でアプリを起動したとき
+- **THEN** OS環境変数は無視され、.NET標準の探索順序に従って外部設定ファイルの値が優先ロードされ、外部ファイルで定義された先頭の命名規則が起動時のデフォルト命名規則として自動選択されること
 
 #### Scenario: 設定変更時の標準格納先への永続化
 

@@ -48,6 +48,7 @@ TagBasedVideoManagerは、バイクツーリングの記録、旅行動画、大
 - **Before / After 対比ビュー & 視覚的整列**: 視線移動を最小化する上下並び（ラベル幅140px固定でファイル名開始X座標垂直整列・同一行高・等幅Consolasフォント・短縮バッジ揃え）・左右並びトグル、インライン手動編集機能。
 - **操作性 & ソート機能**: 抽出パス・ファイル名のテキスト選択＆クリップボードコピー（`SelectableTextBlock`）、6基準ソート（パス長 降順/昇順、元ファイル名 昇順/降順、更新日時 新しい順/古い順）。
 - **ワンクリック復旧 & Undo**: 物理リネーム実行と同時にDockerコンテナを自動再起動して即時マウント復旧。直前のリネームを元のファイル名に完全復元する逆リネーム（Undo）に対応。
+- **柔軟な設定管理 (.NET標準 `appsettings.json` / `.env`)**: 設定ファイルはAppData（`%APPDATA%\TagBasedVideoManager\appsettings.json`）およびアプリ実行フォルダ（ポータブル運用）を自動判定。`.env` ファイルからのインポートに対応（※OS環境変数は参照せず安全性を担保）し、APIキー未設定時も「未提案」状態で安全起動。
 - **100% F# .NET 10 + Avalonia.FuncUI Elmish MVU**: 既存Webアプリのコードに一切手を加えない（改修行数ゼロ）完全独立デスクトップアプリ。
 
 ---
@@ -104,16 +105,21 @@ cd TagBasedVideoManager
 
 ### 2. 環境変数の設定
 
-プロジェクトルートに `.env` ファイルを作成し、以下の変数を定義します。
+プロジェクトルートに `.env` ファイルを作成し、以下の変数を定義します（Webアプリ・デスクトップアプリ共通）。
 
 ```env
 PORT=5620
 VIDEO_DIR=C:\Users\YourUserName\Videos
 THUMBNAIL_DIR=C:\Users\YourUserName\TagBasedVideoManagerData\thumbnails
 DATABASE_PATH=C:\Users\YourUserName\TagBasedVideoManagerData\metadata.db
+
+# 以下は AI File Renamer (デスクトップアプリ) 用のオプション設定
+OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx
+OPENROUTER_MODEL=google/gemini-2.0-flash-lite-preview-02-05:free
+PATH_LENGTH_THRESHOLD=240
 ```
 
-### 3. Docker Composeによるコンテナ起動
+### 3. Docker Composeによるコンテナ起動 (Web アプリ)
 
 `docker-compose.yml` で利用するデバイス（GPU）に合わせて以下の設定変更を行います。
 
@@ -131,6 +137,62 @@ docker compose up -d --build
 ```
 
 ブラウザから `http://localhost:5620` にアクセスします。
+
+### 4. AI File Renamer の構成設定 (`appsettings.json` / `.env`)
+
+AI File Renamer は .NET 標準の構成ファイル `appsettings.json` または環境変数 (`.env`) から各種設定を読み込みます。
+
+#### (1) 設定読み込みの探索優先順位
+
+1. **ユーザー個別設定**: `%APPDATA%\TagBasedVideoManager\appsettings.json` (Windows: `C:\Users\<UserName>\AppData\Roaming\TagBasedVideoManager\appsettings.json`)
+2. **カレントディレクトリ**: `./appsettings.json`
+3. **アプリケーション実行ディレクトリ**: `{AppDirectory}\appsettings.json` (ポータブル運用向け)
+4. **環境設定ファイル**: `.env` (上記 `VIDEO_DIR`, `OPENROUTER_API_KEY` 等)
+5. **組み込み既定値**
+
+※**OS環境変数の非参照**: システム全体や別アプリケーションの意図しない環境変数が混入・干渉することを防ぐため、OS環境変数は直接参照しません。設定は構成ファイル（`appsettings.json`）またはプロジェクト/カレントの `.env` ファイルに定義してください。
+
+#### (2) 設定ファイルの保存先パス決定ロジック
+
+- アプリケーション実行ディレクトリに既に `appsettings.json` が配置されている場合、そのファイルを直接上書き更新します（ポータブル運用の維持）。
+- 配置されていない場合、アクセス権限エラー（Program Files 配下等）を防止するため、ユーザープロファイル配下（`%APPDATA%\TagBasedVideoManager\appsettings.json`）にディレクトリを自動作成して安全に保存します。
+
+#### (3) `appsettings.json` の書式例
+
+```json
+{
+  "PathLengthThreshold": 240,
+  "TargetDirectory": "C:\\Users\\YourUserName\\Videos",
+  "OpenRouterApiKey": "sk-or-v1-xxxxxxxxxxxxxxxx",
+  "OpenRouterModel": "google/gemini-2.0-flash-lite-preview-02-05:free",
+  "NamingRules": [
+    {
+      "Id": "rule-1",
+      "Name": "日付+タイトル",
+      "Pattern": "{yyyyMMdd}_{Title}",
+      "Description": "撮影日とタイトルをアンダースコアで結合"
+    },
+    {
+      "Id": "rule-2",
+      "Name": "タイトルのみ",
+      "Pattern": "{Title}",
+      "Description": "不要なプレフィックスを除去したタイトルのみ"
+    }
+  ]
+}
+```
+
+※`NamingRules` の先頭に定義されたルールが起動時の既定ルールとして自動適用されます。
+※`OpenRouterApiKey` が未設定または空文字の場合、AIファイル名の自動提案は行われず「未提案」状態（元のファイル名維持）で安全に起動します。
+
+#### (4) `.env` 環境変数との対応表
+
+| 環境変数名              | appsettings.json キー | 既定値                                            | 説明                                         |
+| :---------------------- | :-------------------- | :------------------------------------------------ | :------------------------------------------- |
+| `VIDEO_DIR`             | `TargetDirectory`     | `""`                                              | 走査対象の動画フォルダパス                   |
+| `PATH_LENGTH_THRESHOLD` | `PathLengthThreshold` | `240`                                             | 長パス警告・抽出基準文字数                   |
+| `OPENROUTER_API_KEY`    | `OpenRouterApiKey`    | `""`                                              | OpenRouter APIキー（未設定時はAI未提案表示） |
+| `OPENROUTER_MODEL`      | `OpenRouterModel`     | `google/gemini-2.0-flash-lite-preview-02-05:free` | 短縮提案に使用するAIモデル                   |
 
 ---
 

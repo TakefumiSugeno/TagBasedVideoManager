@@ -11,7 +11,7 @@ module SettingsTests =
     let createTempSettingsPath () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerTests_" + Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(tempDir) |> ignore
-        Path.Combine(tempDir, "companion-settings.json")
+        Path.Combine(tempDir, "appsettings.json")
 
     [<Fact>]
     let ``defaultSettings は初期閾値240文字と既定モデル・既定命名規則を生成する`` () =
@@ -142,10 +142,10 @@ module SettingsTests =
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
     [<Fact>]
-    let ``loadConfiguration は companion-settings.json の設定を .env より優先する`` () =
+    let ``loadConfiguration は appsettings.json の設定を .env より優先する`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerPriorityTest_" + Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(tempDir) |> ignore
-        let jsonPath = Path.Combine(tempDir, "companion-settings.json")
+        let jsonPath = Path.Combine(tempDir, "appsettings.json")
         let envPath = Path.Combine(tempDir, ".env")
         try
             File.WriteAllLines(envPath, [
@@ -170,7 +170,7 @@ module SettingsTests =
     let ``loadConfiguration は外部ファイルの命名規則リストを保持し、先頭ルールを既定とする`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerRulesTest_" + Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(tempDir) |> ignore
-        let jsonPath = Path.Combine(tempDir, "companion-settings.json")
+        let jsonPath = Path.Combine(tempDir, "appsettings.json")
         try
             let customRules = [
                 {
@@ -199,4 +199,45 @@ module SettingsTests =
             loaded.Rules.Head.Id |> should equal "custom-rule-external"
             loaded.Rules.Head.Name |> should equal "外部定義カスタムルール"
         finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``resolveSavePath は BaseDirectory に appsettings.json があれば BaseDirectory を優先する`` () =
+        let tempBaseDir = Path.Combine(Path.GetTempPath(), "RenamerBase_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempBaseDir) |> ignore
+        let baseFile = Path.Combine(tempBaseDir, "appsettings.json")
+        try
+            File.WriteAllText(baseFile, "{}")
+            let path = Settings.resolveSavePath (Some tempBaseDir)
+            path |> should equal baseFile
+        finally
+            if Directory.Exists(tempBaseDir) then Directory.Delete(tempBaseDir, true)
+
+    [<Fact>]
+    let ``resolveSavePath は BaseDirectory に appsettings.json がなければ AppData パスを決定する`` () =
+        let tempBaseDir = Path.Combine(Path.GetTempPath(), "RenamerBaseEmpty_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempBaseDir) |> ignore
+        try
+            let path = Settings.resolveSavePath (Some tempBaseDir)
+            let expectedAppData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TagBasedVideoManager", "appsettings.json")
+            path |> should equal expectedAppData
+        finally
+            if Directory.Exists(tempBaseDir) then Directory.Delete(tempBaseDir, true)
+
+    [<Fact>]
+    let ``loadConfiguration は OS環境変数を参照しない (無視する)`` () =
+        let dummyEnvKey = "OPENROUTER_API_KEY"
+        let dummyEnvVal = "sk-or-v1-from-os-env-should-be-ignored"
+        let originalVal = Environment.GetEnvironmentVariable(dummyEnvKey)
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerNoOsEnv_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let emptyEnvPath = Path.Combine(tempDir, ".env")
+        File.WriteAllText(emptyEnvPath, "# empty env\n")
+        try
+            Environment.SetEnvironmentVariable(dummyEnvKey, dummyEnvVal)
+            let loaded = Settings.loadConfiguration None (Some emptyEnvPath)
+            // OS環境変数は参照されないため、ApiKey は None のままであること
+            loaded.ApiKey |> should equal None
+        finally
+            Environment.SetEnvironmentVariable(dummyEnvKey, originalVal)
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
