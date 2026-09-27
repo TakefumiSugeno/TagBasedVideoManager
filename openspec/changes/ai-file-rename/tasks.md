@@ -69,3 +69,11 @@
 - [x] 9.5 [実装・リファクタ] `Views.fs` の短縮バッジフォント修正、Line 1 / Line 4 の幅制約（`DockPanel` 化・`TextWrapping`）、親 `ScrollViewer` の水平スクロール抑止による青枠見切れ完全解消を実装し、テストをGreenにする
 - [x] 9.6 [モック更新] `openspec/changes/ai-file-rename/mockup.html` を更新し、LLM未接続時の「未提案」表示および枠線・フォント修正を最新同期する
 - [x] 9.7 [GUI実画面E2E検証] `RenameIntegrationE2ETests.fs` を拡張し、青い外枠が完全に閉じていること、短縮バッジの文字と数字が揃っていること、およびAPIキー未設定時の未提案表示の実画面キャプチャ（PNG）を出力・検証する
+
+## 10. 設定ファイル標準化 (appsettings.json 改名および AppData/BaseDirectory 格納先パス対応) (TDD)
+
+- [ ] 10.1 [単体テスト・仕様検証] `Settings.loadConfiguration` および `Settings.defaultSavePath` において、`appsettings.json` の探索優先順位（AppData > カレント > BaseDirectory）および保存先パス決定ロジックの失敗するテストを作成する（Red）
+- [ ] 10.2 [実装・リファクタ] `Settings.fs` に `appsettings.json` の名称適用、AppData ディレクトリ自動生成、および保存先決定ロジック（`defaultSavePath`）を実装し、テストをGreenにする
+- [ ] 10.3 [実装・リファクタ] `State.fs` の設定保存・読み込みパスを `appsettings.json` へ移行し、案内メッセージ内のファイル名表示を更新する
+- [ ] 10.4 [ドキュメント更新] `README.md` に AI File Renamer の設定セクション（`appsettings.json` の書式・探索/格納先パス・優先順位、および `.env` 環境変数対応表）を追記する
+- [ ] 10.5 [回帰検証・全テスト実行] 全テスト（Renamer 49件＋新設テスト、既存Webアプリ 44件）を実行し、TRXエビデンスおよびカバレッジレポートを出力して品質基準を満たしていることを検証する

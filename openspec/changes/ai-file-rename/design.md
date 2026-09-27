@@ -163,10 +163,14 @@ type RenamerError =
 
 ## 3. 設定ファイル・外部連携スキーマ設計
 
-### 3.1 設定ファイル スキーマ (`companion-settings.json`)
+### 3.1 設定ファイル スキーマ (`appsettings.json`)
 
-アプリケーション設定は実行ファイルと同ディレクトリ（またはユーザープロファイル）の `companion-settings.json` にJSON形式で保存されます。
-※**セキュリティ配慮**: APIキー（`apiKey`）が保存される可能性があるため、本設定ファイル（実環境ファイル）は `.gitignore` に登録し、Git管理から除外します（プロジェクトにはテンプレート `companion-settings.example.json` を提供）。
+アプリケーション設定は .NET における標準構成ファイル名である `appsettings.json` にJSON形式で保存されます。
+
+- **格納先・探索パス**:
+  - 探索順: ① `%APPDATA%\TagBasedVideoManager\appsettings.json`（ユーザー個別設定）、② `./appsettings.json`（カレントディレクトリ）、③ `{AppDirectory}\appsettings.json`（実行ファイル同階層ポータブル設定）
+  - 保存先: 実行ディレクトリに `appsettings.json` が存在する場合はそこへ、存在しない場合は `%APPDATA%\TagBasedVideoManager\appsettings.json`（自動作成）へ安全に保存。
+    ※**セキュリティ配慮**: APIキー（`apiKey`）が保存される可能性があるため、ローカル実環境の `appsettings.json` は `.gitignore` に登録し、Git管理から除外します（プロジェクトにはテンプレート `appsettings.example.json` を提供）。
 
 ```json
 {
@@ -504,17 +508,19 @@ type Msg =
 - `openspec/changes/ai-file-rename/mockup.html` を最新の仕様（ソートドロップダウン、等幅フォント、垂直整列、短縮文字数バッジ整列、管理モーダル、参照ボタン）を忠実に反映したデザインに更新。
 - `RenameIntegrationE2ETests.fs` において、管理モーダルの描画状態（`E2E_05_Rule_Manager_Modal.png`）および長パス時のカード外枠非見切れ（`E2E_06_Long_Path_No_Overflow.png`）の実画面キャプチャを自動出力・ビジュアル検証する。
 
-### 5.8 外部設定ファイル（.env / JSON）ロードと命名規則デフォルト化設計
+### 5.8 外部設定ファイル（appsettings.json / .env）ロードと命名規則デフォルト化設計
 
 - **設定読み込みアーキテクチャ (`Settings.loadConfiguration`)**:
-  - 優先順位 1: `companion-settings.json`（exe 同一フォルダ）が存在する場合は最優先で読み込み。
+  - 優先順位 1: `%APPDATA%\TagBasedVideoManager\appsettings.json`、`./appsettings.json`、または `{AppDirectory}\appsettings.json`（.NET標準探索順）。
   - 優先順位 2: プロジェクトルートまたは上位ディレクトリの `.env` ファイルを探索し、`OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `VIDEO_DIR`, `PATH_LENGTH_THRESHOLD` をパースして未設定項目へフォールバック補完。
   - 優先順位 3: OS環境変数（`System.Environment.GetEnvironmentVariable`）。
   - 優先順位 4: アプリケーション組み込み既定値（`Settings.defaultSettings`）。
 - **外部ファイルによるデフォルト命名規則の適用**:
-  - `companion-settings.json`（または外部設定）に定義された `rules` 配列の先頭ルール（`Order = 0`）を、起動時のデフォルト命名規則（`SelectedRuleId`）として自動選択。
+  - `appsettings.json`（または外部設定）に定義された `rules` 配列の先頭ルール（`Order = 0`）を、起動時のデフォルト命名規則（`SelectedRuleId`）として自動選択。
   - ユーザーが外部 JSON ファイルを直接編集・ルール追加・順序変更した場合でも、次回起動時にその外部定義が反映される。
-  - exe 同一フォルダに `companion-settings.json` が未存在の場合は、外部ファイル編集のガイドとなるテンプレート JSON を自動初期化出力し、外部ファイルからの設定を容易にする。
+- **保存先パスの標準化 (`Settings.defaultSavePath`)**:
+  - 実行ディレクトリ（`AppContext.BaseDirectory`）に既に `appsettings.json` が存在する場合は、ポータブルモードとしてそこへ上書き保存。
+  - 存在しない場合は、標準的なユーザープロファイル領域（`%APPDATA%\TagBasedVideoManager\appsettings.json`）を保存先とし、必要に応じてディレクトリを自動生成する。
 
 ### 5.9 AI提案ステータス正常化とフォントメトリクス・外枠完全描画設計
 
