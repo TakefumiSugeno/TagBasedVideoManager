@@ -135,6 +135,15 @@ type RenamerSettings = {
     Rules: NamingRule list
 }
 
+/// 抽出結果一覧のソート基準
+type SortCriterion =
+    | PathLengthDesc    // パス長 (降順) - 既定（危険度の高い順）
+    | PathLengthAsc     // パス長 (昇順)
+    | FileNameAsc       // 元ファイル名 (昇順)
+    | FileNameDesc      // 元ファイル名 (降順)
+    | LastModifiedDesc  // 更新日時 (新しい順)
+    | LastModifiedAsc   // 更新日時 (古い順)
+
 /// 表示レイアウト種別
 type LayoutMode =
     | Vertical   // 上下並び (極低ハイト設計・視線移動最小化)
@@ -274,14 +283,31 @@ module FileScanner =
         targetDirectory: string ->
         threshold: int ->
         Result<ScanCandidate list, RenamerError>
+
+    /// 指定されたソート基準に従って候補リストを並び替える
+    val sortCandidates:
+        criterion: SortCriterion ->
+        candidates: RenameProposal list ->
+        RenameProposal list
 ```
 
 - **アルゴリズム**:
-  - `Directory.EnumerateFiles(targetDir, "*.*", SearchOption.AllDirectories)` を使用。
+  - **シンボリックリンク・ジャンクション（リパースポイント）の安全追跡**:
+    - Windows のディレクトリジャンクションやシンボリックリンク（`FileAttributes.ReparsePoint`）配下も確実に走査するため、カスタムの再帰走査（DFS/BFS）または .NET 10 の `EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.None }` を適用。
+    - **循環参照（無限ループ）防止**:
+      - 訪問済みディレクトリの正規化された完全パス（`Path.GetFullPath(dir).TrimEnd('\\', '/')`）を `System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)` で記録。
+      - 既に訪問済みのディレクトリパスが検出された場合はスキップし、無限ループを確実に防止。
   - 対象拡張子: `.mp4`, `.mkv`, `.avi`, `.mov`, `.wmv`, `.webm`, `.flv`。
   - **大文字小文字不問判定**: Windows/Linux間の差異を吸収するため、`StringComparison.OrdinalIgnoreCase` を用いて拡張子を判定。
   - 各ファイルの完全パス長（`file.Length`）を算出し、`length >= threshold` のものを抽出。
   - アクセス権限エラー（`UnauthorizedAccessException`）発生時は例外を握りつぶさず安全にスキップまたはログ記録。
+  - **ソート処理**:
+    - `PathLengthDesc`: パス長（降順）→ 同一長はファイル名（昇順）
+    - `PathLengthAsc`: パス長（昇順）→ 同一長はファイル名（昇順）
+    - `FileNameAsc`: 元ファイル名（昇順）
+    - `FileNameDesc`: 元ファイル名（降順）
+    - `LastModifiedDesc`: 更新日時（降順）
+    - `LastModifiedAsc`: 更新日時（昇順）
 
 ### 4.3 OpenRouter APIクライアント (`OpenRouterClient.fs`)
 
@@ -376,6 +402,7 @@ type Model = {
 
     // UI表示設定
     Layout: LayoutMode
+    SortCriterion: SortCriterion    // 抽出結果の並び順（既定: PathLengthDesc）
     IsRuleManagerOpen: bool
     EditingRule: NamingRule option
 }
@@ -396,10 +423,11 @@ type Msg =
     | ScanCompleted of Result<ScanCandidate list, RenamerError>
     | AiProposeCompleted of Result<RenameProposal list, RenamerError>
 
-    // 候補編集
+    // 候補編集・ソート
     | ToggleCandidateSelect of fullPath: string
     | SelectAllCandidates of bool
     | UpdateProposedName of fullPath: string * newName: string
+    | ChangeSortCriterion of SortCriterion
 
     // リネーム実行 & Undo
     | ExecuteRenameOnly
@@ -426,17 +454,22 @@ type Msg =
 
 - **Docker Status Bar**: 画面最上部に常駐。ステータスバッジ（緑: RUNNING, 灰: STOPPED, 赤: UNHEALTHY）と、[▶ Start] [■ Stop] [🔄 Restart] ボタン。
 - **Control Panel**:
-  - 対象フォルダ入力欄 ＆ [参照...] ボタン
+  - 対象フォルダ入力欄（`SelectableTextBlock` / 編集可能テキスト） ＆ [参照...] ボタン
   - 抽出基準数値ボックス: `≧ [ 240 ] 文字 (※一時変更・設定非保存)`
   - 該当件数バッジ
   - モデル選択ドロップダウン、命名規則選択ドロップダウン ＆ [⚙ 管理...] ボタン
   - メインアクションボタン: `[ 🚀 リネーム対象抽出 ＆ AI提案を実行 (ワンアクション) ]`
-- **Before / After Comparison List**:
+- **List Toolbar & Sort Controls**:
+  - ソート順ドロップダウン: `[ パス長 (降順) ▼ ]`（選択肢: パス長 降順/昇順、元ファイル名 昇順/降順、更新日時 新しい順/古い順）
   - 表示形式トグル: `[ ▤ 上下並び ] [ ◫ 左右並び ]`
-  - **上下並び (Vertical)**:
-    - 高さ最小化カード構成。
-    - 上行: `BEFORE (251字 [危険]): 元のとても長いファイル名.mp4`
-    - 下行: `AFTER  ( 42字 [安全]): [ 20250812_Wakkanai_Motorcycle.mp4 ] (-209字削減)`
+  - 全選択 / 全解除チェックボックス
+- **Before / After Comparison List**:
+  - **テキスト選択・コピー対応**: 各カード内のフォルダパス、元ファイル名等には `SelectableTextBlock` を採用し、ユーザーが任意の部分を選択して Ctrl+C でコピー可能。
+  - **上下並び (Vertical) の厳密な視覚的整列**:
+    - **左側ラベル幅の固定**: `BEFORE (251字 [危険])` および `AFTER ( 42字 [安全])` のラベルコンテナ幅を `140.0px` に固定設定。これにより、右側のファイル名欄の開始X座標が垂直に完全に一致。
+    - **行高さの統一**: BEFORE行（`SelectableTextBlock`）と AFTER行（`TextBox`）の行高さを `30.0px`（または `MinHeight = 30.0px`）で同一サイズに統一。上下で視線移動した際のガタつきを排除。
+    - **等幅フォント (Monospace)**: BEFORE行のテキストおよび AFTER行の入力ボックスに等幅フォント（`Consolas, monospace`）を適用。文字数と文字位置の精密な対比・編集を可能にする。
+    - **短縮文字数バッジのベースライン揃え**: 「〇〇字短縮」バッジにおいて、数字部分と「字短縮」の単位文字列の垂直位置を同一ベースライン（`VerticalAlignment.Center`）で整流。
     - 問題発生時のみ下部に `⚠️ AIコメント: 元名に日時情報がないため親フォルダより補完` を表示。
 - **Footer Actions**:
   - 選択件数表示、`[ ↩ 直前のリネームを元に戻す (Undo) ]` ボタン（履歴あり時のみ活性化）
@@ -453,12 +486,12 @@ type Msg =
 
 ### 6.2 テストコードとテスト対象の 1:1 対応関係マッピング表
 
-| テストファイル                                | テスト対象モジュール          | 検証内容・主要アサーション                                                                                                                 | 異常系・境界値テスト                                                                                                                 |
-| :-------------------------------------------- | :---------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
-| **`test/.../SettingsTests.fs`**               | `src/.../Settings.fs`         | ・初期閾値 240文字のロード<br>・命名規則リストのシリアライズ/デシリアライズ<br>・ルールの並び替えと優先度更新                              | ・不正なJSON形式時のフォールバック<br>・**UIで閾値変更時に設定ファイルが書き換えられないことの検証**                                 |
-| **`test/.../FileScannerTests.fs`**            | `src/.../FileScanner.fs`      | ・指定フォルダの再帰走査<br>・パス長 ≧ threshold のファイル抽出<br>・対象動画拡張子のフィルタリング                                        | ・空フォルダ、存在しないパス<br>・閾値ちょうどの境界値（239文字 / 240文字 / 241文字）<br>・アクセス権限エラー時の安全スキップ        |
-| **`test/.../OpenRouterClientTests.fs`**       | `src/.../OpenRouterClient.fs` | ・モックHTTPによるAPIレスポンスパース<br>・命名規則プロンプト構築の妥当性<br>・**正常時 `aiComment = None`、問題時のみ `Some` となる判定** | ・Markdownコードブロックの自動除去<br>・不正JSON時のフォールバック<br>・HTTPタイムアウトおよびステータスエラー                       |
-| **`test/.../FileRenamerTests.fs`**            | `src/.../FileRenamer.fs`      | ・物理ファイル名のリネーム実行<br>・Undo履歴レコードの生成<br>・**Undo実行による完全な元ファイル名復元**                                   | ・同名ファイル存在時の自動連番サフィックス<br>・ファイルロック中のエラーハンドリング<br>・Undo時に元名が占有されている場合の衝突検知 |
-| **`test/.../DockerControllerTests.fs`**       | `src/.../DockerController.fs` | ・`docker compose ps --format json` のパース<br>・コンテナ稼働状態（Running/Stopped/Unhealthy）判定<br>・ポート5620のHTTPヘルスチェック    | ・Docker CLI 未インストール / 未起動時のエラー処理<br>・非0終了コード時の標準エラー捕捉                                              |
-| **`test/.../RenameIntegrationE2ETests.fs`**   | 全モジュール結合              | ・一時フォルダへの実ファイル生成<br>・スキャン → AI提案 → リネーム → 整合性確認 → Undo復元の一気通貫検証                                   | ・260文字超過ファイルの実リネーム検証<br>・連続リネーム後の連続Undo検証                                                              |
-| **`test/TagBasedVideoManager.Tests/` (既存)** | 既存Webアプリ全体             | ・フォルダ移動後の全既存テスト一括実行                                                                                                     | ・**フォルダ再編によるリグレッションがゼロであることの回帰検証**                                                                     |
+| テストファイル                                | テスト対象モジュール             | 検証内容・主要アサーション                                                                                                                                                                                                                   | 異常系・境界値テスト                                                                                                                                                                      |
+| :-------------------------------------------- | :------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`test/.../SettingsTests.fs`**               | `src/.../Settings.fs`            | ・初期閾値 240文字のロード<br>・命名規則リストのシリアライズ/デシリアライズ<br>・ルールの並び替えと優先度更新                                                                                                                                | ・不正なJSON形式時のフォールバック<br>・**UIで閾値変更時に設定ファイルが書き換えられないことの検証**                                                                                      |
+| **`test/.../FileScannerTests.fs`**            | `src/.../FileScanner.fs`         | ・指定フォルダの再帰走査<br>・パス長 ≧ threshold のファイル抽出<br>・対象動画拡張子のフィルタリング<br>・**ジャンクション/シンボリックリンク配下の動画走査**<br>・**各種ソート基準（パス長・ファイル名・更新日時）の並び替え検証**           | ・空フォルダ、存在しないパス<br>・閾値ちょうどの境界値（239文字 / 240文字 / 241文字）<br>・アクセス権限エラー時の安全スキップ<br>・**循環参照（同一ディレクトリ再訪）時の無限ループ回避** |
+| **`test/.../OpenRouterClientTests.fs`**       | `src/.../OpenRouterClient.fs`    | ・モックHTTPによるAPIレスポンスパース<br>・命名規則プロンプト構築の妥当性<br>・**正常時 `aiComment = None`、問題時のみ `Some` となる判定**                                                                                                   | ・Markdownコードブロックの自動除去<br>・不正JSON時のフォールバック<br>・HTTPタイムアウトおよびステータスエラー                                                                            |
+| **`test/.../FileRenamerTests.fs`**            | `src/.../FileRenamer.fs`         | ・物理ファイル名のリネーム実行<br>・Undo履歴レコードの生成<br>・**Undo実行による完全な元ファイル名復元**                                                                                                                                     | ・同名ファイル存在時の自動連番サフィックス<br>・ファイルロック中のエラーハンドリング<br>・Undo時に元名が占有されている場合の衝突検知                                                      |
+| **`test/.../DockerControllerTests.fs`**       | `src/.../DockerController.fs`    | ・`docker compose ps --format json` のパース<br>・コンテナ稼働状態（Running/Stopped/Unhealthy）判定<br>・ポート5620のHTTPヘルスチェック                                                                                                      | ・Docker CLI 未インストール / 未起動時のエラー処理<br>・非0終了コード時の標準エラー捕捉                                                                                                   |
+| **`test/.../RenameIntegrationE2ETests.fs`**   | 全モジュール結合・UIレンダリング | ・一時フォルダへの実ファイル生成<br>・スキャン → AI提案 → リネーム → 整合性確認 → Undo復元の一気通貫検証<br>・**GUI実画面レンダリング検証（上下並びの開始X座標一致、行高さ同一性、等幅フォント、短縮バッジ揃え、テキスト選択・コピー検証）** | ・260文字超過ファイルの実リネーム検証<br>・連続リネーム後の連続Undo検証<br>・ジャンクションを含むパス走査のE2E統合検証                                                                    |
+| **`test/TagBasedVideoManager.Tests/` (既存)** | 既存Webアプリ全体                | ・フォルダ移動後の全既存テスト一括実行                                                                                                                                                                                                       | ・**フォルダ再編によるリグレッションがゼロであることの回帰検証**                                                                                                                          |
