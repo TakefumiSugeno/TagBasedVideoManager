@@ -408,6 +408,7 @@ module Views =
                                                     ComboBox.selectedIndex 0
                                                     ComboBox.height 30.0
                                                     ComboBox.fontSize 11.0
+                                                    ComboBox.maxWidth 180.0
                                                 ]
                                             ]
                                         ]
@@ -437,6 +438,7 @@ module Views =
                                                     )
                                                     ComboBox.height 30.0
                                                     ComboBox.fontSize 11.0
+                                                    ComboBox.maxWidth 160.0
                                                     ComboBox.onSelectedIndexChanged (fun idx ->
                                                         if idx >= 0 && idx < model.Settings.Rules.Length then
                                                             dispatch (RuleSelected model.Settings.Rules.[idx].Id)
@@ -522,9 +524,8 @@ module Views =
             Border.borderBrush (SolidColorBrush (if c.IsSelected then accentBlue else borderZinc800))
             Border.borderThickness (if c.IsSelected then 1.5 else 1.0)
             Border.cornerRadius 6.0
-            Border.margin (0.0, 0.0, 0.0, 8.0)
+            Border.margin (2.0, 2.0, 10.0, 8.0)
             Border.padding 8.0
-            Border.clipToBounds true
             Border.child (
                 StackPanel.create [
                     StackPanel.spacing 5.0
@@ -820,9 +821,8 @@ module Views =
             Border.borderBrush (SolidColorBrush (if c.IsSelected then accentBlue else borderZinc800))
             Border.borderThickness (if c.IsSelected then 1.5 else 1.0)
             Border.cornerRadius 6.0
-            Border.margin (0.0, 0.0, 0.0, 8.0)
+            Border.margin (2.0, 2.0, 10.0, 8.0)
             Border.padding 8.0
-            Border.clipToBounds true
             Border.child (
                 StackPanel.create [
                     StackPanel.spacing 6.0

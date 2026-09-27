@@ -609,10 +609,10 @@ module RenameIntegrationE2ETests =
             OriginalFileName = "2024-01-01_" + String('x', 260) + "_extremely_long_video_name.mp4"
             DirectoryPath = "E:\\videos\\sub_directory_with_quite_long_nested_path_structure"
             OriginalLength = 350
-            ProposedFileName = "2024-01-01_short.mp4"
-            ProposedLength = 70
+            ProposedFileName = "2024-01-01_" + String('y', 260) + "_long_proposed_name.mp4"
+            ProposedLength = 350
             AiComment = Some "長いAIコメント：元ファイル名に撮影日時が含まれていなかったため補完しました。さらに親コンテナ幅制約を検証するための長文コメントです。"
-            IsAiProposed = true
+            IsAiProposed = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
         }
@@ -650,6 +650,8 @@ module RenameIntegrationE2ETests =
             let cards = findSelectedCards w
             cards.Length |> should be (greaterThan 0)
             for card in cards do
+                let parentBorder = card.Parent :?> Avalonia.Controls.StackPanel
+                printfn $"[LAYOUT_DEBUG] testWidth={testWidth}, card.Bounds={card.Bounds}, card.DesiredSize={card.DesiredSize}"
                 // カードの幅がウィンドウ幅より小さく（マージンやパディングがあるため）、右端がはみ出ていないこと
                 card.Bounds.Width |> should be (lessThan testWidth)
                 card.Bounds.Right |> should be (lessThanOrEqualTo testWidth)
