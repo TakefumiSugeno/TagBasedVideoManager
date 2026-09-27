@@ -353,6 +353,23 @@ module RenameIntegrationE2ETests =
         }
         renderAndCapture undoDialogModel "E2E_04_Undo_Confirm_Dialog.png"
 
+        // 5. 命名規則マネージャーモーダル表示状態
+        let ruleManagerModel = { proposedModel with IsRuleManagerOpen = true }
+        renderAndCapture ruleManagerModel "E2E_05_Rule_Manager_Modal.png"
+
+        // 6. ウィンドウ幅を超える長大ファイル名（300文字超）のカード外枠非見切れ検証
+        let longPathModel = {
+            proposedModel with
+                Candidates = [
+                    { sampleCandidates.[0] with
+                        OriginalFileName = "2024-01-01_" + String('x', 300) + "_extremely_long_video_name.mp4"
+                        OriginalLength = 340
+                    }
+                ]
+        }
+        renderAndCapture longPathModel "E2E_06_Long_Path_No_Overflow.png"
+
+
     [<Fact>]
     let ``E2E: Zero-configuration user journey (no API key, scan long paths, fallback proposal, manual edit, physical rename and undo)`` () =
         withTempDirectory (fun tempDir ->

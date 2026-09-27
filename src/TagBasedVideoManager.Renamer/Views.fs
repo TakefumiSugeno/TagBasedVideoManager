@@ -3,6 +3,9 @@ namespace TagBasedVideoManager.Renamer
 open System
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
+open Avalonia.Controls.ApplicationLifetimes
+open Avalonia.Platform.Storage
 open Avalonia.FuncUI.DSL
 open Avalonia.Layout
 open Avalonia.Media
@@ -177,6 +180,27 @@ module Views =
             )
         ]
 
+    let private pickFolder (dispatch: Msg -> unit) =
+        let desktop =
+            if box Application.Current <> null then
+                match Application.Current.ApplicationLifetime with
+                | :? IClassicDesktopStyleApplicationLifetime as d -> Some d
+                | _ -> None
+            else None
+        match desktop with
+        | Some d when box d.MainWindow <> null ->
+            task {
+                let sp = d.MainWindow.StorageProvider
+                let opt = FolderPickerOpenOptions()
+                opt.Title <- "走査対象動画フォルダの選択"
+                opt.AllowMultiple <- false
+                let! results = sp.OpenFolderPickerAsync(opt)
+                if results.Count > 0 then
+                    let path = results.[0].Path.LocalPath
+                    dispatch (TargetDirectoryChanged path)
+            } |> ignore
+        | _ -> ()
+
     // ==========================================
     // 2. Configuration & Execution Bar (SECTION 2)
     // ==========================================
@@ -303,6 +327,7 @@ module Views =
                                             Button.padding (12.0, 4.0)
                                             Button.fontSize 11.0
                                             Button.margin (6.0, 0.0, 0.0, 0.0)
+                                            Button.onClick (fun _ -> pickFolder dispatch)
                                         ]
                                         TextBox.create [
                                             TextBox.text model.Settings.TargetDirectory
@@ -458,6 +483,7 @@ module Views =
             Border.cornerRadius 6.0
             Border.margin (0.0, 0.0, 0.0, 8.0)
             Border.padding 8.0
+            Border.clipToBounds true
             Border.child (
                 StackPanel.create [
                     StackPanel.spacing 5.0
@@ -530,7 +556,7 @@ module Views =
                             ]
                         ]
 
-                        // Line 2: BEFORE (薄赤背景・行高さ 32px 統一・ラベル幅 140px 固定)
+                        // Line 2: BEFORE (薄赤背景・行高さ 32px 統一・ラベル幅 140px 固定・ScrollViewer で外枠見切れ防止)
                         Border.create [
                             Border.background (SolidColorBrush bgBefore)
                             Border.borderBrush (SolidColorBrush borderBefore)
@@ -538,6 +564,7 @@ module Views =
                             Border.cornerRadius 4.0
                             Border.padding (6.0, 2.0)
                             Border.height 32.0
+                            Border.clipToBounds true
                             Border.child (
                                 DockPanel.create [
                                     DockPanel.children [
@@ -561,14 +588,21 @@ module Views =
                                                 ]
                                             )
                                         ]
-                                        // BEFORE ファイル名: SelectableTextBlock でコピー可能、等幅フォント
-                                        SelectableTextBlock.create [
-                                            TextBlock.text c.OriginalFileName
-                                            TextBlock.fontFamily (FontFamily "Consolas, monospace")
-                                            TextBlock.fontSize 11.0
-                                            TextBlock.foreground (SolidColorBrush textBeforeFile)
-                                            TextBlock.verticalAlignment VerticalAlignment.Center
-                                            TextBlock.textWrapping TextWrapping.NoWrap
+                                        // BEFORE ファイル名: SelectableTextBlock でコピー可能、等幅フォント、ScrollViewer で外枠見切れ防止
+                                        ScrollViewer.create [
+                                            ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Hidden
+                                            ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Disabled
+                                            ScrollViewer.clipToBounds true
+                                            ScrollViewer.content (
+                                                SelectableTextBlock.create [
+                                                    TextBlock.text c.OriginalFileName
+                                                    TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                                    TextBlock.fontSize 11.0
+                                                    TextBlock.foreground (SolidColorBrush textBeforeFile)
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                    TextBlock.textWrapping TextWrapping.NoWrap
+                                                ]
+                                            )
                                         ]
                                     ]
                                 ]
@@ -583,6 +617,7 @@ module Views =
                             Border.cornerRadius 4.0
                             Border.padding (6.0, 2.0)
                             Border.height 32.0
+                            Border.clipToBounds true
                             Border.child (
                                 DockPanel.create [
                                     DockPanel.children [
@@ -1321,6 +1356,208 @@ module Views =
         | None -> Border.create [ Border.isVisible false ]
 
     // ==========================================
+    // 7. 命名規則マネージャーモーダル
+    // ==========================================
+    let ruleManagerModal (model: Model) (dispatch: Msg -> unit) =
+        if not model.IsRuleManagerOpen then
+            Border.create [ Border.isVisible false ]
+        else
+            Border.create [
+                Border.background (SolidColorBrush (Color.FromArgb(180uy, 0uy, 0uy, 0uy)))
+                Border.child (
+                    Border.create [
+                        Border.background (SolidColorBrush bgSurface)
+                        Border.borderBrush (SolidColorBrush borderFluent)
+                        Border.borderThickness 1.0
+                        Border.cornerRadius 8.0
+                        Border.padding 20.0
+                        Border.width 640.0
+                        Border.maxHeight 560.0
+                        Border.horizontalAlignment HorizontalAlignment.Center
+                        Border.verticalAlignment VerticalAlignment.Center
+                        Border.child (
+                            DockPanel.create [
+                                DockPanel.children [
+                                    // ヘッダー
+                                    DockPanel.create [
+                                        DockPanel.dock Dock.Top
+                                        DockPanel.margin (0.0, 0.0, 0.0, 14.0)
+                                        DockPanel.children [
+                                            Button.create [
+                                                DockPanel.dock Dock.Right
+                                                Button.content "✕"
+                                                Button.background (SolidColorBrush Colors.Transparent)
+                                                Button.borderThickness 0.0
+                                                Button.foreground (SolidColorBrush textSub)
+                                                Button.fontSize 14.0
+                                                Button.padding (6.0, 2.0)
+                                                Button.onClick (fun _ -> dispatch CloseRuleManager)
+                                            ]
+                                            StackPanel.create [
+                                                StackPanel.spacing 4.0
+                                                StackPanel.children [
+                                                    TextBlock.create [
+                                                        TextBlock.text "⚙ 命名規則マネージャー"
+                                                        TextBlock.foreground (SolidColorBrush textWhite)
+                                                        TextBlock.fontWeight FontWeight.Bold
+                                                        TextBlock.fontSize 15.0
+                                                    ]
+                                                    TextBlock.create [
+                                                        TextBlock.text "AIが使用する命名プロンプト規則の優先度並び替え・追加・削除を行います。先頭のルールが既定値になります。"
+                                                        TextBlock.foreground (SolidColorBrush textSub)
+                                                        TextBlock.fontSize 11.0
+                                                    ]
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+
+                                    // フッター: 閉じるボタン
+                                    StackPanel.create [
+                                        DockPanel.dock Dock.Bottom
+                                        StackPanel.orientation Orientation.Horizontal
+                                        StackPanel.horizontalAlignment HorizontalAlignment.Right
+                                        StackPanel.margin (0.0, 14.0, 0.0, 0.0)
+                                        StackPanel.children [
+                                            Button.create [
+                                                Button.content "閉じる"
+                                                Button.background (SolidColorBrush btnDark)
+                                                Button.borderBrush (SolidColorBrush borderFluent)
+                                                Button.borderThickness 1.0
+                                                Button.foreground (SolidColorBrush textWhite)
+                                                Button.cornerRadius 4.0
+                                                Button.padding (16.0, 6.0)
+                                                Button.fontSize 11.0
+                                                Button.fontWeight FontWeight.SemiBold
+                                                Button.onClick (fun _ -> dispatch CloseRuleManager)
+                                            ]
+                                        ]
+                                    ]
+
+                                    // ルール一覧 (ScrollViewer)
+                                    ScrollViewer.create [
+                                        ScrollViewer.content (
+                                            StackPanel.create [
+                                                StackPanel.spacing 8.0
+                                                StackPanel.children [
+                                                    for idx, rule in List.indexed model.Settings.Rules do
+                                                        Border.create [
+                                                            Border.background (SolidColorBrush bgCard)
+                                                            Border.borderBrush (SolidColorBrush (if idx = 0 then accentBlue else borderZinc700))
+                                                            Border.borderThickness (if idx = 0 then 1.5 else 1.0)
+                                                            Border.cornerRadius 6.0
+                                                            Border.padding 10.0
+                                                            Border.child (
+                                                                DockPanel.create [
+                                                                    DockPanel.children [
+                                                                        // 操作ボタン群 (右側): 上へ / 下へ / 削除
+                                                                        StackPanel.create [
+                                                                            DockPanel.dock Dock.Right
+                                                                            StackPanel.orientation Orientation.Horizontal
+                                                                            StackPanel.spacing 6.0
+                                                                            StackPanel.verticalAlignment VerticalAlignment.Center
+                                                                            StackPanel.children [
+                                                                                Button.create [
+                                                                                    Button.content "▲"
+                                                                                    Button.isEnabled (idx > 0)
+                                                                                    Button.background (SolidColorBrush btnDark)
+                                                                                    Button.borderBrush (SolidColorBrush borderZinc700)
+                                                                                    Button.borderThickness 1.0
+                                                                                    Button.foreground (SolidColorBrush textWhite)
+                                                                                    Button.cornerRadius 3.0
+                                                                                    Button.padding (8.0, 4.0)
+                                                                                    Button.fontSize 10.0
+                                                                                    Button.onClick (fun _ -> dispatch (MoveRuleOrder (rule.Id, -1)))
+                                                                                ]
+                                                                                Button.create [
+                                                                                    Button.content "▼"
+                                                                                    Button.isEnabled (idx < model.Settings.Rules.Length - 1)
+                                                                                    Button.background (SolidColorBrush btnDark)
+                                                                                    Button.borderBrush (SolidColorBrush borderZinc700)
+                                                                                    Button.borderThickness 1.0
+                                                                                    Button.foreground (SolidColorBrush textWhite)
+                                                                                    Button.cornerRadius 3.0
+                                                                                    Button.padding (8.0, 4.0)
+                                                                                    Button.fontSize 10.0
+                                                                                    Button.onClick (fun _ -> dispatch (MoveRuleOrder (rule.Id, 1)))
+                                                                                ]
+                                                                                Button.create [
+                                                                                    Button.content "🗑"
+                                                                                    Button.isEnabled (model.Settings.Rules.Length > 1)
+                                                                                    Button.background (SolidColorBrush bgBefore)
+                                                                                    Button.borderBrush (SolidColorBrush borderBefore)
+                                                                                    Button.borderThickness 1.0
+                                                                                    Button.foreground (SolidColorBrush textBeforeLabel)
+                                                                                    Button.cornerRadius 3.0
+                                                                                    Button.padding (8.0, 4.0)
+                                                                                    Button.fontSize 11.0
+                                                                                    Button.onClick (fun _ -> dispatch (DeleteRule rule.Id))
+                                                                                ]
+                                                                            ]
+                                                                        ]
+
+                                                                        // ルール情報 (左側)
+                                                                        StackPanel.create [
+                                                                            StackPanel.spacing 4.0
+                                                                            StackPanel.children [
+                                                                                StackPanel.create [
+                                                                                    StackPanel.orientation Orientation.Horizontal
+                                                                                    StackPanel.spacing 8.0
+                                                                                    StackPanel.children [
+                                                                                        if idx = 0 then
+                                                                                            Border.create [
+                                                                                                Border.background (SolidColorBrush (Color.Parse("#172554")))
+                                                                                                Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
+                                                                                                Border.borderThickness 1.0
+                                                                                                Border.cornerRadius 3.0
+                                                                                                Border.padding (6.0, 1.0)
+                                                                                                Border.child (
+                                                                                                    TextBlock.create [
+                                                                                                        TextBlock.text "★ 既定ルール"
+                                                                                                        TextBlock.fontSize 10.0
+                                                                                                        TextBlock.fontWeight FontWeight.Bold
+                                                                                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                                                                    ]
+                                                                                                )
+                                                                                            ]
+                                                                                        TextBlock.create [
+                                                                                            TextBlock.text rule.Name
+                                                                                            TextBlock.foreground (SolidColorBrush textWhite)
+                                                                                            TextBlock.fontWeight FontWeight.Bold
+                                                                                            TextBlock.fontSize 12.0
+                                                                                        ]
+                                                                                    ]
+                                                                                ]
+                                                                                TextBlock.create [
+                                                                                    TextBlock.text $"パターン: {rule.Pattern}"
+                                                                                    TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                                                    TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                                                                    TextBlock.fontSize 11.0
+                                                                                ]
+                                                                                TextBlock.create [
+                                                                                    TextBlock.text rule.PromptInstruction
+                                                                                    TextBlock.foreground (SolidColorBrush textSub)
+                                                                                    TextBlock.fontSize 10.0
+                                                                                    TextBlock.textWrapping TextWrapping.Wrap
+                                                                                ]
+                                                                            ]
+                                                                        ]
+                                                                    ]
+                                                                ]
+                                                            )
+                                                        ]
+                                                ]
+                                            ]
+                                        )
+                                    ]
+                                ]
+                            ]
+                        )
+                    ]
+                )
+            ]
+
+    // ==========================================
     // メインビュー (Windows 11 Fluent Dark レイアウト)
     // ==========================================
     let view (model: Model) (dispatch: Msg -> unit) =
@@ -1342,7 +1579,9 @@ module Views =
                         ]
                     )
                 ]
-                // モーダルダイアログ
+                // 命名規則マネージャーモーダル
+                ruleManagerModal model dispatch
+                // 確認ダイアログ
                 confirmDialog model dispatch
             ]
         ]

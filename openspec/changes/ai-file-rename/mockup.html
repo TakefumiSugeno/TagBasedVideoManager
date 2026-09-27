@@ -176,12 +176,14 @@
                 <input
                   type="text"
                   x-model="targetDir"
-                  class="bg-transparent flex-1 outline-none text-fluent-text font-mono text-xs"
-                  title="設定ファイルより自動取得済"
+                  class="bg-transparent flex-1 outline-none text-fluent-text font-mono text-xs select-text"
+                  title="設定ファイルより自動取得済 (コピー可能)"
                 />
               </div>
               <button
-                class="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-fluent-border font-medium"
+                @click="selectFolderSim()"
+                class="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-fluent-border font-medium text-white transition active:scale-95"
+                title="フォルダ選択ピッカーを開く"
               >
                 参照...
               </button>
@@ -309,28 +311,44 @@
               ></span>
             </div>
 
-            <!-- View Layout Switcher ("上下並び" vs "左右並び") -->
-            <div class="flex items-center space-x-2">
-              <span class="text-fluent-subtext text-[11px]">表示形式:</span>
-              <div
-                class="bg-zinc-800 p-0.5 rounded border border-zinc-700 flex items-center"
-              >
-                <button
-                  @click="layoutMode = 'vertical'"
-                  :class="layoutMode === 'vertical' ? 'bg-blue-600 text-white font-bold' : 'text-zinc-400 hover:text-white'"
-                  class="px-2.5 py-0.5 rounded text-[11px] flex items-center gap-1 transition"
-                  title="上下に薄く並べて視線移動を最小化"
+            <div class="flex items-center space-x-3">
+              <!-- Sort ComboBox -->
+              <div class="flex items-center space-x-1.5">
+                <span class="text-fluent-subtext text-[11px]">ソート順:</span>
+                <select
+                  x-model="sortBy"
+                  class="bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-[11px] text-white outline-none focus:border-blue-500"
                 >
-                  <span>▤</span> 上下並び
-                </button>
-                <button
-                  @click="layoutMode = 'horizontal'"
-                  :class="layoutMode === 'horizontal' ? 'bg-blue-600 text-white font-bold' : 'text-zinc-400 hover:text-white'"
-                  class="px-2.5 py-0.5 rounded text-[11px] flex items-center gap-1 transition"
-                  title="左右2列で対比"
+                  <option value="PathLengthDesc">長い順 (260字危険順)</option>
+                  <option value="PathLengthAsc">短い順</option>
+                  <option value="FileNameAsc">ファイル名順 (A-Z)</option>
+                  <option value="ExtensionAsc">拡張子順</option>
+                </select>
+              </div>
+
+              <!-- View Layout Switcher ("上下並び" vs "左右並び") -->
+              <div class="flex items-center space-x-1.5">
+                <span class="text-fluent-subtext text-[11px]">表示形式:</span>
+                <div
+                  class="bg-zinc-800 p-0.5 rounded border border-zinc-700 flex items-center"
                 >
-                  <span>◫</span> 左右並び
-                </button>
+                  <button
+                    @click="layoutMode = 'vertical'"
+                    :class="layoutMode === 'vertical' ? 'bg-blue-600 text-white font-bold' : 'text-zinc-400 hover:text-white'"
+                    class="px-2.5 py-0.5 rounded text-[11px] flex items-center gap-1 transition"
+                    title="上下に薄く並べて視線移動を最小化"
+                  >
+                    <span>▤</span> 上下並び
+                  </button>
+                  <button
+                    @click="layoutMode = 'horizontal'"
+                    :class="layoutMode === 'horizontal' ? 'bg-blue-600 text-white font-bold' : 'text-zinc-400 hover:text-white'"
+                    class="px-2.5 py-0.5 rounded text-[11px] flex items-center gap-1 transition"
+                    title="左右2列で対比"
+                  >
+                    <span>◫</span> 左右並び
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -357,7 +375,7 @@
               <div class="space-y-2">
                 <template x-for="(file, index) in filteredFiles" :key="file.id">
                   <div
-                    class="border rounded-md transition shadow-sm"
+                    class="border rounded-md transition shadow-sm overflow-hidden"
                     :class="{
                        'bg-zinc-900/90 border-blue-600/70 ring-1 ring-blue-500/30': file.selected,
                        'bg-zinc-900/40 border-zinc-800 opacity-60': !file.selected
@@ -366,30 +384,33 @@
                     <!-- MODE A: VERTICAL (上下並び) -->
                     <div
                       x-show="layoutMode === 'vertical'"
-                      class="p-2 space-y-1 text-xs"
+                      class="p-2 space-y-1.5 text-xs overflow-hidden"
                     >
                       <!-- Line 1: Header / Checkbox / Folder & Metrics -->
                       <div
                         class="flex items-center justify-between text-[11px] pb-1 border-b border-zinc-800"
                       >
-                        <div class="flex items-center space-x-2">
+                        <div
+                          class="flex items-center space-x-2 overflow-hidden flex-1 mr-2"
+                        >
                           <input
                             type="checkbox"
                             x-model="file.selected"
-                            class="w-3.5 h-3.5 rounded accent-blue-500 cursor-pointer"
+                            class="w-3.5 h-3.5 rounded accent-blue-500 cursor-pointer flex-shrink-0"
                           />
                           <span
-                            class="font-bold text-zinc-300"
+                            class="font-bold text-zinc-300 flex-shrink-0"
                             x-text="'#' + (index + 1)"
                           ></span>
                           <span
-                            class="text-zinc-500 font-mono text-[10px] truncate max-w-[480px]"
+                            class="text-zinc-400 hover:text-zinc-200 font-mono text-[10px] truncate select-text cursor-text"
                             x-text="file.folderPath + '\\'"
+                            title="クリックしてパスを選択・コピー可能"
                           ></span>
                         </div>
-                        <div class="flex items-center space-x-2">
+                        <div class="flex items-center space-x-2 flex-shrink-0">
                           <span
-                            class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800"
+                            class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 inline-flex items-center leading-none"
                             x-text="'-' + (file.beforeLength - file.afterLength) + '字 (' + Math.round((1 - file.afterLength/file.beforeLength)*100) + '%短縮)'"
                           ></span>
                           <span class="text-emerald-400 font-bold text-[10px]"
@@ -398,41 +419,46 @@
                         </div>
                       </div>
 
-                      <!-- Line 2: BEFORE (変更前 - 薄い赤背景で高さ低く) -->
+                      <!-- Line 2: BEFORE (変更前 - ラベル幅130px固定・高さh-8・等幅フォント・コピー可) -->
                       <div
-                        class="flex items-center space-x-2 bg-red-950/30 border border-red-900/40 rounded px-2 py-1"
+                        class="flex items-center space-x-2 bg-red-950/20 border border-red-900/30 rounded p-1 overflow-hidden"
                       >
-                        <span
-                          class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-950 text-red-400 border border-red-900 flex-shrink-0"
+                        <div
+                          class="w-[130px] h-8 flex-shrink-0 px-2 rounded text-[10px] font-bold bg-red-950 text-red-400 border border-red-900 flex items-center justify-center text-center"
                         >
                           BEFORE (<span x-text="file.beforeLength"></span>字
                           [危険])
-                        </span>
-                        <span
-                          class="font-mono text-red-200 text-xs truncate flex-1 font-medium"
-                          x-text="file.beforeFileName"
-                        ></span>
+                        </div>
+                        <div
+                          class="flex-1 h-8 flex items-center bg-black/40 border border-red-900/40 rounded px-2.5 overflow-hidden"
+                        >
+                          <span
+                            class="font-mono text-red-200 text-xs truncate flex-1 font-medium select-text cursor-text whitespace-nowrap"
+                            x-text="file.beforeFileName"
+                            title="選択・コピー可能"
+                          ></span>
+                        </div>
                       </div>
 
-                      <!-- Line 3: AFTER (変更後 - 薄い緑背景、直下に並ぶので一目瞭然) -->
+                      <!-- Line 3: AFTER (変更後 - ラベル幅130px固定・高さh-8・等幅フォント・コピー可) -->
                       <div
-                        class="flex items-center space-x-2 bg-emerald-950/30 border border-emerald-900/40 rounded px-2 py-1"
+                        class="flex items-center space-x-2 bg-emerald-950/20 border border-emerald-900/30 rounded p-1 overflow-hidden"
                       >
-                        <span
-                          class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-900 flex-shrink-0"
+                        <div
+                          class="w-[130px] h-8 flex-shrink-0 px-2 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-900 flex items-center justify-center text-center"
                         >
                           AFTER (<span x-text="file.afterLength"></span>字
                           [安全])
-                        </span>
+                        </div>
                         <input
                           type="text"
                           x-model="file.afterFileName"
                           @input="recalculateLength(file)"
-                          class="flex-1 bg-black/80 border border-emerald-600/80 rounded px-2 py-0.5 text-xs font-mono text-emerald-300 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                          class="flex-1 h-8 bg-black/80 border border-emerald-600/80 rounded px-2.5 text-xs font-mono text-emerald-300 focus:outline-none focus:ring-1 focus:ring-emerald-400 select-text"
                           placeholder="新ファイル名..."
                         />
                         <span
-                          class="text-[10px] text-blue-400 font-bold bg-blue-950 px-1.5 py-0.5 rounded border border-blue-800 flex-shrink-0"
+                          class="h-8 text-[10px] text-blue-400 font-bold bg-blue-950 px-2 rounded border border-blue-800 flex items-center justify-center flex-shrink-0"
                           >AI提案済</span
                         >
                       </div>
@@ -818,6 +844,7 @@
           isDockerProcessing: false,
           isProcessing: false,
           layoutMode: "vertical", // 'vertical' (上下並び) or 'horizontal' (左右並び)
+          sortBy: "PathLengthDesc", // 'PathLengthDesc', 'PathLengthAsc', 'FileNameAsc', 'ExtensionAsc'
           filesLoaded: true,
           selectAll: true,
           showRuleManager: false,
@@ -904,12 +931,55 @@
               aiComment:
                 "元ファイル名に日付・撮影地が不記載のため、親フォルダ名「Furano」と更新日時(2025/08/14)から補完命名しました。",
             },
+            {
+              id: 4,
+              selected: true,
+              folderPath:
+                "C:\\Users\\Public\\Videos\\Touring_2025_Summer\\Ultra_Deep_Nested_Directory_Level_99\\With_Very_Long_Junction_Target_Folder_Name",
+              beforeFileName:
+                "LONG_PREFIX_EXTRAORDINARY_MASSIVE_TEST_FILE_NAME_WITH_HUGE_CHARACTER_COUNT_DESIGNED_TO_VERIFY_NO_OVERFLOW_ON_BORDER_BOUNDARY_AND_CLIP_TO_BOUNDS_BEHAVIOR_1234567890_ABCDEFGHIJKLM_NOPQRSTUVWXYZ_FULL_HD_SAMPLE_LONG_NAME_TESTING_PURPOSE.mp4",
+              beforeLength: 340,
+              afterFileName: "20250815_Ultra_Long_Path_Fixed.mp4",
+              afterLength: 135,
+              aiComment:
+                "パス長340文字の超長大ファイルを検出。外枠の見切れなく正常にクリップ・短縮提案を生成しました。",
+            },
           ],
 
           get filteredFiles() {
-            return this.files.filter(
+            let list = this.files.filter(
               (f) => f.beforeLength >= this.currentThreshold,
             );
+            if (this.sortBy === "PathLengthDesc") {
+              list.sort((a, b) => b.beforeLength - a.beforeLength);
+            } else if (this.sortBy === "PathLengthAsc") {
+              list.sort((a, b) => a.beforeLength - b.beforeLength);
+            } else if (this.sortBy === "FileNameAsc") {
+              list.sort((a, b) =>
+                a.beforeFileName.localeCompare(b.beforeFileName),
+              );
+            } else if (this.sortBy === "ExtensionAsc") {
+              const extA = (
+                a.beforeFileName.split(".").pop() || ""
+              ).toLowerCase();
+              const extB = (
+                b.beforeFileName.split(".").pop() || ""
+              ).toLowerCase();
+              list.sort((a, b) => extA.localeCompare(extB));
+            }
+            return list;
+          },
+
+          selectFolderSim() {
+            const demoFolders = [
+              "C:\\Users\\Public\\Videos\\Touring_2025_Summer",
+              "D:\\Videos\\GoPro_Footage_2025",
+              "E:\\Media\\Archives\\LongPathTest",
+            ];
+            const currentIdx = demoFolders.indexOf(this.targetDir);
+            const nextIdx = (currentIdx + 1) % demoFolders.length;
+            this.targetDir = demoFolders[nextIdx];
+            this.notify(`フォルダを選択しました: ${this.targetDir}`);
           },
 
           get selectedCount() {

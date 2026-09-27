@@ -142,3 +142,36 @@ module StateTests =
         ascModel.SortCriterion |> should equal PathLengthAsc
         ascModel.Candidates.Head.OriginalFileName |> should equal "Short.mp4"
 
+    [<Fact>]
+    let ``TargetDirectoryChanged は走査対象ディレクトリパスを即座に更新する`` () =
+        let initialModel, _ = State.init ()
+        let newDir = "D:\\Selected\\Videos\\Folder"
+        let updatedModel, _ = State.update (TargetDirectoryChanged newDir) initialModel
+        updatedModel.Settings.TargetDirectory |> should equal newDir
+
+    [<Fact>]
+    let ``OpenRuleManager と CloseRuleManager はモーダル開閉状態 IsRuleManagerOpen を正しく遷移させる`` () =
+        let initialModel, _ = State.init ()
+        initialModel.IsRuleManagerOpen |> should equal false
+
+        // 管理ボタン押下 -> オープン
+        let openModel, _ = State.update OpenRuleManager initialModel
+        openModel.IsRuleManagerOpen |> should equal true
+
+        // 閉じる操作 -> クローズ
+        let closedModel, _ = State.update CloseRuleManager openModel
+        closedModel.IsRuleManagerOpen |> should equal false
+
+    [<Fact>]
+    let ``MoveRuleOrder は命名規則の優先度順序を正しく入れ替える`` () =
+        let initialModel, _ = State.init ()
+        let rule1 = { Id = "r1"; Name = "Rule 1"; Pattern = "{P1}"; PromptInstruction = "I1"; Order = 0 }
+        let rule2 = { Id = "r2"; Name = "Rule 2"; Pattern = "{P2}"; PromptInstruction = "I2"; Order = 1 }
+        let modelWithRules = { initialModel with Settings = { initialModel.Settings with Rules = [ rule1; rule2 ] } }
+
+        // rule2 を上へ移動 (direction = -1)
+        let movedModel, _ = State.update (MoveRuleOrder ("r2", -1)) modelWithRules
+        movedModel.Settings.Rules.Head.Id |> should equal "r2"
+        movedModel.Settings.Rules.[1].Id |> should equal "r1"
+
+

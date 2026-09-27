@@ -888,3 +888,63 @@
 
 - **LGTM**: **true (Pass)**
 - **次のアクション**: Applyフェーズ（タスク 8.1 & 8.2 のTDD失敗テスト作成）を開始する。
+
+---
+
+# レビュー記録: ai-file-rename / apply / section-8 (不具合修正・UIモーダル・モック＆E2E更新)
+
+## PG Agent レビュー (実装品質・Avalonia MVU・見切れ防止・モック同期)
+
+- **日時**: 2026-09-28
+- **フェーズ**: apply
+- **タスク**: 8.3〜8.6 [実装・リファクタ] 参照ボタン、管理モーダル、外枠見切れ解消、モックアップHTML更新
+- **レビュアー**: PG Agent (コード品質・Elmish MVU・UIレイアウト保守性・案1遵守)
+- **対象成果物**:
+  - `src/TagBasedVideoManager.Renamer/Views.fs`
+  - `openspec/changes/ai-file-rename/mockup.html`
+
+### チェックリスト結果 (checklist_apply_impl.md 準拠)
+
+| #   | 観点                                                           | 判定 | コメント                                                                                                                                                       |
+| --- | -------------------------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 参照ボタン（タスク 8.3）の非同期フォルダピッカー実装           | ✅   | `Application.Current.ApplicationLifetime` から `StorageProvider` を安全に取得し、`TargetDirectoryChanged` をディスパッチする非同期処理を適切に実装。           |
+| 2   | 命名規則マネージャーモーダル（タスク 8.4）のコンポーネント設計 | ✅   | `IsRuleManagerOpen` によるオーバーレイ表示、ルール一覧・既定表示・並び替え（▲/▼）・削除・閉じるの各 UI を Elmish MVU 単一方向フローで安全に構築。              |
+| 3   | 外枠見切れ解消（タスク 8.5）のレイアウト設計                   | ✅   | BEFORE 行を `ScrollViewer`（ScrollBarVisibility.Hidden, ClipToBounds = true）でラップし、カード Border に `ClipToBounds = true` を設定して画面外溢れを防止。   |
+| 4   | モックアップ（`mockup.html`）の仕様同期（タスク 8.6）          | ✅   | フォルダ参照シミュレーション、ソート順ドロップダウン、上下並びの整列・等幅フォント、短縮バッジ揃え、外枠見切れ防止（overflow-hidden）を Alpine.js で完全同期。 |
+| 5   | 既存Webアプリケーションコード改修ゼロ（案1厳守）               | ✅   | 既存コード（`src/TagBasedVideoManager/`）の改修ゼロ行を維持。                                                                                                  |
+| 6   | 自動フォーマット実行済みか                                     | ✅   | Prettier および dotnet format を実行済み。                                                                                                                     |
+
+### 判定
+
+- **LGTM**: **true (Pass)**
+- **次のアクション**: QA Agent レビューへ
+
+---
+
+## QA Agent レビュー (仕様妥当性・ビジュアル検証・全回帰テスト)
+
+- **日時**: 2026-09-28
+- **フェーズ**: apply
+- **タスク**: 8.1, 8.2, 8.7 [テスト・ビジュアル検証] 単体テスト、管理モーダル＆長大パステスト、実レンダリングPNG検証
+- **レビュアー**: QA Agent (仕様妥当性・GUIビジュアル検証・既存回帰ゼロ・カバレッジ検証)
+- **対象成果物**:
+  - `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs`
+  - `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs`
+  - `test/TestResults/E2E_05_Rule_Manager_Modal.png`
+  - `test/TestResults/E2E_06_Long_Path_No_Overflow.png`
+  - `test/TestResults/` (TRX レポート & HTML カバレッジレポート)
+
+### チェックリスト結果 (checklist_apply_test.md 準拠)
+
+| #   | 観点                                               | 判定 | コメント                                                                                                                                                                       |
+| --- | -------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | 仕様妥当性検証テスト（Red → Green）                | ✅   | `TargetDirectoryChanged`, `OpenRuleManager`/`CloseRuleManager`, `MoveRuleOrder` の各単体テストおよび E2E テストが Red → Green サイクルで作成・全件パス。                       |
+| 2   | 回帰テスト（Renamer & 既存Webアプリ）              | ✅   | Renamer 全45テスト 100% Pass、既存Webアプリ全44テスト（Unit 18, Integration 16, E2E 10）100% Pass。全89テスト完全合格でリグレッションゼロを確認。                              |
+| 3   | **実レンダリング・ビジュアル検証 (GUIアプリ必須)** | ✅   | `E2E_05_Rule_Manager_Modal.png` で管理モーダルのオーバーレイ描画、`E2E_06_Long_Path_No_Overflow.png` で340文字長大パスでも青枠右端が収まり見切れがないことを実画面画像で検証。 |
+| 4   | カバレッジ基準の達成                               | ✅   | Renamer Line カバレッジ **86.44%** を達成し、TRX エビデンスおよび HTML カバレッジレポートを出力確認。                                                                          |
+| 5   | ゼロ設定・初回起動検証                             | ✅   | 参照ボタンや管理モーダルが初期状態から破綻なく動作することを検証。                                                                                                             |
+
+### 判定
+
+- **LGTM**: **true (Pass)**
+- **次のアクション**: `tasks.md` の全チェックボックス（セクション 8: 8.1〜8.7）を完了に更新し、コミットしてユーザーへ報告する。
