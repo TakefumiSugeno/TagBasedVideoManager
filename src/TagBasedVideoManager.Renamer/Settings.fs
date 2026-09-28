@@ -203,7 +203,10 @@ module Settings =
                 // JSONに値があればJSON優先。ただしApiKeyがNoneなら.envのキーをフォールバック
                 let effectiveKey =
                     match loadedJson.ApiKey with
-                    | Some k when not (String.IsNullOrWhiteSpace(k)) -> Some k
+                    | Some k when not (String.IsNullOrWhiteSpace(k)) ->
+                        let trimmed = k.Trim().Trim('"', '\'')
+                        if String.IsNullOrWhiteSpace(trimmed) then interimSettings.ApiKey
+                        else Some trimmed
                     | _ -> interimSettings.ApiKey
 
                 let sortedRules = loadedJson.Rules |> List.sortBy (fun r -> r.Order)

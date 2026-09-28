@@ -100,7 +100,9 @@ module OpenRouterClient =
                                 client.Timeout <- TimeSpan.FromSeconds(60.0)
                                 match apiKey with
                                 | Some key when not (String.IsNullOrWhiteSpace(key)) ->
-                                    client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Bearer", key)
+                                    let cleanKey = key.Trim().Trim('"', '\'')
+                                    if not (String.IsNullOrWhiteSpace(cleanKey)) then
+                                        client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Bearer", cleanKey)
                                 | _ -> ()
 
                                 client.DefaultRequestHeaders.Add("HTTP-Referer", "https://github.com/TagBasedVideoManager")
@@ -113,7 +115,12 @@ module OpenRouterClient =
                             }
 
                     if statusCode < 200 || statusCode >= 300 then
-                        return Error (OpenRouterError (statusCode, $"OpenRouter API returned error status {statusCode}: {responseBody}"))
+                        let detailMsg =
+                            if statusCode = 401 then
+                                $"OpenRouter API returned error status 401 (認証エラー): APIキーが無効または未設定です (Raw: {responseBody})。appsettings.json または .env の apiKey ('sk-or-v1-...') を確認してください。"
+                            else
+                                $"OpenRouter API returned error status {statusCode}: {responseBody}"
+                        return Error (OpenRouterError (statusCode, detailMsg))
                     else
                         try
                             use rootDoc = JsonDocument.Parse(responseBody)

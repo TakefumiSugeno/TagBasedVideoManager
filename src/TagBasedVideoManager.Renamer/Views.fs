@@ -202,6 +202,18 @@ module Views =
             } |> ignore
         | _ -> ()
 
+    let private copyToClipboard (text: string) =
+        let desktop =
+            if box Application.Current <> null then
+                match Application.Current.ApplicationLifetime with
+                | :? IClassicDesktopStyleApplicationLifetime as d -> Some d
+                | _ -> None
+            else None
+        match desktop with
+        | Some d when box d.MainWindow <> null && box d.MainWindow.Clipboard <> null ->
+            d.MainWindow.Clipboard.SetTextAsync(text) |> ignore
+        | _ -> ()
+
     // ==========================================
     // 2. Configuration & Execution Bar (SECTION 2)
     // ==========================================
@@ -746,7 +758,7 @@ module Views =
                                                 TextBlock.fontWeight FontWeight.Bold
                                                 TextBlock.margin (0.0, 0.0, 6.0, 0.0)
                                             ]
-                                            TextBlock.create [
+                                            SelectableTextBlock.create [
                                                 TextBlock.text comment
                                                 TextBlock.fontSize 11.0
                                                 TextBlock.foreground (SolidColorBrush textAiComment)
@@ -1017,7 +1029,7 @@ module Views =
                                                                         TextBlock.foreground (SolidColorBrush textAiComment)
                                                                         TextBlock.fontWeight FontWeight.Bold
                                                                     ]
-                                                                    TextBlock.create [
+                                                                    SelectableTextBlock.create [
                                                                         TextBlock.text comment
                                                                         TextBlock.fontSize 10.0
                                                                         TextBlock.foreground (SolidColorBrush textAiComment)
@@ -1407,16 +1419,35 @@ module Views =
                 Border.child (
                     DockPanel.create [
                         DockPanel.children [
-                            Button.create [
+                            StackPanel.create [
                                 DockPanel.dock Dock.Right
-                                Button.content "✕"
-                                Button.foreground (SolidColorBrush bannerFg)
-                                Button.background (SolidColorBrush Colors.Transparent)
-                                Button.borderThickness 0.0
-                                Button.padding (6.0, 2.0)
-                                Button.onClick (fun _ -> dispatch DismissError)
+                                StackPanel.orientation Orientation.Horizontal
+                                StackPanel.spacing 6.0
+                                StackPanel.verticalAlignment VerticalAlignment.Center
+                                StackPanel.children [
+                                    Button.create [
+                                        Button.content "📋 コピー"
+                                        Button.foreground (SolidColorBrush bannerFg)
+                                        Button.background (SolidColorBrush (Color.FromArgb(50uy, 255uy, 255uy, 255uy)))
+                                        Button.borderBrush (SolidColorBrush bannerBorder)
+                                        Button.borderThickness 1.0
+                                        Button.cornerRadius 4.0
+                                        Button.padding (8.0, 2.0)
+                                        Button.fontSize 10.0
+                                        Button.fontWeight FontWeight.Medium
+                                        Button.onClick (fun _ -> copyToClipboard msg)
+                                    ]
+                                    Button.create [
+                                        Button.content "✕"
+                                        Button.foreground (SolidColorBrush bannerFg)
+                                        Button.background (SolidColorBrush Colors.Transparent)
+                                        Button.borderThickness 0.0
+                                        Button.padding (6.0, 2.0)
+                                        Button.onClick (fun _ -> dispatch DismissError)
+                                    ]
+                                ]
                             ]
-                            TextBlock.create [
+                            SelectableTextBlock.create [
                                 TextBlock.text msg
                                 TextBlock.foreground (SolidColorBrush bannerFg)
                                 TextBlock.verticalAlignment VerticalAlignment.Center

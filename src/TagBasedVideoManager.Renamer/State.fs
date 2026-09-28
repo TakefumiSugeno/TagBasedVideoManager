@@ -200,26 +200,35 @@ module State =
 
                 match model.Settings.ApiKey with
                 | Some key when not (String.IsNullOrWhiteSpace(key)) ->
-                    let aiCmd =
-                        Cmd.OfAsync.perform
-                            (fun () ->
-                                OpenRouterClient.requestProposals
-                                    None
-                                    (Some key)
-                                    model.Settings.SelectedModel
-                                    selectedRule
-                                    candidates
-                            )
-                            ()
-                            AiProposeCompleted
-                    { model with IsScanning = false; IsRequestingAi = true; Candidates = initialProposals }, aiCmd
+                    let cleanKey = key.Trim().Trim('"', '\'')
+                    if cleanKey = "xxx" || cleanKey.Length < 10 then
+                        {
+                            model with
+                                IsScanning = false
+                                Candidates = initialProposals
+                                ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定またはプレースホルダー ('xxx') のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。AI自動命名を利用する場合は appsettings.json の apiKey に 'sk-or-v1-...' から始まる有効なキーを設定してください。"
+                        }, Cmd.none
+                    else
+                        let aiCmd =
+                            Cmd.OfAsync.perform
+                                (fun () ->
+                                    OpenRouterClient.requestProposals
+                                        None
+                                        (Some cleanKey)
+                                        model.Settings.SelectedModel
+                                        selectedRule
+                                        candidates
+                                )
+                                ()
+                                AiProposeCompleted
+                        { model with IsScanning = false; IsRequestingAi = true; Candidates = initialProposals }, aiCmd
                 | _ ->
                     // APIキー未設定時はAIのフリをせず、未提案状態としてユーザーに設定を案内
                     {
                         model with
                             IsScanning = false
                             Candidates = initialProposals
-                            ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。AI自動命名を利用する場合は .env または appsettings.json に設定してください。"
+                            ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。AI自動命名を利用する場合は appsettings.json の apiKey に 'sk-or-v1-...' から始まる有効なキーを設定してください。"
                     }, Cmd.none
 
         | ScanCompleted (Error (IoError (msg, _))) ->
