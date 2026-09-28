@@ -241,3 +241,29 @@ module SettingsTests =
         finally
             Environment.SetEnvironmentVariable(dummyEnvKey, originalVal)
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfiguration は AppData にファイルがあってもプロジェクト直下の appsettings.json を優先ロードする`` () =
+        // 引数なし loadConfiguration None None の実行時に、プロジェクトの appsettings.json がロードされることを検証
+        let loaded = Settings.loadConfiguration None None
+        // ユーザーが更新した設定（またはプロジェクト直下の設定）がロードされていること
+        let rec findRoot (dir: DirectoryInfo) (depth: int) =
+            if depth <= 0 || box dir = null then None
+            else
+                let candidate = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.json")
+                if File.Exists(candidate) then Some candidate
+                else findRoot dir.Parent (depth - 1)
+        let current = DirectoryInfo(Directory.GetCurrentDirectory())
+        let baseDir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
+        let projJsonPath =
+            findRoot current 8
+            |> Option.orElseWith (fun () -> findRoot baseDir 8)
+            |> Option.defaultWith (fun () -> failwith "src/TagBasedVideoManager.Renamer/appsettings.json が見つかりません")
+
+        let projJson = Settings.load projJsonPath
+        match projJson with
+        | Ok expected ->
+            loaded.TargetDirectory |> should equal expected.TargetDirectory
+            loaded.SelectedModel |> should equal expected.SelectedModel
+            loaded.ApiKey |> should equal expected.ApiKey
+        | Error err -> failwith $"Project json load failed: {err}"
