@@ -442,6 +442,10 @@ module RenameIntegrationE2ETests =
         renderAndCaptureWithCustomSize multiWidthModel "E2E_09a_Width_800.png" 800.0 650.0
         renderAndCaptureWithCustomSize multiWidthModel "E2E_09b_Width_1100.png" 1100.0 650.0
         renderAndCaptureWithCustomSize multiWidthModel "E2E_09c_Width_1600.png" 1600.0 650.0
+        renderAndCaptureWithCustomSize multiWidthModel "E2E_09d_Width_700.png" 700.0 650.0
+        renderAndCaptureWithCustomSize multiWidthModel "E2E_09e_Width_600.png" 600.0 650.0
+        renderAndCaptureWithCustomSize multiWidthModel "E2E_09f_Width_500.png" 500.0 650.0
+        renderAndCaptureWithCustomSize multiWidthModel "E2E_09g_Width_450.png" 450.0 650.0
 
 
 
@@ -618,7 +622,7 @@ module RenameIntegrationE2ETests =
         }
         let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
 
-        for testWidth in [ 800.0; 1100.0; 1600.0 ] do
+        for testWidth in [ 450.0; 500.0; 600.0; 700.0; 800.0; 1100.0; 1600.0 ] do
             let w = new Avalonia.FuncUI.Hosts.HostWindow()
             w.Width <- testWidth
             w.Height <- 720.0

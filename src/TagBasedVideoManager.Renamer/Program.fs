@@ -13,6 +13,8 @@ type MainWindow() as this =
         base.Title <- "TagBasedVideoManager - AI File Renamer"
         base.Width <- 1100.0
         base.Height <- 720.0
+        base.MinWidth <- 450.0
+        base.MinHeight <- 400.0
         base.Background <- Media.SolidColorBrush(Media.Color.Parse("#1a1a1a"))
 
         Program.mkProgram State.init State.update Views.view
