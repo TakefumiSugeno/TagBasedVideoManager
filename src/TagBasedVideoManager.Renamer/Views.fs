@@ -9,9 +9,16 @@ open Avalonia.Platform.Storage
 open Avalonia.FuncUI.DSL
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.Interactivity
 open TagBasedVideoManager.Renamer
 
 module Views =
+
+    let private getCheckBoxValue (e: RoutedEventArgs) : bool option =
+        match e.Source with
+        | :? ToggleButton as tb ->
+            Some (tb.IsChecked.HasValue && tb.IsChecked.Value)
+        | _ -> None
 
     // ==========================================
     // カラー・スタイル定数 (Windows 11 Fluent Dark / mockup.html 準拠)
@@ -588,7 +595,12 @@ module Views =
                                 CheckBox.create [
                                     DockPanel.dock Dock.Left
                                     CheckBox.isChecked c.IsSelected
-                                    CheckBox.onIsCheckedChanged (fun _ -> dispatch (ToggleCandidateSelect c.OriginalFullPath))
+                                    CheckBox.onIsCheckedChanged (fun e ->
+                                        match getCheckBoxValue e with
+                                        | Some isChecked when isChecked <> c.IsSelected ->
+                                            dispatch (SetCandidateSelect (c.OriginalFullPath, isChecked))
+                                        | _ -> ()
+                                    )
                                     CheckBox.verticalAlignment VerticalAlignment.Center
                                     CheckBox.margin (0.0, 0.0, 8.0, 0.0)
                                 ]
@@ -881,7 +893,12 @@ module Views =
                                 CheckBox.create [
                                     DockPanel.dock Dock.Left
                                     CheckBox.isChecked c.IsSelected
-                                    CheckBox.onIsCheckedChanged (fun _ -> dispatch (ToggleCandidateSelect c.OriginalFullPath))
+                                    CheckBox.onIsCheckedChanged (fun e ->
+                                        match getCheckBoxValue e with
+                                        | Some isChecked when isChecked <> c.IsSelected ->
+                                            dispatch (SetCandidateSelect (c.OriginalFullPath, isChecked))
+                                        | _ -> ()
+                                    )
                                     CheckBox.verticalAlignment VerticalAlignment.Center
                                     CheckBox.margin (0.0, 0.0, 8.0, 0.0)
                                 ]
@@ -1088,8 +1105,11 @@ module Views =
                                                 CheckBox.create [
                                                     CheckBox.isChecked allSelected
                                                     CheckBox.isEnabled (model.Candidates.Length > 0)
-                                                    CheckBox.onIsCheckedChanged (fun _ ->
-                                                        dispatch (SelectAllCandidates (not allSelected))
+                                                    CheckBox.onIsCheckedChanged (fun e ->
+                                                        match getCheckBoxValue e with
+                                                        | Some isChecked when isChecked <> allSelected ->
+                                                            dispatch (SelectAllCandidates isChecked)
+                                                        | _ -> ()
                                                     )
                                                     CheckBox.verticalAlignment VerticalAlignment.Center
                                                 ]

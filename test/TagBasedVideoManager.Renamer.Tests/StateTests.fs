@@ -80,6 +80,42 @@ module StateTests =
         first.IsSelected |> should equal true
 
     [<Fact>]
+    let ``SetCandidateSelect は指定パスの選択状態を明示的に更新し、冪等に動作する`` () =
+        let initialModel, _ = State.init ()
+        let p1 = {
+            OriginalFullPath = "C:\\Videos\\v1.mp4"
+            OriginalFileName = "v1.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 15
+            ProposedFileName = "n1.mp4"
+            ProposedLength = 15
+            AiComment = None
+            IsAiProposed = true
+            IsSelected = false
+            LastWriteTime = System.DateTime.UtcNow
+        }
+        let p2 = { p1 with OriginalFullPath = "C:\\Videos\\v2.mp4"; OriginalFileName = "v2.mp4"; IsSelected = true }
+        let model = { initialModel with Candidates = [ p1; p2 ] }
+
+        // true に明示設定
+        let setTrue, _ = State.update (SetCandidateSelect (p1.OriginalFullPath, true)) model
+        let p1Updated = setTrue.Candidates |> List.find (fun c -> c.OriginalFullPath = p1.OriginalFullPath)
+        p1Updated.IsSelected |> should equal true
+
+        // 冪等性: 再度 true を設定しても true のまま
+        let setTrueAgain, _ = State.update (SetCandidateSelect (p1.OriginalFullPath, true)) setTrue
+        let p1Again = setTrueAgain.Candidates |> List.find (fun c -> c.OriginalFullPath = p1.OriginalFullPath)
+        p1Again.IsSelected |> should equal true
+
+        // false に明示設定
+        let setFalse, _ = State.update (SetCandidateSelect (p1.OriginalFullPath, false)) setTrueAgain
+        let p1False = setFalse.Candidates |> List.find (fun c -> c.OriginalFullPath = p1.OriginalFullPath)
+        p1False.IsSelected |> should equal false
+        // 他の要素(p2)は影響を受けない
+        let p2Unchanged = setFalse.Candidates |> List.find (fun c -> c.OriginalFullPath = p2.OriginalFullPath)
+        p2Unchanged.IsSelected |> should equal true
+
+    [<Fact>]
     let ``RequestUndo は UndoStack に履歴がある場合、コンテナ再起動警告を含むダイアログを設定する`` () =
         let initialModel, _ = State.init ()
         let dummyUndoRecord: UndoRecord = {

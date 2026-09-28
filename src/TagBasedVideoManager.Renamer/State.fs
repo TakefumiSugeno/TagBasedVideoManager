@@ -54,6 +54,7 @@ and Msg =
 
     // 候補編集・ソート
     | ToggleCandidateSelect of fullPath: string
+    | SetCandidateSelect of fullPath: string * isSelected: bool
     | SelectAllCandidates of bool
     | UpdateProposedName of fullPath: string * newName: string
     | ChangeSortCriterion of SortCriterion
@@ -262,6 +263,15 @@ module State =
                 model.Candidates
                 |> List.map (fun c ->
                     if c.OriginalFullPath = fullPath then { c with IsSelected = not c.IsSelected }
+                    else c
+                )
+            { model with Candidates = updated }, Cmd.none
+
+        | SetCandidateSelect (fullPath, isSelected) ->
+            let updated =
+                model.Candidates
+                |> List.map (fun c ->
+                    if c.OriginalFullPath = fullPath then { c with IsSelected = isSelected }
                     else c
                 )
             { model with Candidates = updated }, Cmd.none
