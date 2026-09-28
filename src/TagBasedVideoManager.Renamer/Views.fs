@@ -20,6 +20,15 @@ module Views =
             Some (tb.IsChecked.HasValue && tb.IsChecked.Value)
         | _ -> None
 
+    let private monoFontFamily = FontFamily("Cascadia Mono, Consolas, Meiryo UI, Yu Gothic UI, monospace")
+
+    let private splitFileName (fileName: string) : string * string =
+        if String.IsNullOrEmpty(fileName) then ("", "")
+        else
+            let ext = System.IO.Path.GetExtension(fileName)
+            let baseName = System.IO.Path.GetFileNameWithoutExtension(fileName)
+            (baseName, ext)
+
     // ==========================================
     // カラー・スタイル定数 (Windows 11 Fluent Dark / mockup.html 準拠)
     // ==========================================
@@ -393,15 +402,19 @@ module Views =
                                             "mistralai/mistral-small-24b-instruct-2501:free"
                                             "nvidia/nemotron-3-ultra-550b-a55b:free"
                                         ]
+                                        let current = model.Settings.SelectedModel
+                                        let otherModels =
+                                            standardModels
+                                            |> List.filter (fun m -> not (String.Equals(m, current, StringComparison.OrdinalIgnoreCase)))
                                         let availableModels =
-                                            let current = model.Settings.SelectedModel
-                                            if not (String.IsNullOrWhiteSpace(current)) && not (List.contains current standardModels) then
-                                                current :: standardModels
-                                            else standardModels
+                                            if not (String.IsNullOrWhiteSpace(current)) then
+                                                current :: otherModels
+                                            else
+                                                standardModels
 
                                         let selectedIdx =
                                             availableModels
-                                            |> List.tryFindIndex (fun m -> m = model.Settings.SelectedModel)
+                                            |> List.tryFindIndex (fun m -> String.Equals(m, model.Settings.SelectedModel, StringComparison.OrdinalIgnoreCase))
                                             |> Option.defaultValue 0
 
                                         ComboBox.create [
@@ -541,6 +554,10 @@ module Views =
             else
                 $"AFTER ({c.ProposedLength}字 [安全])", textAfterLabel
 
+        let (origBaseName, origExt) = splitFileName c.OriginalFileName
+        let (proposedBaseName, proposedExt) = splitFileName c.ProposedFileName
+        let displayExt = if String.IsNullOrEmpty(proposedExt) then origExt else proposedExt
+
         Border.create [
             Border.background (SolidColorBrush bgInput)
             Border.borderBrush (SolidColorBrush (if c.IsSelected then accentBlue else borderZinc800))
@@ -619,7 +636,7 @@ module Views =
                                 // 残余領域: フォルダパス (親幅内でトリミングされ親幅を突破しない)
                                 SelectableTextBlock.create [
                                     TextBlock.text (c.DirectoryPath + "\\")
-                                    TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                    TextBlock.fontFamily monoFontFamily
                                     TextBlock.fontSize 10.0
                                     TextBlock.foreground (SolidColorBrush textZinc500)
                                     TextBlock.verticalAlignment VerticalAlignment.Center
@@ -629,7 +646,7 @@ module Views =
                             ]
                         ]
 
-                        // Line 2: BEFORE (薄赤背景・行高さ 32px 統一・ラベル幅 140px 固定・親幅制約)
+                        // Line 2: BEFORE (薄赤背景・行高さ 32px 統一・ラベル幅 160px 固定・親幅制約)
                         Border.create [
                             Border.background (SolidColorBrush bgBefore)
                             Border.borderBrush (SolidColorBrush borderBefore)
@@ -661,15 +678,55 @@ module Views =
                                                 ]
                                             )
                                         ]
-                                        // BEFORE ファイル名: SelectableTextBlock で親幅残余領域に直接配置（親幅を突破しない）
-                                        SelectableTextBlock.create [
-                                            TextBlock.text c.OriginalFileName
-                                            TextBlock.fontFamily (FontFamily "Consolas, monospace")
-                                            TextBlock.fontSize 11.0
-                                            TextBlock.foreground (SolidColorBrush textBeforeFile)
-                                            TextBlock.verticalAlignment VerticalAlignment.Center
-                                            TextBlock.textTrimming TextTrimming.CharacterEllipsis
-                                            TextBlock.textWrapping TextWrapping.NoWrap
+                                        // 右端スペーサー: AFTER行の「AI提案済/未提案」バッジ(width 64px + margin 8px)と幅を完全一致
+                                        Border.create [
+                                            DockPanel.dock Dock.Right
+                                            Border.width 64.0
+                                            Border.height 26.0
+                                            Border.margin (8.0, 0.0, 0.0, 0.0)
+                                        ]
+                                        // 右側: 拡張子ラベル（ラベル項目として独立表示）
+                                        Border.create [
+                                            DockPanel.dock Dock.Right
+                                            Border.background (SolidColorBrush (Color.Parse("#27272a")))
+                                            Border.borderBrush (SolidColorBrush (Color.Parse("#3f3f46")))
+                                            Border.borderThickness 1.0
+                                            Border.cornerRadius 3.0
+                                            Border.height 26.0
+                                            Border.padding (6.0, 0.0)
+                                            Border.margin (6.0, 0.0, 0.0, 0.0)
+                                            Border.verticalAlignment VerticalAlignment.Center
+                                            Border.child (
+                                                TextBlock.create [
+                                                    TextBlock.text origExt
+                                                    TextBlock.fontFamily monoFontFamily
+                                                    TextBlock.fontSize 11.0
+                                                    TextBlock.fontWeight FontWeight.Bold
+                                                    TextBlock.foreground (SolidColorBrush textZinc400)
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                ]
+                                            )
+                                        ]
+                                        // 中央残余: BEFORE ファイル名本体（拡張子なし・黒背景枠・高さ26px・上下中央揃え）
+                                        Border.create [
+                                            Border.height 26.0
+                                            Border.background (SolidColorBrush bgBlack)
+                                            Border.borderBrush (SolidColorBrush borderZinc800)
+                                            Border.borderThickness 1.0
+                                            Border.cornerRadius 3.0
+                                            Border.padding (6.0, 0.0)
+                                            Border.verticalAlignment VerticalAlignment.Center
+                                            Border.child (
+                                                SelectableTextBlock.create [
+                                                    TextBlock.text origBaseName
+                                                    TextBlock.fontFamily monoFontFamily
+                                                    TextBlock.fontSize 11.0
+                                                    TextBlock.foreground (SolidColorBrush textBeforeFile)
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                    TextBlock.textTrimming TextTrimming.CharacterEllipsis
+                                                    TextBlock.textWrapping TextWrapping.NoWrap
+                                                ]
+                                            )
                                         ]
                                     ]
                                 ]
@@ -708,40 +765,68 @@ module Views =
                                                 ]
                                             )
                                         ]
+                                        // 右端: AI提案済 / 未提案 バッジ (width 64px)
                                         Border.create [
                                             DockPanel.dock Dock.Right
+                                            Border.width 64.0
+                                            Border.height 26.0
                                             Border.background (SolidColorBrush (if c.IsAiProposed then Color.Parse("#172554") else Color.Parse("#27272a")))
                                             Border.borderBrush (SolidColorBrush (if c.IsAiProposed then Color.Parse("#1e40af") else Color.Parse("#3f3f46")))
                                             Border.borderThickness 1.0
                                             Border.cornerRadius 3.0
-                                            Border.padding (6.0, 2.0)
+                                            Border.padding (4.0, 0.0)
                                             Border.margin (8.0, 0.0, 0.0, 0.0)
+                                            Border.verticalAlignment VerticalAlignment.Center
                                             Border.child (
                                                 TextBlock.create [
                                                     TextBlock.text (if c.IsAiProposed then "AI提案済" else "未提案")
                                                     TextBlock.fontSize 10.0
                                                     TextBlock.fontWeight FontWeight.Bold
                                                     TextBlock.foreground (SolidColorBrush (if c.IsAiProposed then Color.Parse("#60a5fa") else Color.Parse("#a1a1aa")))
+                                                    TextBlock.horizontalAlignment HorizontalAlignment.Center
                                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                                 ]
                                             )
                                         ]
-                                        // AFTER ファイル名: 編集可能 TextBox、等幅フォント、高さ 26px
+                                        // 右側: 拡張子ラベル（ラベル項目として独立表示）
+                                        Border.create [
+                                            DockPanel.dock Dock.Right
+                                            Border.background (SolidColorBrush (Color.Parse("#27272a")))
+                                            Border.borderBrush (SolidColorBrush (Color.Parse("#3f3f46")))
+                                            Border.borderThickness 1.0
+                                            Border.cornerRadius 3.0
+                                            Border.height 26.0
+                                            Border.padding (6.0, 0.0)
+                                            Border.margin (6.0, 0.0, 0.0, 0.0)
+                                            Border.verticalAlignment VerticalAlignment.Center
+                                            Border.child (
+                                                TextBlock.create [
+                                                    TextBlock.text displayExt
+                                                    TextBlock.fontFamily monoFontFamily
+                                                    TextBlock.fontSize 11.0
+                                                    TextBlock.fontWeight FontWeight.Bold
+                                                    TextBlock.foreground (SolidColorBrush textZinc400)
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                ]
+                                            )
+                                        ]
+                                        // 中央残余: AFTER ファイル名本体（拡張子なし・編集可能 TextBox・高さ26px）
                                         TextBox.create [
-                                            TextBox.text c.ProposedFileName
+                                            TextBox.text proposedBaseName
                                             TextBox.height 26.0
                                             TextBox.verticalAlignment VerticalAlignment.Center
                                             TextBox.verticalContentAlignment VerticalAlignment.Center
                                             TextBox.background (SolidColorBrush bgBlack)
                                             TextBox.foreground (SolidColorBrush (if isIncrease || isDanger then textBeforeFile else textAfterFile))
-                                            TextBox.fontFamily (FontFamily "Consolas, monospace")
+                                            TextBox.fontFamily monoFontFamily
                                             TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then Color.Parse("#ef4444") else borderAfterInput))
                                             TextBox.borderThickness 1.0
                                             TextBox.cornerRadius 3.0
-                                            TextBox.padding (6.0, 2.0)
+                                            TextBox.padding (6.0, 0.0)
                                             TextBox.fontSize 11.0
-                                            TextBox.onTextChanged (fun newName ->
-                                                dispatch (UpdateProposedName (c.OriginalFullPath, newName))
+                                            TextBox.onTextChanged (fun newBaseName ->
+                                                if newBaseName <> proposedBaseName then
+                                                    dispatch (UpdateProposedName (c.OriginalFullPath, newBaseName + displayExt))
                                             )
                                         ]
                                     ]
@@ -844,6 +929,10 @@ module Views =
             else
                 $"{c.ProposedLength}字 [安全]", textAfterLabel
 
+        let (origBaseName, origExt) = splitFileName c.OriginalFileName
+        let (proposedBaseName, proposedExt) = splitFileName c.ProposedFileName
+        let displayExt = if String.IsNullOrEmpty(proposedExt) then origExt else proposedExt
+
         Border.create [
             Border.background (SolidColorBrush bgInput)
             Border.borderBrush (SolidColorBrush (if c.IsSelected then accentBlue else borderZinc800))
@@ -913,7 +1002,7 @@ module Views =
                                 ]
                                 SelectableTextBlock.create [
                                     TextBlock.text c.DirectoryPath
-                                    TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                    TextBlock.fontFamily monoFontFamily
                                     TextBlock.fontSize 10.0
                                     TextBlock.foreground (SolidColorBrush textZinc500)
                                     TextBlock.verticalAlignment VerticalAlignment.Center
@@ -954,25 +1043,58 @@ module Views =
                                                             DockPanel.dock Dock.Right
                                                             TextBlock.text $"{c.OriginalLength}字 [危険]"
                                                             TextBlock.fontSize 10.0
-                                                            TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                                            TextBlock.fontFamily monoFontFamily
                                                             TextBlock.fontWeight FontWeight.Bold
                                                             TextBlock.foreground (SolidColorBrush textBeforeLabel)
                                                         ]
                                                     ]
                                                 ]
-                                                Border.create [
-                                                    Border.background (SolidColorBrush bgBlack)
-                                                    Border.cornerRadius 3.0
-                                                    Border.padding 6.0
-                                                    Border.child (
-                                                        SelectableTextBlock.create [
-                                                            TextBlock.text c.OriginalFileName
-                                                            TextBlock.fontFamily (FontFamily "Consolas, monospace")
-                                                            TextBlock.fontSize 11.0
-                                                            TextBlock.foreground (SolidColorBrush textBeforeFile)
-                                                            TextBlock.textWrapping TextWrapping.Wrap
+                                                DockPanel.create [
+                                                    DockPanel.children [
+                                                        // 右側: 拡張子ラベル
+                                                        Border.create [
+                                                            DockPanel.dock Dock.Right
+                                                            Border.background (SolidColorBrush (Color.Parse("#27272a")))
+                                                            Border.borderBrush (SolidColorBrush (Color.Parse("#3f3f46")))
+                                                            Border.borderThickness 1.0
+                                                            Border.cornerRadius 3.0
+                                                            Border.height 28.0
+                                                            Border.padding (6.0, 0.0)
+                                                            Border.margin (6.0, 0.0, 0.0, 0.0)
+                                                            Border.verticalAlignment VerticalAlignment.Center
+                                                            Border.child (
+                                                                TextBlock.create [
+                                                                    TextBlock.text origExt
+                                                                    TextBlock.fontFamily monoFontFamily
+                                                                    TextBlock.fontSize 11.0
+                                                                    TextBlock.fontWeight FontWeight.Bold
+                                                                    TextBlock.foreground (SolidColorBrush textZinc400)
+                                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                ]
+                                                            )
                                                         ]
-                                                    )
+                                                        // 残余: ファイル名本体
+                                                        Border.create [
+                                                            Border.height 28.0
+                                                            Border.background (SolidColorBrush bgBlack)
+                                                            Border.borderBrush (SolidColorBrush borderZinc800)
+                                                            Border.borderThickness 1.0
+                                                            Border.cornerRadius 3.0
+                                                            Border.padding (6.0, 0.0)
+                                                            Border.verticalAlignment VerticalAlignment.Center
+                                                            Border.child (
+                                                                SelectableTextBlock.create [
+                                                                    TextBlock.text origBaseName
+                                                                    TextBlock.fontFamily monoFontFamily
+                                                                    TextBlock.fontSize 11.0
+                                                                    TextBlock.foreground (SolidColorBrush textBeforeFile)
+                                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                    TextBlock.textTrimming TextTrimming.CharacterEllipsis
+                                                                    TextBlock.textWrapping TextWrapping.NoWrap
+                                                                ]
+                                                            )
+                                                        ]
+                                                    ]
                                                 ]
                                             ]
                                         ]
@@ -1006,26 +1128,56 @@ module Views =
                                                             DockPanel.dock Dock.Right
                                                             TextBlock.text afterLengthText
                                                             TextBlock.fontSize 10.0
-                                                            TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                                            TextBlock.fontFamily monoFontFamily
                                                             TextBlock.fontWeight FontWeight.Bold
                                                             TextBlock.foreground (SolidColorBrush afterLengthFg)
                                                         ]
                                                     ]
                                                 ]
-                                                TextBox.create [
-                                                    TextBox.text c.ProposedFileName
-                                                    TextBox.height 30.0
-                                                    TextBox.background (SolidColorBrush bgBlack)
-                                                    TextBox.foreground (SolidColorBrush (if isIncrease || isDanger then textBeforeFile else textAfterFile))
-                                                    TextBox.fontFamily (FontFamily "Consolas, monospace")
-                                                    TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then Color.Parse("#ef4444") else borderAfterInput))
-                                                    TextBox.borderThickness 1.0
-                                                    TextBox.cornerRadius 3.0
-                                                    TextBox.padding (6.0, 3.0)
-                                                    TextBox.fontSize 11.0
-                                                    TextBox.onTextChanged (fun newName ->
-                                                        dispatch (UpdateProposedName (c.OriginalFullPath, newName))
-                                                    )
+                                                DockPanel.create [
+                                                    DockPanel.children [
+                                                        // 右側: 拡張子ラベル
+                                                        Border.create [
+                                                            DockPanel.dock Dock.Right
+                                                            Border.background (SolidColorBrush (Color.Parse("#27272a")))
+                                                            Border.borderBrush (SolidColorBrush (Color.Parse("#3f3f46")))
+                                                            Border.borderThickness 1.0
+                                                            Border.cornerRadius 3.0
+                                                            Border.height 28.0
+                                                            Border.padding (6.0, 0.0)
+                                                            Border.margin (6.0, 0.0, 0.0, 0.0)
+                                                            Border.verticalAlignment VerticalAlignment.Center
+                                                            Border.child (
+                                                                TextBlock.create [
+                                                                    TextBlock.text displayExt
+                                                                    TextBlock.fontFamily monoFontFamily
+                                                                    TextBlock.fontSize 11.0
+                                                                    TextBlock.fontWeight FontWeight.Bold
+                                                                    TextBlock.foreground (SolidColorBrush textZinc400)
+                                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                ]
+                                                            )
+                                                        ]
+                                                        // 残余: ファイル名本体 TextBox
+                                                        TextBox.create [
+                                                            TextBox.text proposedBaseName
+                                                            TextBox.height 28.0
+                                                            TextBox.verticalAlignment VerticalAlignment.Center
+                                                            TextBox.verticalContentAlignment VerticalAlignment.Center
+                                                            TextBox.background (SolidColorBrush bgBlack)
+                                                            TextBox.foreground (SolidColorBrush (if isIncrease || isDanger then textBeforeFile else textAfterFile))
+                                                            TextBox.fontFamily monoFontFamily
+                                                            TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then Color.Parse("#ef4444") else borderAfterInput))
+                                                            TextBox.borderThickness 1.0
+                                                            TextBox.cornerRadius 3.0
+                                                            TextBox.padding (6.0, 0.0)
+                                                            TextBox.fontSize 11.0
+                                                            TextBox.onTextChanged (fun newBaseName ->
+                                                                if newBaseName <> proposedBaseName then
+                                                                    dispatch (UpdateProposedName (c.OriginalFullPath, newBaseName + displayExt))
+                                                            )
+                                                        ]
+                                                    ]
                                                 ]
                                                 match c.AiComment with
                                                 | Some comment when not (String.IsNullOrWhiteSpace(comment)) ->

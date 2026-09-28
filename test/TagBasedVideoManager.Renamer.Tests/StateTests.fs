@@ -247,4 +247,79 @@ module StateTests =
         let errMsg = updatedModel.ErrorMessage.Value
         errMsg.Contains("OpenRouter APIキーが未設定") |> should equal true
 
+    [<Fact>]
+    let ``RenameCompleted はリネーム後のパス長が閾値未満になった候補を除外する`` () =
+        let initialModel, _ = State.init ()
+        let model = { initialModel with CurrentThreshold = 50 }
+
+        let p1 = {
+            OriginalFullPath = "C:\\Videos\\long_path_that_was_over_limit_sample_1.mp4"
+            OriginalFileName = "long_path_that_was_over_limit_sample_1.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 250
+            ProposedFileName = "short1.mp4"
+            ProposedLength = 20
+            AiComment = None
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            IsAiProposed = true
+        }
+        let p2 = {
+            OriginalFullPath = "C:\\Videos\\long_path_that_was_over_limit_sample_2.mp4"
+            OriginalFileName = "long_path_that_was_over_limit_sample_2.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 260
+            ProposedFileName = "still_somewhat_long_file_name_that_exceeds_threshold.mp4"
+            ProposedLength = 245
+            AiComment = None
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            IsAiProposed = true
+        }
+        let p3_unselected = {
+            OriginalFullPath = "C:\\Videos\\unselected_long_file.mp4"
+            OriginalFileName = "unselected_long_file.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 255
+            ProposedFileName = "unselected_long_file.mp4"
+            ProposedLength = 255
+            AiComment = None
+            IsSelected = false
+            LastWriteTime = DateTime.UtcNow
+            IsAiProposed = false
+        }
+        let modelWithCandidates = { model with Candidates = [ p1; p2; p3_unselected ] }
+
+        // p1 はリネーム後 20文字 (< 240) -> 抽出基準に該当しなくなり除外
+        // p2 はリネーム後 245文字 (>= 240) -> 依然として抽出基準に該当するため、最新パス情報に更新されて候補に残る
+        // p3_unselected は未選択のためそのまま残る
+        let r1 = {
+            Id = Guid.NewGuid()
+            Timestamp = DateTime.UtcNow
+            OriginalFullPath = p1.OriginalFullPath
+            RenamedFullPath = "C:\\Videos\\short1.mp4"
+        }
+        let r2 = {
+            Id = Guid.NewGuid()
+            Timestamp = DateTime.UtcNow
+            OriginalFullPath = p2.OriginalFullPath
+            RenamedFullPath = "C:\\Videos\\still_somewhat_long_file_name_that_exceeds_threshold.mp4"
+        }
+
+        let updatedModel, _ = State.update (RenameCompleted (false, Ok [ r1; r2 ])) modelWithCandidates
+
+        // 結果検証
+        updatedModel.Candidates.Length |> should equal 2
+        // 1. p1 は除外されている
+        updatedModel.Candidates |> List.exists (fun c -> c.OriginalFullPath = p1.OriginalFullPath) |> should equal false
+        // 2. p2 は更新されて残っている
+        let p2Updated = updatedModel.Candidates |> List.find (fun c -> c.OriginalFullPath = r2.RenamedFullPath)
+        p2Updated.OriginalFileName |> should equal "still_somewhat_long_file_name_that_exceeds_threshold.mp4"
+        p2Updated.OriginalLength |> should equal r2.RenamedFullPath.Length
+        p2Updated.IsSelected |> should equal false
+        p2Updated.IsAiProposed |> should equal false
+        // 3. p3_unselected はそのまま残っている
+        let p3Found = updatedModel.Candidates |> List.find (fun c -> c.OriginalFullPath = p3_unselected.OriginalFullPath)
+        p3Found.IsSelected |> should equal false
+
 

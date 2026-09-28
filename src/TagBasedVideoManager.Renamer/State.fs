@@ -321,9 +321,40 @@ module State =
                 { model with IsRenaming = true; ErrorMessage = None }, cmd
 
         | RenameCompleted (restartContainer, Ok records) ->
-            let remaining = model.Candidates |> List.filter (fun c -> not c.IsSelected)
+            let recordMap =
+                records
+                |> List.map (fun r -> r.OriginalFullPath, r.RenamedFullPath)
+                |> Map.ofList
+
+            let updatedCandidates =
+                model.Candidates
+                |> List.choose (fun c ->
+                    match Map.tryFind c.OriginalFullPath recordMap with
+                    | Some renamedFullPath ->
+                        // リネーム実行対象: 抽出基準（閾値）に該当しなくなった場合は表示せず今後の処理対象としない
+                        if renamedFullPath.Length < model.CurrentThreshold then
+                            None
+                        else
+                            // リネーム後も抽出基準に該当する場合、最新ファイル情報に更新して候補に残す
+                            let newFileName = System.IO.Path.GetFileName(renamedFullPath)
+                            Some {
+                                c with
+                                    OriginalFullPath = renamedFullPath
+                                    OriginalFileName = newFileName
+                                    OriginalLength = renamedFullPath.Length
+                                    ProposedFileName = newFileName
+                                    ProposedLength = renamedFullPath.Length
+                                    IsSelected = false
+                                    IsAiProposed = false
+                                    AiComment = None
+                            }
+                    | None ->
+                        // リネーム対象外（未選択）の候補はそのまま保持
+                        Some c
+                )
+
             let newUndoStack = records :: model.UndoStack
-            let newModel = { model with IsRenaming = false; Candidates = remaining; UndoStack = newUndoStack }
+            let newModel = { model with IsRenaming = false; Candidates = updatedCandidates; UndoStack = newUndoStack }
 
             if restartContainer then
                 let restartCmd =
