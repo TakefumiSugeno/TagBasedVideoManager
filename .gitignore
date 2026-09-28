@@ -70,11 +70,14 @@ doc/work/
 
 # Local database and media files
 *.db
-test/videos/
-test/thumbnails/
+test/**/videos/
+test/**/thumbnails/
 
 # Editor and LSP directories
 .vscode/
 .lsp/
 .clj-kondo/
+
+# Renamer local settings (contains API key)
+companion-settings.json
 

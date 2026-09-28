@@ -38,18 +38,21 @@ type E2ETests (output: ITestOutputHelper) =
         listener.Stop()
         port
 
+    static let rec findProjectRoot (dir: DirectoryInfo) =
+        if dir = null then AppDomain.CurrentDomain.BaseDirectory
+        else
+            let candidateSrc = Path.Combine(dir.FullName, "src", "TagBasedVideoManager")
+            if Directory.Exists(candidateSrc) then dir.FullName
+            elif dir.Parent <> null then findProjectRoot dir.Parent
+            else dir.FullName
+
     // テスト用の共通サーバー・ブラウザ起動処理
     let startTestServer dbPath =
         let port = getFreePort ()
         let url = $"http://localhost:{port}"
         let baseDir = AppDomain.CurrentDomain.BaseDirectory
-        let rec findProjectRoot (dir: DirectoryInfo) =
-            let candidateSrc = Path.Combine(dir.FullName, "src")
-            if Directory.Exists(candidateSrc) then dir.FullName
-            elif dir.Parent <> null then findProjectRoot dir.Parent
-            else dir.FullName
         let projectRoot = findProjectRoot (DirectoryInfo(baseDir))
-        let contentRoot = Path.Combine(projectRoot, "src")
+        let contentRoot = Path.Combine(projectRoot, "src", "TagBasedVideoManager")
         let webRoot = Path.Combine(contentRoot, "wwwroot")
 
         // 他の並行実行テストクラスとの環境変数 DATABASE_PATH の競合を防ぐため、
@@ -93,11 +96,13 @@ type E2ETests (output: ITestOutputHelper) =
                     if not (String.IsNullOrEmpty(url)) then
                         E2ETests.Log(sprintf "[CDP COV URL]: %s" url)
                     if url.Contains("app.js") then
-                        let contentRoot = Directory.GetCurrentDirectory()
+                        let currentDir = Directory.GetCurrentDirectory()
+                        let projectRoot = findProjectRoot (DirectoryInfo(AppContext.BaseDirectory))
                         let appJsPath = 
-                            let p1 = Path.Combine(contentRoot, "..", "..", "..", "..", "src", "wwwroot", "app.js")
-                            let p2 = Path.Combine(contentRoot, "..", "src", "wwwroot", "app.js")
-                            if File.Exists(p2) then p2 else p1
+                            let p1 = Path.Combine(currentDir, "..", "..", "..", "..", "src", "TagBasedVideoManager", "wwwroot", "app.js")
+                            let p2 = Path.Combine(currentDir, "..", "src", "TagBasedVideoManager", "wwwroot", "app.js")
+                            let p3 = Path.Combine(projectRoot, "src", "TagBasedVideoManager", "wwwroot", "app.js")
+                            if File.Exists(p3) then p3 elif File.Exists(p2) then p2 else p1
                         E2ETests.Log(sprintf "[CDP PATH CHECK]: appJsPath = %s (Exists: %b)" appJsPath (File.Exists(appJsPath)))
                         let sourceCode = if File.Exists(appJsPath) then File.ReadAllText(appJsPath) else ""
                         

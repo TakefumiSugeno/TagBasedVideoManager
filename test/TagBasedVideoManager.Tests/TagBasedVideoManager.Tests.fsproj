@@ -37,11 +37,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\TagBasedVideoManager.fsproj" />
+    <ProjectReference Include="..\..\src\TagBasedVideoManager\TagBasedVideoManager.fsproj" />
   </ItemGroup>
   
   <ItemGroup>
-    <Content Include="..\src\wwwroot\**\*">
+    <Content Include="..\..\src\TagBasedVideoManager\wwwroot\**\*">
       <Link>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

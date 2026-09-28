@@ -1,5 +1,6 @@
 namespace TagBasedVideoManager.Tests
 
+open System
 open System.Net
 open System.IO
 open Microsoft.AspNetCore.Builder
@@ -11,24 +12,34 @@ open TagBasedVideoManager
 
 type StaticFileTests () =
 
+    let getContentAndWebRoot () =
+        let baseDir = AppDomain.CurrentDomain.BaseDirectory
+        let rec findProjectRoot (dir: DirectoryInfo) =
+            if dir = null then AppDomain.CurrentDomain.BaseDirectory
+            else
+                let candidateSrc = Path.Combine(dir.FullName, "src", "TagBasedVideoManager")
+                if Directory.Exists(candidateSrc) then dir.FullName
+                elif dir.Parent <> null then findProjectRoot dir.Parent
+                else dir.FullName
+        let projectRoot = findProjectRoot (DirectoryInfo(baseDir))
+        let contentRoot = Path.Combine(projectRoot, "src", "TagBasedVideoManager")
+        let webRoot = Path.Combine(contentRoot, "wwwroot")
+        contentRoot, webRoot
+
     [<Fact>]
     member _.``ルートパスへのGETリクエストはwwwroot配下のindex.htmlを正常に返却する`` () =
-        // 1. WebHostBuilderの構築 (プロダクションコードのProgram設定を適用)
+        let contentRoot, webRoot = getContentAndWebRoot ()
         let builder =
             WebHostBuilder()
-                .UseContentRoot(Directory.GetCurrentDirectory())
-                .UseWebRoot(Path.Combine("..", "..", "..", "..", "src", "wwwroot")) // テスト実行位置からの相対
+                .UseContentRoot(contentRoot)
+                .UseWebRoot(webRoot)
                 .ConfigureServices(Program.configureServices)
                 .Configure(Program.configureApp)
 
-        // 2. テストサーバーの起動
         use server = new TestServer(builder)
         use client = server.CreateClient()
 
-        // 3. リクエストの送信
         let response = client.GetAsync("/index.html").Result
-        
-        // 4. アサーション (最初は Program.configureApp 内で UseStaticFiles がないため失敗する)
         response.StatusCode |> should equal HttpStatusCode.OK
         
         let content = response.Content.ReadAsStringAsync().Result
@@ -36,11 +47,11 @@ type StaticFileTests () =
 
     [<Fact>]
     member _.``ルートパスへのGETリクエストはデフォルトファイルマッピングによりindex.htmlを正常に返却する`` () =
-        // 境界値: /index.html ではなく / へのアクセス
+        let contentRoot, webRoot = getContentAndWebRoot ()
         let builder =
             WebHostBuilder()
-                .UseContentRoot(Directory.GetCurrentDirectory())
-                .UseWebRoot(Path.Combine("..", "..", "..", "..", "src", "wwwroot"))
+                .UseContentRoot(contentRoot)
+                .UseWebRoot(webRoot)
                 .ConfigureServices(Program.configureServices)
                 .Configure(Program.configureApp)
 
@@ -55,11 +66,11 @@ type StaticFileTests () =
 
     [<Fact>]
     member _.``存在しない静的ファイルへのGETリクエストは404エラーを返却する`` () =
-        // 異常値/境界値: 存在しないパスへのアクセス
+        let contentRoot, webRoot = getContentAndWebRoot ()
         let builder =
             WebHostBuilder()
-                .UseContentRoot(Directory.GetCurrentDirectory())
-                .UseWebRoot(Path.Combine("..", "..", "..", "..", "src", "wwwroot"))
+                .UseContentRoot(contentRoot)
+                .UseWebRoot(webRoot)
                 .ConfigureServices(Program.configureServices)
                 .Configure(Program.configureApp)
 

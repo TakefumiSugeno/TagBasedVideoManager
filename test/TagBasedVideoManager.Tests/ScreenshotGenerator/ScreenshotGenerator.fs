@@ -44,11 +44,12 @@ type ScreenshotGenerator () =
         let port = getFreePort ()
         let url = $"http://localhost:{port}"
         let repoRoot = getRepoRoot ()
-        let webRoot = Path.Combine(repoRoot, "src", "wwwroot")
+        let contentRoot = Path.Combine(repoRoot, "src", "TagBasedVideoManager")
+        let webRoot = Path.Combine(contentRoot, "wwwroot")
 
         let host =
             Microsoft.AspNetCore.WebHost.CreateDefaultBuilder()
-                .UseContentRoot(repoRoot)
+                .UseContentRoot(contentRoot)
                 .UseWebRoot(webRoot)
                 .UseUrls(url)
                 .ConfigureServices(fun services ->
