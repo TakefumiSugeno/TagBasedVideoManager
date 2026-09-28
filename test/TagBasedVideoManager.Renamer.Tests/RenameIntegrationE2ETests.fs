@@ -400,6 +400,8 @@ module RenameIntegrationE2ETests =
         }
         renderAndCapture unproposedModel "E2E_07_Unproposed_No_ApiKey.png"
         renderAndCapture unproposedModel "E2E_07b_Unshortened_Danger_Warning.png"
+        let unproposedHorizontal = { unproposedModel with Layout = Horizontal }
+        renderAndCapture unproposedHorizontal "E2E_07c_Unshortened_Danger_Warning_Horizontal.png"
 
         // 8. 手動編集による文字数増加警告状態 (ProposedLength > OriginalLength)
         let increasedCandidates : RenameProposal list = [

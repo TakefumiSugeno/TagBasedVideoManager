@@ -484,22 +484,22 @@ module Views =
             else
                 "✓ 安全", textAfterLabel
 
-        let afterBg, afterBorder =
-            if isIncrease || isDanger then bgBefore, borderBefore
-            elif isUnshortened then Color.Parse("#18181b"), Color.Parse("#3f3f46")
-            else bgAfter, borderAfter
+        let afterBg = bgAfter
+
+        let afterBorder =
+            if isIncrease || isDanger then Color.Parse("#ef4444")
+            else borderAfter
 
         let afterBadgeBg, afterBadgeBorder =
-            if isIncrease || isDanger then badgeBgBefore, borderBefore
-            elif isUnshortened then Color.Parse("#27272a"), Color.Parse("#3f3f46")
+            if isIncrease || isDanger then Color.Parse("#450a0a"), Color.Parse("#b91c1c")
             else badgeBgAfter, borderAfter
 
         let afterLabelText, afterLabelFg =
             if isIncrease then
-                (if isDanger then $"AFTER ({c.ProposedLength}字 [危険 (増加)])" else $"AFTER ({c.ProposedLength}字 [増加])"), Color.Parse("#f87171")
+                (if isDanger then $"⚠️ AFTER ({c.ProposedLength}字 [危険 (増加)])" else $"⚠️ AFTER ({c.ProposedLength}字 [増加])"), Color.Parse("#f87171")
             elif isDanger then
-                $"AFTER ({c.ProposedLength}字 [危険])", textBeforeLabel
-            elif isUnshortened then
+                $"⚠️ AFTER ({c.ProposedLength}字 [危険])", Color.Parse("#f87171")
+            elif isUnshortened && not c.IsAiProposed then
                 $"AFTER ({c.ProposedLength}字 [未短縮])", Color.Parse("#a1a1aa")
             else
                 $"AFTER ({c.ProposedLength}字 [安全])", textAfterLabel
@@ -599,10 +599,10 @@ module Views =
                             Border.child (
                                 DockPanel.create [
                                     DockPanel.children [
-                                        // ラベル幅 140px 固定（AFTER行と垂直開始位置を一致させる）
+                                        // ラベル幅 160px 固定（AFTER行と垂直開始位置を一致させる）
                                         Border.create [
                                             DockPanel.dock Dock.Left
-                                            Border.width 140.0
+                                            Border.width 160.0
                                             Border.background (SolidColorBrush badgeBgBefore)
                                             Border.borderBrush (SolidColorBrush borderBefore)
                                             Border.borderThickness 1.0
@@ -634,11 +634,11 @@ module Views =
                             )
                         ]
 
-                        // Line 3: AFTER (行高さ 32px 統一・ラベル幅 140px 固定・動的評価連動)
+                        // Line 3: AFTER (行高さ 32px 統一・ラベル幅 160px 固定・動的評価連動)
                         Border.create [
                             Border.background (SolidColorBrush afterBg)
                             Border.borderBrush (SolidColorBrush afterBorder)
-                            Border.borderThickness 1.0
+                            Border.borderThickness (if isIncrease || isDanger then 1.5 else 1.0)
                             Border.cornerRadius 4.0
                             Border.padding (6.0, 2.0)
                             Border.height 32.0
@@ -646,10 +646,10 @@ module Views =
                             Border.child (
                                 DockPanel.create [
                                     DockPanel.children [
-                                        // ラベル幅 140px 固定（BEFORE行と垂直開始位置を一致させる）
+                                        // ラベル幅 160px 固定（BEFORE行と垂直開始位置を一致させる）
                                         Border.create [
                                             DockPanel.dock Dock.Left
-                                            Border.width 140.0
+                                            Border.width 160.0
                                             Border.background (SolidColorBrush afterBadgeBg)
                                             Border.borderBrush (SolidColorBrush afterBadgeBorder)
                                             Border.borderThickness 1.0
@@ -693,7 +693,7 @@ module Views =
                                             TextBox.background (SolidColorBrush bgBlack)
                                             TextBox.foreground (SolidColorBrush (if isIncrease || isDanger then textBeforeFile else textAfterFile))
                                             TextBox.fontFamily (FontFamily "Consolas, monospace")
-                                            TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then borderBefore else borderAfterInput))
+                                            TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then Color.Parse("#ef4444") else borderAfterInput))
                                             TextBox.borderThickness 1.0
                                             TextBox.cornerRadius 3.0
                                             TextBox.padding (6.0, 2.0)
@@ -774,17 +774,18 @@ module Views =
             else
                 "✓ 安全", textAfterLabel
 
-        let afterBg, afterBorder =
-            if isIncrease || isDanger then bgBefore, borderBefore
-            elif isUnshortened then Color.Parse("#18181b"), Color.Parse("#3f3f46")
-            else bgAfter, borderAfter
+        let afterBg = bgAfter
+
+        let afterBorder =
+            if isIncrease || isDanger then Color.Parse("#ef4444")
+            else borderAfter
 
         let afterLabelTitle, afterLabelFg =
             if isIncrease then
-                "AFTER (文字数増加 / 編集可)", Color.Parse("#f87171")
+                "⚠️ AFTER (文字数増加 / 編集可)", Color.Parse("#f87171")
             elif isDanger then
-                "AFTER (要短縮 / 編集可)", textBeforeLabel
-            elif isUnshortened then
+                "⚠️ AFTER (要短縮 / 編集可)", Color.Parse("#f87171")
+            elif isUnshortened && not c.IsAiProposed then
                 "AFTER (未短縮 / 編集可)", Color.Parse("#a1a1aa")
             elif c.IsAiProposed then
                 "✓ AFTER (AI提案 / 編集可)", textAfterLabel
@@ -795,8 +796,8 @@ module Views =
             if isIncrease then
                 (if isDanger then $"{c.ProposedLength}字 [危険 (増加)]" else $"{c.ProposedLength}字 [増加]"), Color.Parse("#f87171")
             elif isDanger then
-                $"{c.ProposedLength}字 [危険]", textBeforeLabel
-            elif isUnshortened then
+                $"{c.ProposedLength}字 [危険]", Color.Parse("#f87171")
+            elif isUnshortened && not c.IsAiProposed then
                 $"{c.ProposedLength}字 [未短縮]", Color.Parse("#a1a1aa")
             else
                 $"{c.ProposedLength}字 [安全]", textAfterLabel
@@ -936,7 +937,7 @@ module Views =
                                     Grid.column 1
                                     Border.background (SolidColorBrush afterBg)
                                     Border.borderBrush (SolidColorBrush afterBorder)
-                                    Border.borderThickness 1.0
+                                    Border.borderThickness (if isIncrease || isDanger then 1.5 else 1.0)
                                     Border.cornerRadius 4.0
                                     Border.padding 8.0
                                     Border.margin (4.0, 0.0, 0.0, 0.0)
@@ -970,7 +971,7 @@ module Views =
                                                     TextBox.background (SolidColorBrush bgBlack)
                                                     TextBox.foreground (SolidColorBrush (if isIncrease || isDanger then textBeforeFile else textAfterFile))
                                                     TextBox.fontFamily (FontFamily "Consolas, monospace")
-                                                    TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then borderBefore else borderAfterInput))
+                                                    TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then Color.Parse("#ef4444") else borderAfterInput))
                                                     TextBox.borderThickness 1.0
                                                     TextBox.cornerRadius 3.0
                                                     TextBox.padding (6.0, 3.0)
