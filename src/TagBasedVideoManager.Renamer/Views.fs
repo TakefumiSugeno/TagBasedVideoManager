@@ -368,16 +368,34 @@ module Views =
                                             TextBlock.fontWeight FontWeight.SemiBold
                                             TextBlock.verticalAlignment VerticalAlignment.Center
                                         ]
+                                        let standardModels = [
+                                            "meta-llama/llama-3.3-70b-instruct:free"
+                                            "google/gemini-2.0-flash-exp:free"
+                                            "mistralai/mistral-small-24b-instruct-2501:free"
+                                            "nvidia/nemotron-3-ultra-550b-a55b:free"
+                                        ]
+                                        let availableModels =
+                                            let current = model.Settings.SelectedModel
+                                            if not (String.IsNullOrWhiteSpace(current)) && not (List.contains current standardModels) then
+                                                current :: standardModels
+                                            else standardModels
+
+                                        let selectedIdx =
+                                            availableModels
+                                            |> List.tryFindIndex (fun m -> m = model.Settings.SelectedModel)
+                                            |> Option.defaultValue 0
+
                                         ComboBox.create [
-                                            ComboBox.dataItems [
-                                                "meta-llama/llama-3.3-70b-instruct:free"
-                                                "google/gemini-2.0-flash-exp:free"
-                                                "mistralai/mistral-small-24b-instruct-2501:free"
-                                            ]
-                                            ComboBox.selectedIndex 0
+                                            ComboBox.dataItems availableModels
+                                            ComboBox.selectedIndex selectedIdx
                                             ComboBox.height 30.0
                                             ComboBox.fontSize 11.0
-                                            ComboBox.maxWidth 180.0
+                                            ComboBox.minWidth 180.0
+                                            ComboBox.maxWidth 320.0
+                                            ComboBox.onSelectedIndexChanged (fun idx ->
+                                                if idx >= 0 && idx < availableModels.Length then
+                                                    dispatch (ModelSelected availableModels.[idx])
+                                            )
                                         ]
                                     ]
                                 ]

@@ -45,6 +45,7 @@ and Msg =
     | ThresholdChanged of int
     | TargetDirectoryChanged of string
     | RuleSelected of string
+    | ModelSelected of string
 
     // 走査 & AI提案 (ワンアクション)
     | ExecuteScanAndPropose
@@ -152,6 +153,10 @@ module State =
 
         | RuleSelected ruleId ->
             { model with SelectedRuleId = ruleId }, Cmd.none
+
+        | ModelSelected newModel ->
+            let updatedSettings = { model.Settings with SelectedModel = newModel }
+            { model with Settings = updatedSettings }, Cmd.none
 
         // ワンアクション走査 & AI提案
         | ExecuteScanAndPropose ->
