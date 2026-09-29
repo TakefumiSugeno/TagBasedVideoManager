@@ -514,14 +514,39 @@
               class="font-bold text-white font-mono-fluent"
               x-text="selectedCount + ' 件'"
             ></span>
+
+            <!-- AI提案中の進捗バッジ (パターンA) -->
             <span
-              x-show="hasDangerFiles"
+              x-show="isProcessing"
+              class="text-blue-400 font-bold bg-blue-950/80 border border-blue-800 px-2.5 py-0.5 rounded text-[11px] flex items-center gap-1.5 animate-pulse"
+            >
+              <span
+                class="animate-spin inline-block w-2.5 h-2.5 border-2 border-blue-400 border-t-transparent rounded-full"
+              ></span>
+              <span
+                >AI提案中... (<span x-text="completedCount"></span>/<span
+                  x-text="candidates.length"
+                ></span>
+                件完了)</span
+              >
+            </span>
+
+            <!-- スキャン直後・未提案時の案内 -->
+            <span
+              x-show="!isProcessing && !isAllAiProposed && candidates.length > 0"
+              class="text-zinc-400 font-medium bg-zinc-900 border border-zinc-700 px-2 py-0.5 rounded text-[11px]"
+            >
+              ⏳ AI提案が完了するまでリネームは実行できません
+            </span>
+
+            <span
+              x-show="!isProcessing && isAllAiProposed && hasDangerFiles"
               class="text-red-400 font-bold bg-red-950/80 border border-red-800 px-2 py-0.5 rounded text-[11px] animate-pulse"
             >
               ⚠️ 要短縮ファイルが含まれています
             </span>
             <span
-              x-show="!hasDangerFiles && candidates.length > 0"
+              x-show="!isProcessing && isAllAiProposed && !hasDangerFiles && candidates.length > 0"
               class="text-emerald-400 font-bold bg-emerald-950/80 border border-emerald-800 px-2 py-0.5 rounded text-[11px]"
             >
               ✓ 全ファイルが240文字未満（安全）です
@@ -530,16 +555,18 @@
 
           <div class="flex items-center space-x-2">
             <button
-              class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow text-xs flex items-center space-x-1.5 disabled:opacity-50"
-              :disabled="selectedCount === 0"
+              class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow text-xs flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              :disabled="isProcessing || !isAllAiProposed || selectedCount === 0"
+              title="全件のAI提案完了後に実行可能"
             >
               <span>リネームのみ実行</span>
             </button>
             <button
-              class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded shadow text-xs flex items-center space-x-1.5 disabled:opacity-50"
-              :disabled="selectedCount === 0"
+              class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded shadow text-xs flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              :disabled="isProcessing || !isAllAiProposed || selectedCount === 0"
+              title="全件のAI提案完了後に実行可能"
             >
-              <span>リネーム＆Docker再起動</span>
+              <span>⚡ リネーム＆Docker再起動</span>
             </button>
           </div>
         </div>
@@ -613,6 +640,17 @@
 
           get selectedCount() {
             return this.candidates.filter((c) => c.isSelected).length;
+          },
+
+          get completedCount() {
+            return this.candidates.filter((c) => c.state === "done").length;
+          },
+
+          get isAllAiProposed() {
+            return (
+              this.candidates.length > 0 &&
+              this.candidates.every((c) => c.isAiProposed)
+            );
           },
 
           get hasDangerFiles() {
