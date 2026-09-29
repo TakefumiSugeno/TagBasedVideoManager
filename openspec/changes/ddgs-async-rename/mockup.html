@@ -194,18 +194,46 @@
             </div>
           </div>
 
-          <!-- 命名規則 ＆ Web検索 (ddgs) 設定 -->
-          <div class="flex items-center space-x-2 text-xs">
-            <span class="text-fluent-subtext font-semibold">命名規則:</span>
-            <select
-              x-model="selectedRule"
-              class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-white text-[11px]"
-            >
-              <option value="drama">
-                ドラマ・アニメ公式短縮 (Web検索有効)
-              </option>
-              <option value="standard">標準タイトル短縮 (Web検索なし)</option>
-            </select>
+          <!-- AIモデル, 命名規則 ＆ Web検索 (ddgs) 設定 -->
+          <div class="flex flex-wrap items-center gap-2.5 text-xs">
+            <!-- AIモデル選択 -->
+            <div class="flex items-center space-x-1.5">
+              <span class="text-fluent-subtext font-semibold">AIモデル:</span>
+              <select
+                x-model="selectedModel"
+                class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-white text-[11px] max-w-[210px] truncate"
+              >
+                <template x-for="m in models" :key="m">
+                  <option :value="m" x-text="m"></option>
+                </template>
+              </select>
+            </div>
+
+            <!-- 命名規則選択 -->
+            <div class="flex items-center space-x-1.5">
+              <span class="text-fluent-subtext font-semibold">命名規則:</span>
+              <select
+                x-model="selectedRule"
+                @change="onRuleChange()"
+                class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-white text-[11px] max-w-[170px] truncate"
+              >
+                <template x-for="(r, idx) in rules" :key="r.id">
+                  <option
+                    :value="r.id"
+                    x-text="(idx === 0 ? '★ ' : '') + r.name"
+                  ></option>
+                </template>
+              </select>
+
+              <!-- ⚙ 管理... ボタン -->
+              <button
+                @click="openRuleManager()"
+                class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded text-[11px] flex items-center space-x-1 transition-colors"
+                title="命名規則の追加・編集・並び替え"
+              >
+                <span>⚙ 管理...</span>
+              </button>
+            </div>
 
             <!-- Web Search バッジ / トグル -->
             <div
@@ -584,12 +612,274 @@
       </div>
     </div>
 
+    <!-- 命名規則マネージャー モーダル (Windows 11 Fluent Dark) -->
+    <div
+      x-show="isRuleManagerOpen"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0 scale-95"
+      x-transition:enter-end="opacity-100 scale-100"
+      x-transition:leave="transition ease-in duration-150"
+      x-transition:leave-start="opacity-100 scale-100"
+      x-transition:leave-end="opacity-0 scale-95"
+      class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 select-none"
+      style="display: none"
+    >
+      <div
+        class="bg-fluent-surface border border-fluent-border rounded-xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col overflow-hidden"
+        @click.outside="closeRuleManager()"
+      >
+        <!-- モーダルヘッダー -->
+        <div
+          class="px-5 py-4 border-b border-fluent-border flex items-center justify-between flex-shrink-0 bg-fluent-bg/60"
+        >
+          <div class="flex items-center space-x-2.5">
+            <span
+              class="text-base font-bold text-white flex items-center gap-2"
+            >
+              <span>⚙</span> 命名規則マネージャー
+            </span>
+            <span
+              class="text-xs text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700"
+              x-text="rules.length + ' 件登録中'"
+            ></span>
+          </div>
+          <button
+            @click="closeRuleManager()"
+            class="text-zinc-400 hover:text-white px-2 py-1 rounded hover:bg-zinc-800 text-sm font-bold transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- モーダル説明 -->
+        <div
+          class="px-5 py-2.5 bg-blue-950/20 border-b border-blue-900/30 text-[11px] text-zinc-300"
+        >
+          AIが使用する命名プロンプト規則の優先度並び替え・追加・削除を行います。先頭のルール（★）が既定値になります。
+        </div>
+
+        <!-- スクロール領域: 既存ルール一覧 ＆ 新規追加フォーム -->
+        <div class="p-5 overflow-y-auto space-y-4 flex-1">
+          <!-- 既存ルール一覧 -->
+          <div class="space-y-2.5">
+            <div
+              class="text-xs font-bold text-zinc-300 flex items-center gap-1.5"
+            >
+              <span>📋 登録済みルール一覧</span>
+              <span class="text-[10px] text-zinc-500 font-normal"
+                >（▲▼で優先度を変更できます）</span
+              >
+            </div>
+
+            <template x-for="(r, idx) in rules" :key="r.id">
+              <div
+                class="p-3 rounded-lg border transition-all"
+                :class="idx === 0 ? 'bg-fluent-card border-blue-600/80 shadow-sm' : 'bg-fluent-card/70 border-zinc-700'"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <!-- 左側: ルール詳細 -->
+                  <div class="flex-1 min-w-0 space-y-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <!-- 先頭★バッジ -->
+                      <span
+                        x-show="idx === 0"
+                        class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-950 border border-blue-700 text-blue-300"
+                      >
+                        ★ 既定ルール
+                      </span>
+                      <span
+                        class="text-xs font-bold text-white"
+                        x-text="r.name"
+                      ></span>
+                      <span
+                        class="text-[10px] font-mono-fluent px-1.5 py-0.5 rounded bg-zinc-800 text-blue-400 border border-zinc-700"
+                        x-text="'パターン: ' + r.pattern"
+                      ></span>
+
+                      <!-- Web検索バッジ -->
+                      <span
+                        class="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 font-semibold"
+                        :class="r.enableWebSearch ? 'bg-blue-950/80 border border-blue-700 text-blue-300' : 'bg-zinc-800 border border-zinc-700 text-zinc-500'"
+                      >
+                        <span>🌐</span>
+                        <span
+                          x-text="r.enableWebSearch ? 'Web検索 有効' : 'Web検索 無効'"
+                        ></span>
+                      </span>
+                    </div>
+
+                    <!-- プロンプト指示文 -->
+                    <div
+                      class="text-[11px] text-zinc-400 line-clamp-2"
+                      x-text="r.promptInstruction"
+                    ></div>
+                  </div>
+
+                  <!-- 右側: 並び替え・削除ボタン群 -->
+                  <div class="flex items-center space-x-1 flex-shrink-0">
+                    <button
+                      @click="moveRule(r.id, -1)"
+                      :disabled="idx === 0"
+                      class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-white rounded border border-zinc-700 text-xs disabled:opacity-20 disabled:cursor-not-allowed"
+                      title="上へ"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      @click="moveRule(r.id, 1)"
+                      :disabled="idx === rules.length - 1"
+                      class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-white rounded border border-zinc-700 text-xs disabled:opacity-20 disabled:cursor-not-allowed"
+                      title="下へ"
+                    >
+                      ▼
+                    </button>
+                    <button
+                      @click="deleteRule(r.id)"
+                      :disabled="rules.length <= 1"
+                      class="px-2 py-1 bg-red-950/80 hover:bg-red-900 text-red-300 rounded border border-red-800 text-xs disabled:opacity-20 disabled:cursor-not-allowed"
+                      title="削除"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- ➕ 新規命名規則の追加フォーム -->
+          <div
+            class="p-4 rounded-lg bg-zinc-900/90 border border-blue-800/60 space-y-3 mt-4 shadow-inner"
+          >
+            <div
+              class="text-xs font-bold text-blue-400 flex items-center justify-between"
+            >
+              <span class="flex items-center gap-1.5">
+                <span>➕</span> 新規命名規則の追加
+              </span>
+              <span class="text-[10px] text-zinc-500 font-normal"
+                >入力後「追加する」をクリック</span
+              >
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label
+                  class="block text-fluent-subtext font-semibold mb-1 text-[11px]"
+                  >ルール名 (必須):</label
+                >
+                <input
+                  type="text"
+                  x-model="newRule.name"
+                  placeholder="例: バラエティ・特番用短縮"
+                  class="w-full bg-black/60 border border-zinc-700 rounded px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label
+                  class="block text-fluent-subtext font-semibold mb-1 text-[11px]"
+                  >対象パターン:</label
+                >
+                <input
+                  type="text"
+                  x-model="newRule.pattern"
+                  placeholder="*.mp4;*.mkv;*.ts"
+                  class="w-full bg-black/60 border border-zinc-700 rounded px-2.5 py-1.5 text-white font-mono-fluent text-xs focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div class="text-xs">
+              <label
+                class="block text-fluent-subtext font-semibold mb-1 text-[11px]"
+                >プロンプト指示文 (AIへの命名指示):</label
+              >
+              <textarea
+                x-model="newRule.promptInstruction"
+                rows="2"
+                placeholder="例: Web検索スニペットを参考に正式番組名と放送回・日付を特定し、半角スペース区切りで短縮してください。"
+                class="w-full bg-black/60 border border-zinc-700 rounded px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-none"
+              ></textarea>
+            </div>
+
+            <div class="flex items-center justify-between pt-1">
+              <!-- Web検索有効化チェックボックス -->
+              <label
+                class="flex items-center space-x-2 cursor-pointer select-none text-xs"
+              >
+                <input
+                  type="checkbox"
+                  x-model="newRule.enableWebSearch"
+                  class="rounded bg-black border-zinc-700 text-blue-600 focus:ring-blue-500"
+                />
+                <span class="text-white font-semibold flex items-center gap-1">
+                  <span>🌐</span> DuckDuckGo Web検索 (ddgs) を有効にする
+                </span>
+              </label>
+
+              <!-- 追加実行ボタン -->
+              <button
+                @click="addRule()"
+                class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow text-xs flex items-center space-x-1.5 transition-all"
+              >
+                <span>➕ この命名規則を追加する</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- モーダルフッター -->
+        <div
+          class="px-5 py-3 border-t border-fluent-border flex items-center justify-end bg-fluent-bg/60"
+        >
+          <button
+            @click="closeRuleManager()"
+            class="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded border border-zinc-700 text-xs transition-colors"
+          >
+            閉じる
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Alpine.js Application Logic -->
     <script>
       function companionApp() {
         return {
           threshold: 240,
+          selectedModel: "meta-llama/llama-3.3-70b-instruct:free",
+          models: [
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "google/gemini-2.0-flash-exp:free",
+            "mistralai/mistral-small-24b-instruct-2501:free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+          ],
           selectedRule: "drama",
+          rules: [
+            {
+              id: "drama",
+              name: "ドラマ・アニメ公式短縮",
+              pattern: "*.mp4;*.mkv",
+              promptInstruction:
+                "Web検索スニペットを参考に正式作品名と第何話かを特定し、半角スペース区切りで短縮してください。",
+              enableWebSearch: true,
+            },
+            {
+              id: "standard",
+              name: "標準タイトル短縮",
+              pattern: "*.*",
+              promptInstruction:
+                "冗長なタグや不要な記号を削除し、簡潔な作品名と話数のみに短縮してください。",
+              enableWebSearch: false,
+            },
+          ],
+          isRuleManagerOpen: false,
+          newRule: {
+            name: "",
+            pattern: "*.mp4",
+            promptInstruction: "",
+            enableWebSearch: true,
+          },
           webSearchEnabled: true,
           isProcessing: false,
           runId: 0,
@@ -644,6 +934,66 @@
               aiComment: "（AI提案の開始を待機しています...）",
             },
           ],
+
+          openRuleManager() {
+            this.isRuleManagerOpen = true;
+          },
+
+          closeRuleManager() {
+            this.isRuleManagerOpen = false;
+          },
+
+          onRuleChange() {
+            const rule = this.rules.find((r) => r.id === this.selectedRule);
+            if (rule) {
+              this.webSearchEnabled = rule.enableWebSearch;
+            }
+          },
+
+          addRule() {
+            if (!this.newRule.name.trim()) {
+              alert("ルール名を入力してください。");
+              return;
+            }
+            const id = "rule_" + Date.now();
+            const created = {
+              id: id,
+              name: this.newRule.name.trim(),
+              pattern: this.newRule.pattern.trim() || "*.*",
+              promptInstruction:
+                this.newRule.promptInstruction.trim() ||
+                "簡潔に短縮してください。",
+              enableWebSearch: this.newRule.enableWebSearch,
+            };
+            this.rules.push(created);
+            this.selectedRule = id;
+            this.webSearchEnabled = created.enableWebSearch;
+            this.newRule = {
+              name: "",
+              pattern: "*.mp4",
+              promptInstruction: "",
+              enableWebSearch: true,
+            };
+          },
+
+          deleteRule(id) {
+            if (this.rules.length <= 1) return;
+            this.rules = this.rules.filter((r) => r.id !== id);
+            if (this.selectedRule === id) {
+              this.selectedRule = this.rules[0].id;
+              this.webSearchEnabled = this.rules[0].enableWebSearch;
+            }
+          },
+
+          moveRule(id, dir) {
+            const idx = this.rules.findIndex((r) => r.id === id);
+            if (idx < 0) return;
+            const targetIdx = idx + dir;
+            if (targetIdx < 0 || targetIdx >= this.rules.length) return;
+            const temp = this.rules[idx];
+            this.rules[idx] = this.rules[targetIdx];
+            this.rules[targetIdx] = temp;
+          },
 
           init() {
             // 初期状態はスキャン直後（即時IO描画状態）

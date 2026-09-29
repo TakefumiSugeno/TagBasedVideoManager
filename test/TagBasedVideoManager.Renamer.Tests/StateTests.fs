@@ -322,4 +322,38 @@ module StateTests =
         let p3Found = updatedModel.Candidates |> List.find (fun c -> c.OriginalFullPath = p3_unselected.OriginalFullPath)
         p3Found.IsSelected |> should equal false
 
+    [<Fact>]
+    let ``ModelSelected は選択モデルを更新する`` () =
+        let initialModel, _ = State.init ()
+        let newModelName = "google/gemini-2.0-flash-exp:free"
+        let updatedModel, _ = State.update (ModelSelected newModelName) initialModel
+        updatedModel.Settings.SelectedModel |> should equal newModelName
+
+    [<Fact>]
+    let ``OpenRuleManager と SaveEditingRule で新規命名規則を追加できる`` () =
+        let initialModel, _ = State.init ()
+        let initialRuleCount = initialModel.Settings.Rules.Length
+
+        // 1. マネージャーオープン（編集用テンプレートが初期化される）
+        let openModel, _ = State.update OpenRuleManager initialModel
+        openModel.IsRuleManagerOpen |> should equal true
+        openModel.EditingRule |> should not' (equal None)
+
+        // 2. 編集内容入力
+        let m1, _ = State.update (UpdateEditingRuleName "テスト新ルール") openModel
+        let m2, _ = State.update (UpdateEditingRulePattern "*.mkv") m1
+        let m3, _ = State.update (UpdateEditingRulePrompt "テスト用プロンプト指示") m2
+        let m4, _ = State.update (UpdateEditingRuleWebSearch true) m3
+
+        // 3. ルール保存
+        let savedModel, _ = State.update SaveEditingRule m4
+        savedModel.Settings.Rules.Length |> should equal (initialRuleCount + 1)
+        let added = savedModel.Settings.Rules |> List.last
+        added.Name |> should equal "テスト新ルール"
+        added.Pattern |> should equal "*.mkv"
+        added.PromptInstruction |> should equal "テスト用プロンプト指示"
+        added.EnableWebSearch |> should equal true
+        savedModel.SelectedRuleId |> should equal added.Id
+
+
 

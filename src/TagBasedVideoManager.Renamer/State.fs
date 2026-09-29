@@ -77,6 +77,12 @@ and Msg =
     | SetLayoutMode of LayoutMode
     | OpenRuleManager
     | CloseRuleManager
+    | StartAddRule
+    | UpdateEditingRuleName of string
+    | UpdateEditingRulePattern of string
+    | UpdateEditingRulePrompt of string
+    | UpdateEditingRuleWebSearch of bool
+    | SaveEditingRule
     | SaveRule of NamingRule
     | DeleteRule of ruleId: string
     | MoveRuleOrder of ruleId: string * direction: int // -1: up, +1: down
@@ -157,6 +163,7 @@ module State =
 
         | ModelSelected newModel ->
             let updatedSettings = { model.Settings with SelectedModel = newModel }
+            Settings.save defaultSettingsPath updatedSettings |> ignore
             { model with Settings = updatedSettings }, Cmd.none
 
         // ワンアクション走査 & AI提案
@@ -444,10 +451,82 @@ module State =
             { model with Layout = mode }, Cmd.none
 
         | OpenRuleManager ->
-            { model with IsRuleManagerOpen = true; EditingRule = None }, Cmd.none
+            let templateRule = {
+                Id = Guid.NewGuid().ToString("N")
+                Name = ""
+                Pattern = "*.mp4"
+                PromptInstruction = ""
+                Order = model.Settings.Rules.Length
+                EnableWebSearch = true
+            }
+            { model with IsRuleManagerOpen = true; EditingRule = Some templateRule }, Cmd.none
 
         | CloseRuleManager ->
             { model with IsRuleManagerOpen = false; EditingRule = None }, Cmd.none
+
+        | StartAddRule ->
+            let templateRule = {
+                Id = Guid.NewGuid().ToString("N")
+                Name = ""
+                Pattern = "*.mp4"
+                PromptInstruction = ""
+                Order = model.Settings.Rules.Length
+                EnableWebSearch = true
+            }
+            { model with EditingRule = Some templateRule }, Cmd.none
+
+        | UpdateEditingRuleName name ->
+            let updated =
+                model.EditingRule
+                |> Option.map (fun r -> { r with Name = name })
+            { model with EditingRule = updated }, Cmd.none
+
+        | UpdateEditingRulePattern pattern ->
+            let updated =
+                model.EditingRule
+                |> Option.map (fun r -> { r with Pattern = pattern })
+            { model with EditingRule = updated }, Cmd.none
+
+        | UpdateEditingRulePrompt prompt ->
+            let updated =
+                model.EditingRule
+                |> Option.map (fun r -> { r with PromptInstruction = prompt })
+            { model with EditingRule = updated }, Cmd.none
+
+        | UpdateEditingRuleWebSearch enabled ->
+            let updated =
+                model.EditingRule
+                |> Option.map (fun r -> { r with EnableWebSearch = enabled })
+            { model with EditingRule = updated }, Cmd.none
+
+        | SaveEditingRule ->
+            match model.EditingRule with
+            | Some rule when not (String.IsNullOrWhiteSpace(rule.Name)) ->
+                let newRule = {
+                    rule with
+                        Name = rule.Name.Trim()
+                        Pattern = if String.IsNullOrWhiteSpace(rule.Pattern) then "*.*" else rule.Pattern.Trim()
+                        PromptInstruction = if String.IsNullOrWhiteSpace(rule.PromptInstruction) then "簡潔に短縮してください。" else rule.PromptInstruction.Trim()
+                        Order = model.Settings.Rules.Length
+                }
+                let updatedRules = model.Settings.Rules @ [ newRule ]
+                let newSettings = { model.Settings with Rules = updatedRules }
+                Settings.save defaultSettingsPath newSettings |> ignore
+                let nextTemplate = {
+                    Id = Guid.NewGuid().ToString("N")
+                    Name = ""
+                    Pattern = "*.mp4"
+                    PromptInstruction = ""
+                    Order = updatedRules.Length
+                    EnableWebSearch = true
+                }
+                { model with
+                    Settings = newSettings
+                    SelectedRuleId = newRule.Id
+                    EditingRule = Some nextTemplate
+                }, Cmd.none
+            | _ ->
+                { model with ErrorMessage = Some "ルール名を入力してください。" }, Cmd.none
 
         | SaveRule rule ->
             let existingIdx = model.Settings.Rules |> List.tryFindIndex (fun r -> r.Id = rule.Id)
@@ -459,7 +538,7 @@ module State =
                     model.Settings.Rules @ [ { rule with Order = model.Settings.Rules.Length } ]
             let newSettings = { model.Settings with Rules = updatedRules }
             Settings.save defaultSettingsPath newSettings |> ignore
-            { model with Settings = newSettings; EditingRule = None }, Cmd.none
+            { model with Settings = newSettings }, Cmd.none
 
         | DeleteRule ruleId ->
             let filteredRules =

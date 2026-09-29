@@ -12,6 +12,13 @@ type NamingRule = {
     EnableWebSearch: bool
 }
 
+/// DuckDuckGo 検索結果アイテム
+type SearchResultItem = {
+    Title: string
+    Snippet: string
+    Url: string
+}
+
 /// スキャン結果の候補ファイル情報
 type ScanCandidate = {
     FullPath: string

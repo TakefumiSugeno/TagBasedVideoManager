@@ -402,13 +402,10 @@ module Views =
                                             "mistralai/mistral-small-24b-instruct-2501:free"
                                             "nvidia/nemotron-3-ultra-550b-a55b:free"
                                         ]
-                                        let current = model.Settings.SelectedModel
-                                        let otherModels =
-                                            standardModels
-                                            |> List.filter (fun m -> not (String.Equals(m, current, StringComparison.OrdinalIgnoreCase)))
                                         let availableModels =
-                                            if not (String.IsNullOrWhiteSpace(current)) then
-                                                current :: otherModels
+                                            if not (String.IsNullOrWhiteSpace(model.Settings.SelectedModel))
+                                               && not (standardModels |> List.exists (fun m -> String.Equals(m, model.Settings.SelectedModel, StringComparison.OrdinalIgnoreCase))) then
+                                                standardModels @ [ model.Settings.SelectedModel ]
                                             else
                                                 standardModels
 
@@ -1871,6 +1868,22 @@ module Views =
                                                                                             TextBlock.fontWeight FontWeight.Bold
                                                                                             TextBlock.fontSize 12.0
                                                                                         ]
+                                                                                        if rule.EnableWebSearch then
+                                                                                            Border.create [
+                                                                                                Border.background (SolidColorBrush (Color.Parse("#172554")))
+                                                                                                Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
+                                                                                                Border.borderThickness 1.0
+                                                                                                Border.cornerRadius 3.0
+                                                                                                Border.padding (6.0, 1.0)
+                                                                                                Border.child (
+                                                                                                    TextBlock.create [
+                                                                                                        TextBlock.text "🌐 Web検索有効"
+                                                                                                        TextBlock.fontSize 10.0
+                                                                                                        TextBlock.fontWeight FontWeight.SemiBold
+                                                                                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#93c5fd")))
+                                                                                                    ]
+                                                                                                )
+                                                                                            ]
                                                                                     ]
                                                                                 ]
                                                                                 TextBlock.create [
@@ -1891,6 +1904,150 @@ module Views =
                                                                 ]
                                                             )
                                                         ]
+
+                                                    // ➕ 新規命名規則の追加フォーム
+                                                    let curRule =
+                                                        model.EditingRule
+                                                        |> Option.defaultValue {
+                                                            Id = ""
+                                                            Name = ""
+                                                            Pattern = "*.mp4"
+                                                            PromptInstruction = ""
+                                                            Order = 0
+                                                            EnableWebSearch = true
+                                                        }
+
+                                                    Border.create [
+                                                        Border.background (SolidColorBrush (Color.Parse("#18181b")))
+                                                        Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
+                                                        Border.borderThickness 1.0
+                                                        Border.cornerRadius 6.0
+                                                        Border.padding 12.0
+                                                        Border.margin (0.0, 8.0, 0.0, 0.0)
+                                                        Border.child (
+                                                            StackPanel.create [
+                                                                StackPanel.spacing 8.0
+                                                                StackPanel.children [
+                                                                    TextBlock.create [
+                                                                        TextBlock.text "➕ 新規命名規則の追加"
+                                                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                                        TextBlock.fontWeight FontWeight.Bold
+                                                                        TextBlock.fontSize 12.0
+                                                                    ]
+                                                                    Grid.create [
+                                                                        Grid.columnDefinitions "*, *"
+                                                                        Grid.children [
+                                                                            StackPanel.create [
+                                                                                Grid.column 0
+                                                                                StackPanel.spacing 4.0
+                                                                                StackPanel.margin (0.0, 0.0, 6.0, 0.0)
+                                                                                StackPanel.children [
+                                                                                    TextBlock.create [
+                                                                                        TextBlock.text "ルール名 (必須):"
+                                                                                        TextBlock.foreground (SolidColorBrush textSub)
+                                                                                        TextBlock.fontSize 11.0
+                                                                                        TextBlock.fontWeight FontWeight.SemiBold
+                                                                                    ]
+                                                                                    TextBox.create [
+                                                                                        TextBox.text curRule.Name
+                                                                                        TextBox.height 28.0
+                                                                                        TextBox.fontSize 11.0
+                                                                                        TextBox.background (SolidColorBrush bgInput)
+                                                                                        TextBox.foreground (SolidColorBrush textWhite)
+                                                                                        TextBox.borderBrush (SolidColorBrush borderZinc700)
+                                                                                        TextBox.cornerRadius 4.0
+                                                                                        TextBox.padding (6.0, 2.0)
+                                                                                        TextBox.watermark "例: バラエティ用短縮"
+                                                                                        TextBox.onTextChanged (fun t -> dispatch (UpdateEditingRuleName t))
+                                                                                    ]
+                                                                                ]
+                                                                            ]
+                                                                            StackPanel.create [
+                                                                                Grid.column 1
+                                                                                StackPanel.spacing 4.0
+                                                                                StackPanel.margin (6.0, 0.0, 0.0, 0.0)
+                                                                                StackPanel.children [
+                                                                                    TextBlock.create [
+                                                                                        TextBlock.text "対象パターン:"
+                                                                                        TextBlock.foreground (SolidColorBrush textSub)
+                                                                                        TextBlock.fontSize 11.0
+                                                                                        TextBlock.fontWeight FontWeight.SemiBold
+                                                                                    ]
+                                                                                    TextBox.create [
+                                                                                        TextBox.text curRule.Pattern
+                                                                                        TextBox.height 28.0
+                                                                                        TextBox.fontSize 11.0
+                                                                                        TextBox.fontFamily (FontFamily "Consolas, monospace")
+                                                                                        TextBox.background (SolidColorBrush bgInput)
+                                                                                        TextBox.foreground (SolidColorBrush textWhite)
+                                                                                        TextBox.borderBrush (SolidColorBrush borderZinc700)
+                                                                                        TextBox.cornerRadius 4.0
+                                                                                        TextBox.padding (6.0, 2.0)
+                                                                                        TextBox.watermark "*.mp4;*.mkv"
+                                                                                        TextBox.onTextChanged (fun t -> dispatch (UpdateEditingRulePattern t))
+                                                                                    ]
+                                                                                ]
+                                                                            ]
+                                                                        ]
+                                                                    ]
+                                                                    StackPanel.create [
+                                                                        StackPanel.spacing 4.0
+                                                                        StackPanel.children [
+                                                                            TextBlock.create [
+                                                                                TextBlock.text "プロンプト指示文 (AIへの命名指示):"
+                                                                                TextBlock.foreground (SolidColorBrush textSub)
+                                                                                TextBlock.fontSize 11.0
+                                                                                TextBlock.fontWeight FontWeight.SemiBold
+                                                                            ]
+                                                                            TextBox.create [
+                                                                                TextBox.text curRule.PromptInstruction
+                                                                                TextBox.height 48.0
+                                                                                TextBox.fontSize 11.0
+                                                                                TextBox.acceptsReturn true
+                                                                                TextBox.textWrapping TextWrapping.Wrap
+                                                                                TextBox.background (SolidColorBrush bgInput)
+                                                                                TextBox.foreground (SolidColorBrush textWhite)
+                                                                                TextBox.borderBrush (SolidColorBrush borderZinc700)
+                                                                                TextBox.cornerRadius 4.0
+                                                                                TextBox.padding (6.0, 4.0)
+                                                                                TextBox.watermark "例: Web検索スニペットを参考に正式番組名を特定し、半角スペース区切りで短縮してください。"
+                                                                                TextBox.onTextChanged (fun t -> dispatch (UpdateEditingRulePrompt t))
+                                                                            ]
+                                                                        ]
+                                                                    ]
+                                                                    DockPanel.create [
+                                                                        DockPanel.children [
+                                                                            Button.create [
+                                                                                DockPanel.dock Dock.Right
+                                                                                Button.content "➕ この命名規則を追加する"
+                                                                                Button.isEnabled (not (String.IsNullOrWhiteSpace(curRule.Name)))
+                                                                                Button.background (SolidColorBrush accentBlue)
+                                                                                Button.foreground (SolidColorBrush textWhite)
+                                                                                Button.fontWeight FontWeight.Bold
+                                                                                Button.fontSize 11.0
+                                                                                Button.cornerRadius 4.0
+                                                                                Button.padding (12.0, 6.0)
+                                                                                Button.onClick (fun _ -> dispatch SaveEditingRule)
+                                                                            ]
+                                                                            CheckBox.create [
+                                                                                CheckBox.content "🌐 DuckDuckGo Web検索 (ddgs) を有効にする"
+                                                                                CheckBox.isChecked curRule.EnableWebSearch
+                                                                                CheckBox.foreground (SolidColorBrush textWhite)
+                                                                                CheckBox.fontSize 11.0
+                                                                                CheckBox.verticalAlignment VerticalAlignment.Center
+                                                                                CheckBox.onIsCheckedChanged (fun e ->
+                                                                                    match getCheckBoxValue e with
+                                                                                    | Some isChecked when isChecked <> curRule.EnableWebSearch ->
+                                                                                        dispatch (UpdateEditingRuleWebSearch isChecked)
+                                                                                    | _ -> ()
+                                                                                )
+                                                                            ]
+                                                                        ]
+                                                                    ]
+                                                                ]
+                                                            ]
+                                                        )
+                                                    ]
                                                 ]
                                             ]
                                         )
