@@ -237,12 +237,13 @@
               </span>
             </button>
 
-            <!-- 中止ボタン (提案中のみ表示) -->
+            <!-- 中止ボタン (常時表示・提案中のみ活性化) -->
             <button
-              x-show="isProcessing"
-              class="px-2.5 py-1.5 bg-red-950/80 hover:bg-red-900 border border-red-700 text-red-300 font-bold rounded shadow text-xs flex items-center space-x-1 transition-all"
+              class="px-2.5 py-1.5 rounded border text-xs font-bold flex items-center space-x-1 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              :class="isProcessing ? 'bg-red-950/80 hover:bg-red-900 border-red-700 text-red-300 shadow-md animate-pulse' : 'bg-zinc-800/60 border-zinc-700 text-zinc-500'"
+              :disabled="!isProcessing"
               @click="stopProcessing()"
-              title="進行中のAI提案処理を直ちに中断します"
+              :title="isProcessing ? '進行中のAI提案処理を直ちに中断します' : 'AI提案の処理中のみ中止できます'"
             >
               <span>⏹ 中止</span>
             </button>
