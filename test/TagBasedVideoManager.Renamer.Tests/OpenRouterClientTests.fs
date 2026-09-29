@@ -140,3 +140,180 @@ module OpenRouterClientTests =
                 proposals |> should be Empty
                 httpCalled |> should equal false
         }
+
+    let webSearchRule: NamingRule = {
+        Id = "rule-web"
+        Name = "ドラマ・アニメ公式短縮"
+        Pattern = "{Title} S{Season}E{Episode}.mp4"
+        PromptInstruction = "Web検索スニペットを参考に正式作品名と話数を特定し短縮してください。"
+        Order = 0
+        EnableWebSearch = true
+    }
+
+    let sampleWebResult: SearchResultItem = {
+        Title = "Sample Drama Series - Official Site"
+        Snippet = "The hit mystery drama series 'Sample Drama' Episode 01 aired in 2026."
+        Url = "https://example.com/sample-drama"
+    }
+
+    [<Fact>]
+    let ``requestSingleProposal は単一ファイル情報とWeb検索結果をコンテキストに含めてリクエストし正常時もaiCommentをSomeで保持する`` () =
+        async {
+            let jsonContent = """
+            {
+              "originalFileName": "VeryLongFileName_20250812_Wakkanai_Touring.mp4",
+              "proposedFileName": "Sample Drama S01E01.mp4",
+              "aiComment": "ddgs検索結果より公式タイトル「Sample Drama」を特定して短縮しました。"
+            }
+            """
+            let mutable interceptedBody = ""
+            let mockHttp _url body =
+                async {
+                    interceptedBody <- body
+                    return 200, wrapInOpenRouterResponse jsonContent
+                }
+
+            use cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5.0))
+            let! result =
+                OpenRouterClient.requestSingleProposal
+                    (Some mockHttp)
+                    (Some "mock-key")
+                    "meta-llama/llama-3.3-70b-instruct:free"
+                    webSearchRule
+                    sampleCandidate1
+                    [ sampleWebResult ]
+                    cts.Token
+
+            match result with
+            | Error err -> failwith $"requestSingleProposal failed: {err}"
+            | Ok proposal ->
+                proposal.OriginalFileName |> should equal sampleCandidate1.FileName
+                proposal.ProposedFileName |> should equal "Sample Drama S01E01.mp4"
+                proposal.AiComment |> should equal (Some "ddgs検索結果より公式タイトル「Sample Drama」を特定して短縮しました。")
+                proposal.IsAiProposed |> should equal true
+                proposal.IsSelected |> should equal true
+                interceptedBody.Contains("Sample Drama Series - Official Site") |> should equal true
+                interceptedBody.Contains("https://example.com/sample-drama") |> should equal true
+        }
+
+    [<Fact>]
+    let ``requestSingleProposal はWeb検索結果が空でも安全に提案を取得しAIコメントを保持する`` () =
+        async {
+            let jsonContent = """
+            {
+              "originalFileName": "VeryLongFileName_20250812_Wakkanai_Touring.mp4",
+              "proposedFileName": "20250812_Wakkanai_Touring.mp4",
+              "aiComment": "日付と地名を抽出して短縮しました。"
+            }
+            """
+            let mockHttp _url _body =
+                async { return 200, wrapInOpenRouterResponse jsonContent }
+
+            use cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5.0))
+            let! result =
+                OpenRouterClient.requestSingleProposal
+                    (Some mockHttp)
+                    (Some "mock-key")
+                    "meta-llama/llama-3.3-70b-instruct:free"
+                    sampleRule
+                    sampleCandidate1
+                    []
+                    cts.Token
+
+            match result with
+            | Error err -> failwith $"requestSingleProposal failed: {err}"
+            | Ok proposal ->
+                proposal.ProposedFileName |> should equal "20250812_Wakkanai_Touring.mp4"
+                proposal.AiComment |> should equal (Some "日付と地名を抽出して短縮しました。")
+        }
+
+    [<Fact>]
+    let ``requestSingleProposal はLLMがaiCommentを返さない場合でもデフォルトコメントで補完し常時Someとする`` () =
+        async {
+            let jsonContent = """
+            {
+              "originalFileName": "VeryLongFileName_20250812_Wakkanai_Touring.mp4",
+              "proposedFileName": "Shortened_Sample.mp4",
+              "aiComment": ""
+            }
+            """
+            let mockHttp _url _body =
+                async { return 200, wrapInOpenRouterResponse jsonContent }
+
+            use cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5.0))
+            let! result =
+                OpenRouterClient.requestSingleProposal
+                    (Some mockHttp)
+                    (Some "mock-key")
+                    "meta-llama/llama-3.3-70b-instruct:free"
+                    sampleRule
+                    sampleCandidate1
+                    []
+                    cts.Token
+
+            match result with
+            | Error err -> failwith $"requestSingleProposal failed: {err}"
+            | Ok proposal ->
+                proposal.ProposedFileName |> should equal "Shortened_Sample.mp4"
+                proposal.AiComment |> should not' (equal None)
+                proposal.AiComment.Value |> should not' (be EmptyString)
+        }
+
+    [<Fact>]
+    let ``requestSingleProposal は配列形式のレスポンスでもパースできる`` () =
+        async {
+            let jsonContent = """
+            [
+              {
+                "originalFileName": "VeryLongFileName_20250812_Wakkanai_Touring.mp4",
+                "proposedFileName": "Shortened_From_Array.mp4",
+                "aiComment": "配列形式で返却された提案です。"
+              }
+            ]
+            """
+            let mockHttp _url _body =
+                async { return 200, wrapInOpenRouterResponse jsonContent }
+
+            use cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5.0))
+            let! result =
+                OpenRouterClient.requestSingleProposal
+                    (Some mockHttp)
+                    (Some "mock-key")
+                    "meta-llama/llama-3.3-70b-instruct:free"
+                    sampleRule
+                    sampleCandidate1
+                    []
+                    cts.Token
+
+            match result with
+            | Error err -> failwith $"requestSingleProposal failed: {err}"
+            | Ok proposal ->
+                proposal.ProposedFileName |> should equal "Shortened_From_Array.mp4"
+                proposal.AiComment |> should equal (Some "配列形式で返却された提案です。")
+        }
+
+    [<Fact>]
+    let ``requestSingleProposal はHTTPステータスエラー時に安全にErrorを返す`` () =
+        async {
+            let mockHttp _url _body =
+                async { return 401, """{"error": {"message": "Invalid API key"}}""" }
+
+            use cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5.0))
+            let! result =
+                OpenRouterClient.requestSingleProposal
+                    (Some mockHttp)
+                    (Some "bad-key")
+                    "meta-llama/llama-3.3-70b-instruct:free"
+                    sampleRule
+                    sampleCandidate1
+                    []
+                    cts.Token
+
+            match result with
+            | Ok _ -> failwith "Expected Error but got Ok"
+            | Error (OpenRouterError (status, msg)) ->
+                status |> should equal 401
+                msg.Contains("401") |> should equal true
+            | Error other ->
+                failwith $"Unexpected error type: {other}"
+        }

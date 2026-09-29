@@ -8,9 +8,9 @@
 
 ## 2. OpenRouterClient と単一ファイル向け AI プロンプト生成の拡張
 
-- [ ] 2.1 単一ファイル＋Web検索結果を含むプロンプト生成およびJSONレスポンスパース（AIコメント常時保持）の単体テストを作成する（Test First / Red）
-- [ ] 2.2 `OpenRouterClient.fs` を拡張し、Web検索結果のコンテキスト注入と単一ファイル提案API `requestSingleProposal` を実装してテストを通過させる（Green）
-- [ ] 2.3 リファクタリングを行い、正常時でもAIコメントが常時取得できることおよび既存のローカル提案の回帰テストを検証する（Refactor）
+- [x] 2.1 単一ファイル＋Web検索結果を含むプロンプト生成およびJSONレスポンスパース（AIコメント常時保持）の単体テストを作成する（Test First / Red）
+- [x] 2.2 `OpenRouterClient.fs` を拡張し、Web検索結果のコンテキスト注入と単一ファイル提案API `requestSingleProposal` を実装してテストを通過させる（Green）
+- [x] 2.3 リファクタリングを行い、正常時でもAIコメントが常時取得できることおよび既存のローカル提案の回帰テストを検証する（Refactor）
 
 ## 3. 即時IO描画とファイルごとの非同期逐次パイプライン（State更新）
 

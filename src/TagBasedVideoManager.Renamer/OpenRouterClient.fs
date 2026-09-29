@@ -248,3 +248,165 @@ module OpenRouterClient =
             }
         )
 
+    let private buildSingleSystemPrompt () =
+        "あなたはファイル名の短縮・正規化を行う専門AIです。\n" +
+        "対象ファイルに対し、指定された命名規則とWeb検索結果（提供されている場合）を参考に、安全で簡潔な新ファイル名および命名理由を提案してください。\n" +
+        "正常に短縮できた場合も含め、なぜその短縮名にしたか、Web検索結果のどの情報を参考にしたかを「aiComment」に必ず日本語で簡潔に記述してください。\n" +
+        "出力は必ず指定された単一JSONオブジェクトのみを返し、余計な解説文やMarkdownタグを含めないでください。"
+
+    let private buildSingleUserPrompt (rule: NamingRule) (candidate: ScanCandidate) (searchResults: SearchResultItem list) =
+        let sb = StringBuilder()
+        sb.AppendLine($"【命名規則名】: {rule.Name}") |> ignore
+        sb.AppendLine($"【命名パターン】: {rule.Pattern}") |> ignore
+        sb.AppendLine($"【命名指示】: {rule.PromptInstruction}") |> ignore
+        sb.AppendLine() |> ignore
+        let parentFolder = Path.GetFileName(candidate.DirectoryPath)
+        let lastModStr = candidate.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+        sb.AppendLine("【対象ファイル情報】:") |> ignore
+        sb.AppendLine($"- フルパス: \"{candidate.FullPath}\"") |> ignore
+        sb.AppendLine($"- 現在のファイル名: \"{candidate.FileName}\"") |> ignore
+        sb.AppendLine($"- 親フォルダ: \"{parentFolder}\"") |> ignore
+        sb.AppendLine($"- 更新日時: \"{lastModStr}\"") |> ignore
+        sb.AppendLine() |> ignore
+        if not (List.isEmpty searchResults) then
+            sb.AppendLine(WebSearchClient.formatSearchResultsForPrompt searchResults) |> ignore
+            sb.AppendLine() |> ignore
+        sb.AppendLine("【出力JSON仕様】:") |> ignore
+        sb.AppendLine("{") |> ignore
+        sb.AppendLine($"  \"originalFileName\": \"{candidate.FileName}\",") |> ignore
+        sb.AppendLine("  \"proposedFileName\": \"新ファイル名.mp4\",") |> ignore
+        sb.AppendLine("  \"aiComment\": \"命名意図・短縮根拠・Web検索結果の反映内容を簡潔に記述\"") |> ignore
+        sb.AppendLine("}") |> ignore
+        sb.ToString()
+
+    /// <summary>
+    /// 単一ファイルに対してWeb検索結果をコンテキストに含めてリネーム候補を問い合わせる
+    /// 正常時・例外時を問わずAIコメントを常時保持する
+    /// </summary>
+    let requestSingleProposal
+        (httpHandler: (string -> string -> Async<int * string>) option)
+        (apiKey: string option)
+        (model: string)
+        (rule: NamingRule)
+        (candidate: ScanCandidate)
+        (searchResults: SearchResultItem list)
+        (cancellationToken: System.Threading.CancellationToken)
+        : Async<Result<RenameProposal, RenamerError>> =
+        async {
+            let messages = [
+                dict [ "role", box "system"; "content", box (buildSingleSystemPrompt ()) ]
+                dict [ "role", box "user"; "content", box (buildSingleUserPrompt rule candidate searchResults) ]
+            ]
+            let requestDict = dict [
+                "model", box model
+                "messages", box messages
+                "temperature", box 0.2
+            ]
+
+            let requestJson = JsonSerializer.Serialize(requestDict)
+            let endpointUrl = "https://openrouter.ai/api/v1/chat/completions"
+
+            try
+                let! statusCode, responseBody =
+                    match httpHandler with
+                    | Some mockHandler -> mockHandler endpointUrl requestJson
+                    | None ->
+                        async {
+                            use client = new HttpClient()
+                            client.Timeout <- TimeSpan.FromSeconds(60.0)
+                            match apiKey with
+                            | Some key when not (String.IsNullOrWhiteSpace(key)) ->
+                                let cleanKey = key.Trim().Trim('"', '\'')
+                                if not (String.IsNullOrWhiteSpace(cleanKey)) then
+                                    client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Bearer", cleanKey)
+                            | _ -> ()
+
+                            client.DefaultRequestHeaders.Add("HTTP-Referer", "https://github.com/TagBasedVideoManager")
+                            client.DefaultRequestHeaders.Add("X-Title", "TagBasedVideoManager-Renamer")
+
+                            use content = new StringContent(requestJson, Encoding.UTF8, "application/json")
+                            let! resp = client.PostAsync(endpointUrl, content, cancellationToken) |> Async.AwaitTask
+                            let! body = resp.Content.ReadAsStringAsync(cancellationToken) |> Async.AwaitTask
+                            return int resp.StatusCode, body
+                        }
+
+                if statusCode < 200 || statusCode >= 300 then
+                    let detailMsg =
+                        if statusCode = 401 then
+                            $"OpenRouter API returned error status 401 (認証エラー): APIキーが無効または未設定です (Raw: {responseBody})。appsettings.json または .env の apiKey ('sk-or-v1-...') を確認してください。"
+                        else
+                            $"OpenRouter API returned error status {statusCode}: {responseBody}"
+                    return Error (OpenRouterError (statusCode, detailMsg))
+                else
+                    try
+                        use rootDoc = JsonDocument.Parse(responseBody)
+                        let choicesProp = rootDoc.RootElement.GetProperty("choices")
+                        if choicesProp.GetArrayLength() = 0 then
+                            return Error (OpenRouterError (statusCode, "OpenRouter API response contains no choices"))
+                        else
+                            let firstChoice = choicesProp.[0]
+                            let messageProp = firstChoice.GetProperty("message")
+                            let contentStr = messageProp.GetProperty("content").GetString()
+                            let rawJson = cleanJsonContent contentStr
+
+                            use proposalsDoc = JsonDocument.Parse(rawJson)
+                            let element =
+                                if proposalsDoc.RootElement.ValueKind = JsonValueKind.Array && proposalsDoc.RootElement.GetArrayLength() > 0 then
+                                    proposalsDoc.RootElement.[0]
+                                elif proposalsDoc.RootElement.ValueKind = JsonValueKind.Object && proposalsDoc.RootElement.TryGetProperty("proposals", ref Unchecked.defaultof<JsonElement>) then
+                                    let arr = proposalsDoc.RootElement.GetProperty("proposals")
+                                    if arr.ValueKind = JsonValueKind.Array && arr.GetArrayLength() > 0 then arr.[0]
+                                    else proposalsDoc.RootElement
+                                else
+                                    proposalsDoc.RootElement
+
+                            let propName =
+                                if element.TryGetProperty("proposedFileName", ref Unchecked.defaultof<JsonElement>) then
+                                    element.GetProperty("proposedFileName").GetString()
+                                else candidate.FileName
+
+                            let rawComment =
+                                if element.TryGetProperty("aiComment", ref Unchecked.defaultof<JsonElement>) then
+                                    let cEl = element.GetProperty("aiComment")
+                                    if cEl.ValueKind = JsonValueKind.String then Some (cEl.GetString())
+                                    else None
+                                else None
+
+                            // AIコメント常時保持: 空やnullの場合はデフォルトコメントを補完
+                            let comment =
+                                match normalizeAiComment rawComment with
+                                | Some c when not (String.IsNullOrWhiteSpace(c)) -> c
+                                | _ ->
+                                    if not (List.isEmpty searchResults) then
+                                        "Web検索結果および命名規則を参考に短縮しました。"
+                                    else
+                                        "命名規則に従って短縮しました。"
+
+                            let finalPropName =
+                                if String.IsNullOrWhiteSpace(propName) then candidate.FileName
+                                else propName.Trim()
+
+                            let proposedPath = Path.Combine(candidate.DirectoryPath, finalPropName)
+                            let proposal: RenameProposal = {
+                                OriginalFullPath = candidate.FullPath
+                                OriginalFileName = candidate.FileName
+                                DirectoryPath = candidate.DirectoryPath
+                                OriginalLength = candidate.PathLength
+                                ProposedFileName = finalPropName
+                                ProposedLength = proposedPath.Length
+                                AiComment = Some comment
+                                IsSelected = true
+                                LastWriteTime = candidate.LastWriteTime
+                                IsAiProposed = true
+                            }
+                            return Ok proposal
+                    with ex ->
+                        return Error (OpenRouterError (statusCode, $"OpenRouter レスポンスのJSONパースに失敗しました: {ex.Message} (Raw: {responseBody})"))
+            with
+            | :? OperationCanceledException ->
+                return Error (OpenRouterError (0, "Web検索/AI提案リクエストがキャンセルされました。"))
+            | ex ->
+                return Error (OpenRouterError (0, $"OpenRouter API 通信中に例外が発生しました: {ex.Message}"))
+        }
+
+
