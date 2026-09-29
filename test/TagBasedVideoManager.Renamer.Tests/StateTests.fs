@@ -206,8 +206,8 @@ module StateTests =
     [<Fact>]
     let ``MoveRuleOrder は命名規則の優先度順序を正しく入れ替える`` () =
         let initialModel, _ = State.init ()
-        let rule1 = { Id = "r1"; Name = "Rule 1"; Pattern = "{P1}"; PromptInstruction = "I1"; Order = 0 }
-        let rule2 = { Id = "r2"; Name = "Rule 2"; Pattern = "{P2}"; PromptInstruction = "I2"; Order = 1 }
+        let rule1 = { Id = "r1"; Name = "Rule 1"; Pattern = "{P1}"; PromptInstruction = "I1"; Order = 0; EnableWebSearch = false }
+        let rule2 = { Id = "r2"; Name = "Rule 2"; Pattern = "{P2}"; PromptInstruction = "I2"; Order = 1; EnableWebSearch = true }
         let modelWithRules = { initialModel with Settings = { initialModel.Settings with Rules = [ rule1; rule2 ] } }
 
         // rule2 を上へ移動 (direction = -1)

@@ -9,6 +9,7 @@ type NamingRule = {
     Pattern: string
     PromptInstruction: string
     Order: int
+    EnableWebSearch: bool
 }
 
 /// スキャン結果の候補ファイル情報

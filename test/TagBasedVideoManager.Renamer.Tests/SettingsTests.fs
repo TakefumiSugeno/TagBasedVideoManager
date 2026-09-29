@@ -179,6 +179,7 @@ module SettingsTests =
                     Pattern = "{Custom}_{Date}.mp4"
                     PromptInstruction = "外部ファイルから読み込んだカスタムプロンプト"
                     Order = 0
+                    EnableWebSearch = true
                 }
                 {
                     Id = "rule-compact"
@@ -186,6 +187,7 @@ module SettingsTests =
                     Pattern = "{ShortTitle}.mp4"
                     PromptInstruction = "短縮命名"
                     Order = 1
+                    EnableWebSearch = false
                 }
             ]
             let customJson = {
@@ -267,3 +269,69 @@ module SettingsTests =
             loaded.SelectedModel |> should equal expected.SelectedModel
             loaded.ApiKey |> should equal expected.ApiKey
         | Error err -> failwith $"Project json load failed: {err}"
+
+    [<Fact>]
+    let ``save と load は NamingRule の EnableWebSearch フラグを正しく永続化・復元できる`` () =
+        let filePath = createTempSettingsPath ()
+        try
+            let initial = Settings.defaultSettings ()
+            let customRule = {
+                Id = "rule-web-search"
+                Name = "Web検索連携ルール"
+                Pattern = "{Title}_{Episode}.mp4"
+                PromptInstruction = "Web検索結果から正式なタイトルを補完して命名してください。"
+                Order = 0
+                EnableWebSearch = true
+            }
+            let custom = { initial with Rules = [ customRule ] }
+            let saveResult = Settings.save filePath custom
+            match saveResult with
+            | Error err -> failwith $"Save failed: {err}"
+            | Ok () -> ()
+
+            let loadResult = Settings.load filePath
+            match loadResult with
+            | Error err -> failwith $"Load failed: {err}"
+            | Ok loaded ->
+                loaded.Rules.Length |> should equal 1
+                let loadedRule = loaded.Rules.Head
+                loadedRule.Id |> should equal "rule-web-search"
+                loadedRule.EnableWebSearch |> should equal true
+        finally
+            if File.Exists(filePath) then File.Delete(filePath)
+            let dir = Path.GetDirectoryName(filePath)
+            if Directory.Exists(dir) then Directory.Delete(dir, true)
+
+    [<Fact>]
+    let ``enableWebSearch が省略されたレガシーJSONでもデフォルト false として安全に読み込める`` () =
+        let filePath = createTempSettingsPath ()
+        try
+            let legacyJson = """
+            {
+              "targetDirectory": "C:\\Legacy",
+              "pathLengthThreshold": 240,
+              "selectedModel": "meta-llama/llama-3.3-70b-instruct:free",
+              "rules": [
+                {
+                  "id": "legacy-rule",
+                  "name": "旧形式ルール",
+                  "pattern": "{Title}.mp4",
+                  "promptInstruction": "短縮してください",
+                  "order": 0
+                }
+              ]
+            }
+            """
+            File.WriteAllText(filePath, legacyJson)
+
+            let loadResult = Settings.load filePath
+            match loadResult with
+            | Error err -> failwith $"Load failed: {err}"
+            | Ok loaded ->
+                loaded.Rules.Length |> should equal 1
+                let rule = loaded.Rules.Head
+                rule.EnableWebSearch |> should equal false
+        finally
+            if File.Exists(filePath) then File.Delete(filePath)
+            let dir = Path.GetDirectoryName(filePath)
+            if Directory.Exists(dir) then Directory.Delete(dir, true)

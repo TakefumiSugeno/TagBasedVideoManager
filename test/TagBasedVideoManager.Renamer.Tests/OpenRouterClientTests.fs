@@ -13,6 +13,7 @@ module OpenRouterClientTests =
         Pattern = "{Date}_{Location}_{Activity}.mp4"
         PromptInstruction = "ファイル名から撮影日、撮影場所、行動を抽出しアンダースコア繋ぎで命名してください。"
         Order = 0
+        EnableWebSearch = false
     }
 
     let sampleCandidate1: ScanCandidate = {
