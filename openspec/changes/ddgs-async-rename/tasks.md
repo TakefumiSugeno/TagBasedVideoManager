@@ -2,7 +2,7 @@
 
 ## 1. Web検索連携 (`ddgs`) スクリプトとプロセス実行基盤
 
-- [ ] 1.1 Python連携スクリプト `scripts/ddgs_search.py` を作成し、コマンドライン引数（クエリ、件数）からDuckDuckGo検索スニペットをJSON形式で標準出力する単体動作をCLI実行で検証する
+- [x] 1.1 Python連携スクリプト `scripts/ddgs_search.py` を作成し、コマンドライン引数（クエリ、件数）からDuckDuckGo検索スニペットをJSON形式で標準出力する単体動作をCLI実行で検証する
 - [ ] 1.2 `Domain.fs` の `NamingRule` に `EnableWebSearch: bool` を追加し、`Settings.fs` における `appsettings.json` のロード・保存処理の仕様妥当性検証テストを作成・通過させる
 - [ ] 1.3 `WebSearchClient.fs` を新設し、F# から `scripts/ddgs_search.py` を非同期呼び出しする関数およびPython未導入時のフォールバック処理の単体テスト（Red-Green-Refactor）を作成・検証する
 
