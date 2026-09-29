@@ -39,6 +39,7 @@ module StateTests =
             ProposedLength = 19
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -64,6 +65,7 @@ module StateTests =
             ProposedLength = 15
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -91,6 +93,7 @@ module StateTests =
             ProposedLength = 15
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = false
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -156,6 +159,7 @@ module StateTests =
             ProposedLength = 20
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -168,6 +172,7 @@ module StateTests =
             ProposedLength = 35
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -238,8 +243,8 @@ module StateTests =
 
         // 重要: LLM未接続なので「AI提案済」ではなく未提案状態
         proposal.IsAiProposed |> should equal false
-        // 重要: 勝手な固定コメントを捏造しない
-        proposal.AiComment |> should equal None
+        // 初期状態は待機中コメント
+        proposal.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
         // 初期状態は元ファイル名（手動編集用）
         proposal.ProposedFileName |> should equal dummyCandidate.FileName
         // 警告案内メッセージを表示
@@ -263,6 +268,7 @@ module StateTests =
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
             IsAiProposed = true
+            IsAiProcessing = false
         }
         let p2 = {
             OriginalFullPath = "C:\\Videos\\long_path_that_was_over_limit_sample_2.mp4"
@@ -275,6 +281,7 @@ module StateTests =
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
             IsAiProposed = true
+            IsAiProcessing = false
         }
         let p3_unselected = {
             OriginalFullPath = "C:\\Videos\\unselected_long_file.mp4"
@@ -287,6 +294,7 @@ module StateTests =
             IsSelected = false
             LastWriteTime = DateTime.UtcNow
             IsAiProposed = false
+            IsAiProcessing = false
         }
         let modelWithCandidates = { model with Candidates = [ p1; p2; p3_unselected ] }
 
@@ -355,5 +363,25 @@ module StateTests =
         added.EnableWebSearch |> should equal true
         savedModel.SelectedRuleId |> should equal added.Id
 
-
-
+    [<Fact>]
+    let ``Proposal.createInitial はスキャン候補から即時IO描画用の初期未提案レコードを生成する`` () =
+        let candidate: ScanCandidate = {
+            FullPath = "C:\\Videos\\long_test_sample.mp4"
+            FileName = "long_test_sample.mp4"
+            DirectoryPath = "C:\\Videos"
+            PathLength = 30
+            FileSizeBytes = 2048L
+            LastWriteTime = DateTime(2025, 1, 1)
+        }
+        let initial = Proposal.createInitial candidate
+        initial.OriginalFullPath |> should equal candidate.FullPath
+        initial.OriginalFileName |> should equal candidate.FileName
+        initial.DirectoryPath |> should equal candidate.DirectoryPath
+        initial.OriginalLength |> should equal candidate.PathLength
+        initial.ProposedFileName |> should equal candidate.FileName
+        initial.ProposedLength |> should equal candidate.PathLength
+        initial.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
+        initial.IsSelected |> should equal true
+        initial.LastWriteTime |> should equal candidate.LastWriteTime
+        initial.IsAiProposed |> should equal false
+        initial.IsAiProcessing |> should equal false

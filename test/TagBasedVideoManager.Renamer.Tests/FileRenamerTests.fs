@@ -37,6 +37,7 @@ module FileRenamerTests =
                 ProposedLength = expectedNewPath.Length
                 AiComment = None
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -77,6 +78,7 @@ module FileRenamerTests =
                 ProposedLength = conflictTarget.Length
                 AiComment = None
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -113,6 +115,7 @@ module FileRenamerTests =
                 ProposedLength = 10
                 AiComment = None
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = false
                 LastWriteTime = DateTime.UtcNow
             }
@@ -197,6 +200,7 @@ module FileRenamerTests =
                 ProposedLength = 10
                 AiComment = None
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }

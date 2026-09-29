@@ -186,6 +186,7 @@ module OpenRouterClient =
                                                 IsSelected = true
                                                 LastWriteTime = candidate.LastWriteTime
                                                 IsAiProposed = true
+                                                IsAiProcessing = false
                                             }
                                         )
                                     )
@@ -245,6 +246,7 @@ module OpenRouterClient =
                 IsSelected = true
                 LastWriteTime = c.LastWriteTime
                 IsAiProposed = false          // 未提案フラグ
+                IsAiProcessing = false
             }
         )
 
@@ -398,6 +400,7 @@ module OpenRouterClient =
                                 IsSelected = true
                                 LastWriteTime = candidate.LastWriteTime
                                 IsAiProposed = true
+                                IsAiProcessing = false
                             }
                             return Ok proposal
                     with ex ->

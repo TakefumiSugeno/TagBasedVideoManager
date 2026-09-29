@@ -80,6 +80,7 @@ module RenameIntegrationE2ETests =
                     ProposedLength = proposedPath1.Length
                     AiComment = None // 正常時はコメントなし
                     IsAiProposed = true
+                    IsAiProcessing = false
                     IsSelected = true
                     LastWriteTime = DateTime.UtcNow
                 }
@@ -93,6 +94,7 @@ module RenameIntegrationE2ETests =
                     ProposedLength = proposedPath2.Length
                     AiComment = Some aiComment2 // 問題時のみコメントあり
                     IsAiProposed = true
+                    IsAiProcessing = false
                     IsSelected = true
                     LastWriteTime = DateTime.UtcNow
                 }
@@ -177,6 +179,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = targetPath.Length
                 AiComment = None
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -190,6 +193,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = targetPath.Length
                 AiComment = None
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -251,6 +255,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 39
                 AiComment = None
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -263,6 +268,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 41
                 AiComment = Some "元ファイル名に撮影日時が含まれていなかったため、本日の日付で補完しました。"
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -389,6 +395,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 250
                 AiComment = None
                 IsAiProposed = false
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -414,6 +421,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 245
                 AiComment = None
                 IsAiProposed = false
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -436,6 +444,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 60
                 AiComment = Some "長いAIコメント：撮影地と日付を補完し、親コンテナ幅制約を検証します。"
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -490,9 +499,9 @@ module RenameIntegrationE2ETests =
                 // LLM未接続のため「未提案」状態（IsAiProposed = false）
                 prop1.IsAiProposed |> should equal false
                 prop2.IsAiProposed |> should equal false
-                // 勝手なAIコメントは捏造しない
-                prop1.AiComment |> should equal None
-                prop2.AiComment |> should equal None
+                // 初期状態は待機中コメント
+                prop1.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
+                prop2.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
                 // 初期提案名は元ファイル名（手動編集用）
                 prop1.ProposedFileName |> should equal longName1
                 prop2.ProposedFileName |> should equal longName2
@@ -561,6 +570,7 @@ module RenameIntegrationE2ETests =
             ProposedLength = 255
             AiComment = None
             IsAiProposed = false
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
         }
@@ -619,6 +629,7 @@ module RenameIntegrationE2ETests =
             ProposedLength = 350
             AiComment = Some "長いAIコメント：元ファイル名に撮影日時が含まれていなかったため補完しました。さらに親コンテナ幅制約を検証するための長文コメントです。"
             IsAiProposed = false
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
         }
@@ -677,6 +688,7 @@ module RenameIntegrationE2ETests =
             ProposedLength = 220 // 元より20文字増加
             AiComment = None
             IsAiProposed = false
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
         }

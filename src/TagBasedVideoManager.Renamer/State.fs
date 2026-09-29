@@ -187,23 +187,10 @@ module State =
                     |> List.tryFind (fun r -> r.Id = model.SelectedRuleId)
                     |> Option.defaultValue (List.head model.Settings.Rules)
 
-                // 走査直後の初期候補データ（未提案状態・勝手なAIコメントなし・手動編集用）
+                // 走査直後の初期候補データ（即時IO描画用・未提案状態）
                 let initialProposals =
                     candidates
-                    |> List.map (fun c ->
-                        {
-                            OriginalFullPath = c.FullPath
-                            OriginalFileName = c.FileName
-                            DirectoryPath = c.DirectoryPath
-                            OriginalLength = c.PathLength
-                            ProposedFileName = c.FileName // 初期状態は元ファイル名（手動編集用）
-                            ProposedLength = c.PathLength
-                            AiComment = None              // 勝手な固定コメントを捏造しない
-                            IsSelected = true
-                            LastWriteTime = c.LastWriteTime
-                            IsAiProposed = false          // 未提案フラグ
-                        }
-                    )
+                    |> List.map Proposal.createInitial
                     |> FileScanner.sortCandidates model.SortCriterion
 
                 match model.Settings.ApiKey with
@@ -353,6 +340,7 @@ module State =
                                     ProposedLength = renamedFullPath.Length
                                     IsSelected = false
                                     IsAiProposed = false
+                                    IsAiProcessing = false
                                     AiComment = None
                             }
                     | None ->

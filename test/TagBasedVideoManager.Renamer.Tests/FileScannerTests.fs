@@ -188,6 +188,7 @@ module FileScannerTests =
             ProposedLength = 20
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = now.AddDays(-2.0)
         }
@@ -200,6 +201,7 @@ module FileScannerTests =
             ProposedLength = 20
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = now.AddDays(-1.0)
         }
@@ -212,6 +214,7 @@ module FileScannerTests =
             ProposedLength = 20
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = now
         }
