@@ -49,6 +49,8 @@
 
 ## UI / UX モックアップ
 
+本機能のインタラクティブな画面モックアップは [`mockup.html`](file:///D:/programming/repos/MyGitHubRepos/TagBasedVideoManager/openspec/changes/ddgs-async-rename/mockup.html) として作成されています。ブラウザで開くことで、即時IO描画、非同期行アニメーション、3行常時表示、および文字数抵触時のAFTERラベル赤化警告のインタラクションを直接検証できます。
+
 ### ① スキャン直後（即時IO描画・待機中）
 
 ```
