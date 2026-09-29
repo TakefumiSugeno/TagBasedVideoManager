@@ -222,19 +222,29 @@
               ></span>
             </div>
 
-            <!-- アクション実行ボタン -->
+            <!-- アクション実行ボタン (提案中も常時活性で新条件リスタート可能) -->
             <button
-              class="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded shadow-md text-xs flex items-center space-x-1.5 transition-all disabled:opacity-50"
-              :disabled="isProcessing"
+              class="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded shadow-md text-xs flex items-center space-x-1.5 transition-all"
               @click="startScanAndProposeSimulation()"
+              :title="isProcessing ? '現在の処理を中断し、新しい条件で最初から再実行します' : '抽出とAI提案を開始します'"
             >
               <span x-show="!isProcessing">⚡ 抽出＆AI提案を実行</span>
               <span x-show="isProcessing" class="flex items-center gap-1.5">
                 <span
                   class="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full"
                 ></span>
-                <span>処理中...</span>
+                <span>⟳ 新条件で再実行</span>
               </span>
+            </button>
+
+            <!-- 中止ボタン (提案中のみ表示) -->
+            <button
+              x-show="isProcessing"
+              class="px-2.5 py-1.5 bg-red-950/80 hover:bg-red-900 border border-red-700 text-red-300 font-bold rounded shadow text-xs flex items-center space-x-1 transition-all"
+              @click="stopProcessing()"
+              title="進行中のAI提案処理を直ちに中断します"
+            >
+              <span>⏹ 中止</span>
             </button>
           </div>
         </div>
@@ -581,6 +591,7 @@
           selectedRule: "drama",
           webSearchEnabled: true,
           isProcessing: false,
+          runId: 0,
 
           candidates: [
             {
@@ -700,8 +711,9 @@
 
           // 非同期逐次パイプライン（ddgs検索 → LLM提案 → 反映）のシミュレーション
           async startScanAndProposeSimulation() {
-            if (this.isProcessing) return;
-            this.isProcessing = true;
+            // 新しい実行IDを発行（進行中の古いループは自動的にキャンセルされる）
+            this.runId++;
+            const currentRunId = this.runId;
 
             // Step 1: まずスキャン直後として即時IO描画
             this.resetToScanInitialState();
@@ -709,17 +721,20 @@
 
             // 1ファイルずつ順番に非同期パイプラインを実行
             for (let i = 0; i < this.candidates.length; i++) {
+              if (this.runId !== currentRunId) return; // 中止または新条件でリスタートされた場合は早期脱出
               const c = this.candidates[i];
 
               // 1. Web検索 (ddgs) 開始
               if (this.webSearchEnabled) {
                 c.state = "searching";
                 await new Promise((r) => setTimeout(r, 700));
+                if (this.runId !== currentRunId) return;
               }
 
               // 2. LLM プロンプト生成＆問い合わせ
               c.state = "generating";
               await new Promise((r) => setTimeout(r, 800));
+              if (this.runId !== currentRunId) return;
 
               // 3. 提案結果反映 (1件完了ごとに逐次UI更新！)
               c.isAiProposed = true;
@@ -749,7 +764,22 @@
               }
             }
 
+            if (this.runId === currentRunId) {
+              this.isProcessing = false;
+            }
+          },
+
+          // AI提案処理の中止 (キャンセル)
+          stopProcessing() {
+            this.runId++; // 進行中のループをキャンセル
             this.isProcessing = false;
+            // 処理中だった行（未完了）のアニメーションを解除して待機状態に戻す
+            for (const c of this.candidates) {
+              if (c.state === "searching" || c.state === "generating") {
+                c.state = "idle";
+                c.aiComment = "（AI提案がユーザーにより中止されました）";
+              }
+            }
           },
 
           // 危険カードのトグル（モックテスト用）
