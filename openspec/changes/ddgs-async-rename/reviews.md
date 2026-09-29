@@ -184,3 +184,29 @@
 
 - **LGTM**: true
 - **次のアクション**: タスク 3.2 へ
+
+---
+
+# Apply Phase Review: Task 3.2, 3.3, 3.4
+
+- **日時**: 2026-09-30 03:45:00
+- **タスク**:
+  - 3.2 `State.fs` を更新し、スキャン直後に即時IO描画を行い、ファイル単位に提案を実行するロジックを実装する
+  - 3.3 1件完了ごとに `CandidateAiProposed` を dispatch して対象レコードのみを更新するメッセージハンドラを実装し、状態遷移の単体テストを検証する
+  - 3.4 `State.fs` に `CancelAiProposal` メッセージおよび `CancellationTokenSource` による非同期処理の即時キャンセルと先行タスク自動キャンセルロジックを実装・検証する
+- **レビュアー**: PG Agent, QA Agent
+
+## チェックリスト結果
+
+| #   | 観点                                                       | 判定 | コメント                                                                                                                              |
+| --- | ---------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 即時IO描画と非同期パイプライン（`design.md` 整合性）       | ✅   | `ScanCompleted` 直後に `Proposal.createInitial` で即時IO描画を行い、`createAsyncPipelineCmd` で逐次提案を実行                         |
+| 2   | 行単位の非同期状態更新（`CandidateAiProcessing/Proposed`） | ✅   | ファイル開始時に `CandidateAiProcessing`、完了時に `CandidateAiProposed` を dispatch して個別行を即座に更新・反映                     |
+| 3   | キャンセル機構（`CancelAiProposal` & 自動キャンセル）      | ✅   | `CancellationTokenSource` による即時キャンセル、中止時コメント付与、および `ExecuteScanAndPropose` での先行タスク自動キャンセルを担保 |
+| 4   | TDD（Test First / Red-Green-Refactor）                     | ✅   | `StateTests.fs` に状態遷移テスト5件を先行作成（Red確認）後に実装完了して全通過（Green）                                               |
+| 5   | 回帰テスト・全テスト通過状況                               | ✅   | E2Eテストを含むプロジェクト全83件のテスト全数パスを確認                                                                               |
+
+## 判定
+
+- **LGTM**: true
+- **次のアクション**: タスク 4.1 へ

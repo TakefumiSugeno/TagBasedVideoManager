@@ -296,6 +296,7 @@ module RenameIntegrationE2ETests =
             IsRuleManagerOpen = false
             EditingRule = None
             ConfirmDialog = None
+            AiCancellationCts = None
         }
 
         let renderAndCaptureWithCustomSize (m: Model) (fileName: string) (width: float) (height: float) =

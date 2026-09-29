@@ -15,9 +15,9 @@
 ## 3. 即時IO描画とファイルごとの非同期逐次パイプライン（State更新）
 
 - [x] 3.1 `Domain.fs` の `RenameProposal` に処理中状態（`IsAiProcessing: bool`）を追加し、スキャン完了直後の即時描画用初期データ生成テストを作成する（Test First / Red）
-- [ ] 3.2 `State.fs` を更新し、スキャン直後に即時IO描画（全件未提案状態で一覧化）を行い、続いて並行度制御（1〜2並行）を適用した非同期コマンドでファイル単位に提案を実行するロジックを実装する（Green）
-- [ ] 3.3 1件完了ごとに `CandidateAiProposed` を dispatch して対象レコードのみを更新するメッセージハンドラを実装し、状態遷移の単体テストを検証する（Refactor）
-- [ ] 3.4 `State.fs` に `CancelAiProposal` メッセージおよび `CancellationTokenSource` による非同期処理の即時キャンセルと、新条件での再実行時の先行タスク自動キャンセルロジックを実装・検証する
+- [x] 3.2 `State.fs` を更新し、スキャン直後に即時IO描画（全件未提案状態で一覧化）を行い、続いて並行度制御（1〜2並行）を適用した非同期コマンドでファイル単位に提案を実行するロジックを実装する（Green）
+- [x] 3.3 1件完了ごとに `CandidateAiProposed` を dispatch して対象レコードのみを更新するメッセージハンドラを実装し、状態遷移の単体テストを検証する（Refactor）
+- [x] 3.4 `State.fs` に `CancelAiProposal` メッセージおよび `CancellationTokenSource` による非同期処理の即時キャンセルと、新条件での再実行時の先行タスク自動キャンセルロジックを実装・検証する
 
 ## 4. UI改善（3行常時表示・行アニメーション・AFTERラベル赤化警告）
 
