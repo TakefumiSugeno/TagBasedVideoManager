@@ -475,21 +475,38 @@ module Views =
                                     ]
                                 ]
 
-                                // メインアクションボタン
+                                // メインアクションボタン (AI提案中も常時活性化で新条件即時リスタート可能)
                                 Button.create [
                                     let btnText =
-                                        if model.Candidates.Length > 0 then "⚡ 再抽出 ＆ AI提案を再実行"
-                                        else "🚀 リネーム対象抽出 ＆ AI提案を実行"
+                                        if model.IsRequestingAi then "⟳ 新条件で再実行"
+                                        elif model.Candidates.Length > 0 then "⚡ 再抽出 ＆ AI提案を再実行"
+                                        else "⚡ 抽出 ＆ AI提案を実行"
                                     Button.content btnText
-                                    Button.isEnabled (not model.IsScanning && not model.IsRequestingAi && not model.IsRenaming)
+                                    Button.isEnabled (not model.IsScanning && not model.IsRenaming)
                                     Button.background (SolidColorBrush btnPrimaryGradient)
                                     Button.foreground (SolidColorBrush textWhite)
                                     Button.fontWeight FontWeight.Bold
                                     Button.fontSize 12.0
                                     Button.cornerRadius 4.0
                                     Button.padding (16.0, 7.0)
-                                    Button.margin (0.0, 0.0, 0.0, 6.0)
+                                    Button.margin (0.0, 0.0, 6.0, 6.0)
                                     Button.onClick (fun _ -> dispatch ExecuteScanAndPropose)
+                                ]
+
+                                // 中止ボタン (常時配置・AI提案中のみ活性化)
+                                Button.create [
+                                    Button.content "⏹ 中止"
+                                    Button.isEnabled model.IsRequestingAi
+                                    Button.background (SolidColorBrush (if model.IsRequestingAi then badgeBgBefore else btnDark))
+                                    Button.borderBrush (SolidColorBrush (if model.IsRequestingAi then borderBefore else borderFluent))
+                                    Button.borderThickness 1.0
+                                    Button.foreground (SolidColorBrush (if model.IsRequestingAi then textBeforeLabel else textZinc500))
+                                    Button.fontWeight FontWeight.Bold
+                                    Button.fontSize 12.0
+                                    Button.cornerRadius 4.0
+                                    Button.padding (12.0, 7.0)
+                                    Button.margin (0.0, 0.0, 0.0, 6.0)
+                                    Button.onClick (fun _ -> dispatch CancelAiProposal)
                                 ]
                             ]
                         ]
@@ -522,11 +539,13 @@ module Views =
                 badgeBgAfter, borderAfter, $"-{diff}字 ({reductionPercent}%%短縮)", textAfterLabel
 
         let statusText, statusFg =
-            if isIncrease then
+            if c.IsAiProcessing then
+                "🌐 検索中", Color.Parse("#60a5fa")
+            elif isIncrease then
                 "⚠️ 文字数増加", Color.Parse("#f87171")
             elif isDanger then
                 "⚠️ 要短縮", Color.Parse("#f87171")
-            elif isUnshortened then
+            elif isUnshortened && not c.IsAiProposed then
                 "⚠️ 未短縮", Color.Parse("#fbbf24")
             else
                 "✓ 安全", textAfterLabel
@@ -538,18 +557,43 @@ module Views =
             else borderAfter
 
         let afterBadgeBg, afterBadgeBorder =
-            if isIncrease || isDanger then Color.Parse("#450a0a"), Color.Parse("#b91c1c")
+            if c.IsAiProcessing then Color.Parse("#172554"), Color.Parse("#1e40af")
+            elif isIncrease || isDanger then Color.Parse("#450a0a"), Color.Parse("#b91c1c")
+            elif not c.IsAiProposed then Color.Parse("#27272a"), Color.Parse("#3f3f46")
             else badgeBgAfter, borderAfter
 
         let afterLabelText, afterLabelFg =
-            if isIncrease then
-                (if isDanger then $"⚠️ AFTER ({c.ProposedLength}字 [危険 (増加)])" else $"⚠️ AFTER ({c.ProposedLength}字 [増加])"), Color.Parse("#f87171")
+            if c.IsAiProcessing then
+                "AFTER (処理中...)", Color.Parse("#93c5fd")
+            elif isIncrease then
+                (if isDanger then $"AFTER ({c.ProposedLength}字 [危険])" else $"AFTER ({c.ProposedLength}字 [増加])"), Color.Parse("#f87171")
             elif isDanger then
-                $"⚠️ AFTER ({c.ProposedLength}字 [危険])", Color.Parse("#f87171")
-            elif isUnshortened && not c.IsAiProposed then
+                $"AFTER ({c.ProposedLength}字 [危険])", Color.Parse("#f87171")
+            elif not c.IsAiProposed then
                 $"AFTER ({c.ProposedLength}字 [未短縮])", Color.Parse("#a1a1aa")
             else
                 $"AFTER ({c.ProposedLength}字 [安全])", textAfterLabel
+
+        let rightBadgeText, rightBadgeBg, rightBadgeBorder, rightBadgeFg =
+            if c.IsAiProcessing then
+                "処理中", Color.Parse("#172554"), Color.Parse("#1e40af"), Color.Parse("#93c5fd")
+            elif c.IsAiProposed then
+                "AI提案済", Color.Parse("#172554"), Color.Parse("#1e40af"), Color.Parse("#60a5fa")
+            else
+                "未提案", Color.Parse("#27272a"), Color.Parse("#3f3f46"), Color.Parse("#a1a1aa")
+
+        let commentBoxBg, commentBoxBorder, commentLabelText, commentFg, commentText =
+            if c.IsAiProcessing then
+                Color.Parse("#172554"), Color.Parse("#1e40af"), "🌐 AI COMMENT:", Color.Parse("#93c5fd"), "（DuckDuckGo (ddgs) より作品情報を検索中、またはLLMが命名理由を構成中...）"
+            elif isDanger || isIncrease then
+                let txt = c.AiComment |> Option.defaultValue "（文字数基準を超過しているため短縮が必要です）"
+                bgAiComment, borderAiComment, "⚠️ AI COMMENT:", textAiComment, txt
+            elif c.IsAiProposed then
+                let txt = c.AiComment |> Option.defaultValue "（命名規則に基づき短縮しました）"
+                Color.Parse("#18181b"), Color.Parse("#27272a"), "💬 AI COMMENT:", Color.Parse("#d4d4d8"), txt
+            else
+                let txt = c.AiComment |> Option.defaultValue "（AI提案の開始を待機しています...）"
+                Color.Parse("#18181b"), Color.Parse("#27272a"), "💬 AI COMMENT:", Color.Parse("#a1a1aa"), txt
 
         let (origBaseName, origExt) = splitFileName c.OriginalFileName
         let (proposedBaseName, proposedExt) = splitFileName c.ProposedFileName
@@ -767,8 +811,8 @@ module Views =
                                             DockPanel.dock Dock.Right
                                             Border.width 64.0
                                             Border.height 26.0
-                                            Border.background (SolidColorBrush (if c.IsAiProposed then Color.Parse("#172554") else Color.Parse("#27272a")))
-                                            Border.borderBrush (SolidColorBrush (if c.IsAiProposed then Color.Parse("#1e40af") else Color.Parse("#3f3f46")))
+                                            Border.background (SolidColorBrush rightBadgeBg)
+                                            Border.borderBrush (SolidColorBrush rightBadgeBorder)
                                             Border.borderThickness 1.0
                                             Border.cornerRadius 3.0
                                             Border.padding (4.0, 0.0)
@@ -776,10 +820,10 @@ module Views =
                                             Border.verticalAlignment VerticalAlignment.Center
                                             Border.child (
                                                 TextBlock.create [
-                                                    TextBlock.text (if c.IsAiProposed then "AI提案済" else "未提案")
+                                                    TextBlock.text rightBadgeText
                                                     TextBlock.fontSize 10.0
                                                     TextBlock.fontWeight FontWeight.Bold
-                                                    TextBlock.foreground (SolidColorBrush (if c.IsAiProposed then Color.Parse("#60a5fa") else Color.Parse("#a1a1aa")))
+                                                    TextBlock.foreground (SolidColorBrush rightBadgeFg)
                                                     TextBlock.horizontalAlignment HorizontalAlignment.Center
                                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                                 ]
@@ -807,63 +851,93 @@ module Views =
                                                 ]
                                             )
                                         ]
-                                        // 中央残余: AFTER ファイル名本体（拡張子なし・編集可能 TextBox・高さ26px）
-                                        TextBox.create [
-                                            TextBox.text proposedBaseName
-                                            TextBox.height 26.0
-                                            TextBox.verticalAlignment VerticalAlignment.Center
-                                            TextBox.verticalContentAlignment VerticalAlignment.Center
-                                            TextBox.background (SolidColorBrush bgBlack)
-                                            TextBox.foreground (SolidColorBrush (if isIncrease || isDanger then textBeforeFile else textAfterFile))
-                                            TextBox.fontFamily monoFontFamily
-                                            TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then Color.Parse("#ef4444") else borderAfterInput))
-                                            TextBox.borderThickness 1.0
-                                            TextBox.cornerRadius 3.0
-                                            TextBox.padding (6.0, 0.0)
-                                            TextBox.fontSize 11.0
-                                            TextBox.onTextChanged (fun newBaseName ->
-                                                if newBaseName <> proposedBaseName then
-                                                    dispatch (UpdateProposedName (c.OriginalFullPath, newBaseName + displayExt))
-                                            )
-                                        ]
+                                        // 中央残余: 処理中アニメーションバー または AFTER ファイル名 TextBox
+                                        if c.IsAiProcessing then
+                                            Border.create [
+                                                Border.height 26.0
+                                                Border.background (SolidColorBrush (Color.Parse("#09090b")))
+                                                Border.borderBrush (SolidColorBrush (Color.Parse("#3b82f6")))
+                                                Border.borderThickness 1.0
+                                                Border.cornerRadius 3.0
+                                                Border.padding (8.0, 0.0)
+                                                Border.verticalAlignment VerticalAlignment.Center
+                                                Border.child (
+                                                    StackPanel.create [
+                                                        StackPanel.orientation Orientation.Horizontal
+                                                        StackPanel.spacing 6.0
+                                                        StackPanel.verticalAlignment VerticalAlignment.Center
+                                                        StackPanel.children [
+                                                            TextBlock.create [
+                                                                TextBlock.text "⠋"
+                                                                TextBlock.fontSize 11.0
+                                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                                TextBlock.fontWeight FontWeight.Bold
+                                                            ]
+                                                            TextBlock.create [
+                                                                TextBlock.text "🌐 DuckDuckGo (ddgs) 検索・LLM提案を実行中..."
+                                                                TextBlock.fontFamily monoFontFamily
+                                                                TextBlock.fontSize 11.0
+                                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#93c5fd")))
+                                                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                                            ]
+                                                        ]
+                                                    ]
+                                                )
+                                            ]
+                                        else
+                                            TextBox.create [
+                                                TextBox.text proposedBaseName
+                                                TextBox.height 26.0
+                                                TextBox.verticalAlignment VerticalAlignment.Center
+                                                TextBox.verticalContentAlignment VerticalAlignment.Center
+                                                TextBox.background (SolidColorBrush bgBlack)
+                                                TextBox.foreground (SolidColorBrush (if isIncrease || isDanger then textBeforeFile else textAfterFile))
+                                                TextBox.fontFamily monoFontFamily
+                                                TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then Color.Parse("#ef4444") else borderAfterInput))
+                                                TextBox.borderThickness 1.0
+                                                TextBox.cornerRadius 3.0
+                                                TextBox.padding (6.0, 0.0)
+                                                TextBox.fontSize 11.0
+                                                TextBox.onTextChanged (fun newBaseName ->
+                                                    if newBaseName <> proposedBaseName then
+                                                        dispatch (UpdateProposedName (c.OriginalFullPath, newBaseName + displayExt))
+                                                )
+                                            ]
                                     ]
                                 ]
                             )
                         ]
 
-                        // Line 4: AI Comment Box (問題・補完があった時のみ表示。親幅超過を防ぐDockPanel構成)
-                        match c.AiComment with
-                        | Some comment when not (String.IsNullOrWhiteSpace(comment)) ->
-                            Border.create [
-                                Border.background (SolidColorBrush bgAiComment)
-                                Border.borderBrush (SolidColorBrush borderAiComment)
-                                Border.borderThickness 1.0
-                                Border.cornerRadius 4.0
-                                Border.padding (8.0, 4.0)
-                                Border.clipToBounds true
-                                Border.child (
-                                    DockPanel.create [
-                                        DockPanel.children [
-                                            TextBlock.create [
-                                                DockPanel.dock Dock.Left
-                                                TextBlock.text "⚠️ AIコメント:"
-                                                TextBlock.fontSize 11.0
-                                                TextBlock.foreground (SolidColorBrush textAiComment)
-                                                TextBlock.fontWeight FontWeight.Bold
-                                                TextBlock.margin (0.0, 0.0, 6.0, 0.0)
-                                            ]
-                                            SelectableTextBlock.create [
-                                                TextBlock.text comment
-                                                TextBlock.fontSize 11.0
-                                                TextBlock.foreground (SolidColorBrush textAiComment)
-                                                TextBlock.fontStyle FontStyle.Italic
-                                                TextBlock.textWrapping TextWrapping.Wrap
-                                            ]
+                        // Line 4: AI Comment Box (3行固定レイアウト・常時表示)
+                        Border.create [
+                            Border.background (SolidColorBrush commentBoxBg)
+                            Border.borderBrush (SolidColorBrush commentBoxBorder)
+                            Border.borderThickness 1.0
+                            Border.cornerRadius 4.0
+                            Border.padding (8.0, 4.0)
+                            Border.clipToBounds true
+                            Border.child (
+                                DockPanel.create [
+                                    DockPanel.children [
+                                        TextBlock.create [
+                                            DockPanel.dock Dock.Left
+                                            TextBlock.text commentLabelText
+                                            TextBlock.fontSize 11.0
+                                            TextBlock.foreground (SolidColorBrush commentFg)
+                                            TextBlock.fontWeight FontWeight.Bold
+                                            TextBlock.margin (0.0, 0.0, 6.0, 0.0)
+                                        ]
+                                        SelectableTextBlock.create [
+                                            TextBlock.text commentText
+                                            TextBlock.fontSize 11.0
+                                            TextBlock.foreground (SolidColorBrush commentFg)
+                                            TextBlock.fontStyle FontStyle.Italic
+                                            TextBlock.textWrapping TextWrapping.Wrap
                                         ]
                                     ]
-                                )
-                            ]
-                        | _ -> ()
+                                ]
+                            )
+                        ]
                     ]
                 ]
             )
@@ -889,11 +963,13 @@ module Views =
                 badgeBgAfter, borderAfter, $"-{diff}字 ({reductionPercent}%%短縮)", textAfterLabel
 
         let statusText, statusFg =
-            if isIncrease then
+            if c.IsAiProcessing then
+                "🌐 検索中", Color.Parse("#60a5fa")
+            elif isIncrease then
                 "⚠️ 文字数増加", Color.Parse("#f87171")
             elif isDanger then
                 "⚠️ 要短縮", Color.Parse("#f87171")
-            elif isUnshortened then
+            elif isUnshortened && not c.IsAiProposed then
                 "⚠️ 未短縮", Color.Parse("#fbbf24")
             else
                 "✓ 安全", textAfterLabel
@@ -905,24 +981,26 @@ module Views =
             else borderAfter
 
         let afterLabelTitle, afterLabelFg =
-            if isIncrease then
+            if c.IsAiProcessing then
+                "AFTER (処理中...)", Color.Parse("#93c5fd")
+            elif isIncrease then
                 "⚠️ AFTER (文字数増加 / 編集可)", Color.Parse("#f87171")
             elif isDanger then
                 "⚠️ AFTER (要短縮 / 編集可)", Color.Parse("#f87171")
-            elif isUnshortened && not c.IsAiProposed then
-                "AFTER (未短縮 / 編集可)", Color.Parse("#a1a1aa")
-            elif c.IsAiProposed then
-                "✓ AFTER (AI提案 / 編集可)", textAfterLabel
-            else
+            elif not c.IsAiProposed then
                 "AFTER (未提案 / 編集可)", Color.Parse("#a1a1aa")
+            else
+                "✓ AFTER (AI提案 / 編集可)", textAfterLabel
 
         let afterLengthText, afterLengthFg =
-            if isIncrease then
+            if c.IsAiProcessing then
+                "処理中...", Color.Parse("#93c5fd")
+            elif isIncrease then
                 (if isDanger then $"{c.ProposedLength}字 [危険 (増加)]" else $"{c.ProposedLength}字 [増加]"), Color.Parse("#f87171")
             elif isDanger then
                 $"{c.ProposedLength}字 [危険]", Color.Parse("#f87171")
-            elif isUnshortened && not c.IsAiProposed then
-                $"{c.ProposedLength}字 [未短縮]", Color.Parse("#a1a1aa")
+            elif not c.IsAiProposed then
+                $"{c.ProposedLength}字 [未提案]", Color.Parse("#a1a1aa")
             else
                 $"{c.ProposedLength}字 [安全]", textAfterLabel
 
@@ -1155,58 +1233,104 @@ module Views =
                                                                 ]
                                                             )
                                                         ]
-                                                        // 残余: ファイル名本体 TextBox
-                                                        TextBox.create [
-                                                            TextBox.text proposedBaseName
-                                                            TextBox.height 28.0
-                                                            TextBox.verticalAlignment VerticalAlignment.Center
-                                                            TextBox.verticalContentAlignment VerticalAlignment.Center
-                                                            TextBox.background (SolidColorBrush bgBlack)
-                                                            TextBox.foreground (SolidColorBrush (if isIncrease || isDanger then textBeforeFile else textAfterFile))
-                                                            TextBox.fontFamily monoFontFamily
-                                                            TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then Color.Parse("#ef4444") else borderAfterInput))
-                                                            TextBox.borderThickness 1.0
-                                                            TextBox.cornerRadius 3.0
-                                                            TextBox.padding (6.0, 0.0)
-                                                            TextBox.fontSize 11.0
-                                                            TextBox.onTextChanged (fun newBaseName ->
-                                                                if newBaseName <> proposedBaseName then
-                                                                    dispatch (UpdateProposedName (c.OriginalFullPath, newBaseName + displayExt))
-                                                            )
-                                                        ]
+                                                        // 残余: 処理中アニメーションバー または ファイル名本体 TextBox
+                                                        if c.IsAiProcessing then
+                                                            Border.create [
+                                                                Border.height 28.0
+                                                                Border.background (SolidColorBrush (Color.Parse("#09090b")))
+                                                                Border.borderBrush (SolidColorBrush (Color.Parse("#3b82f6")))
+                                                                Border.borderThickness 1.0
+                                                                Border.cornerRadius 3.0
+                                                                Border.padding (8.0, 0.0)
+                                                                Border.verticalAlignment VerticalAlignment.Center
+                                                                Border.child (
+                                                                    StackPanel.create [
+                                                                        StackPanel.orientation Orientation.Horizontal
+                                                                        StackPanel.spacing 6.0
+                                                                        StackPanel.verticalAlignment VerticalAlignment.Center
+                                                                        StackPanel.children [
+                                                                            TextBlock.create [
+                                                                                TextBlock.text "⠋"
+                                                                                TextBlock.fontSize 11.0
+                                                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                                                TextBlock.fontWeight FontWeight.Bold
+                                                                            ]
+                                                                            TextBlock.create [
+                                                                                TextBlock.text "🌐 DuckDuckGo (ddgs) 検索・LLM提案を実行中..."
+                                                                                TextBlock.fontFamily monoFontFamily
+                                                                                TextBlock.fontSize 11.0
+                                                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#93c5fd")))
+                                                                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                            ]
+                                                                        ]
+                                                                    ]
+                                                                )
+                                                            ]
+                                                        else
+                                                            TextBox.create [
+                                                                TextBox.text proposedBaseName
+                                                                TextBox.height 28.0
+                                                                TextBox.verticalAlignment VerticalAlignment.Center
+                                                                TextBox.verticalContentAlignment VerticalAlignment.Center
+                                                                TextBox.background (SolidColorBrush bgBlack)
+                                                                TextBox.foreground (SolidColorBrush (if isIncrease || isDanger then textBeforeFile else textAfterFile))
+                                                                TextBox.fontFamily monoFontFamily
+                                                                TextBox.borderBrush (SolidColorBrush (if isIncrease || isDanger then Color.Parse("#ef4444") else borderAfterInput))
+                                                                TextBox.borderThickness 1.0
+                                                                TextBox.cornerRadius 3.0
+                                                                TextBox.padding (6.0, 0.0)
+                                                                TextBox.fontSize 11.0
+                                                                TextBox.onTextChanged (fun newBaseName ->
+                                                                    if newBaseName <> proposedBaseName then
+                                                                        dispatch (UpdateProposedName (c.OriginalFullPath, newBaseName + displayExt))
+                                                                )
+                                                            ]
                                                     ]
                                                 ]
-                                                match c.AiComment with
-                                                | Some comment when not (String.IsNullOrWhiteSpace(comment)) ->
-                                                    Border.create [
-                                                        Border.background (SolidColorBrush bgAiComment)
-                                                        Border.borderBrush (SolidColorBrush borderAiComment)
-                                                        Border.borderThickness 1.0
-                                                        Border.cornerRadius 3.0
-                                                        Border.padding (6.0, 3.0)
-                                                        Border.clipToBounds true
-                                                        Border.child (
-                                                            DockPanel.create [
-                                                                DockPanel.children [
-                                                                    TextBlock.create [
-                                                                        DockPanel.dock Dock.Left
-                                                                        TextBlock.text "⚠️ AIコメント: "
-                                                                        TextBlock.fontSize 10.0
-                                                                        TextBlock.foreground (SolidColorBrush textAiComment)
-                                                                        TextBlock.fontWeight FontWeight.Bold
-                                                                    ]
-                                                                    SelectableTextBlock.create [
-                                                                        TextBlock.text comment
-                                                                        TextBlock.fontSize 10.0
-                                                                        TextBlock.foreground (SolidColorBrush textAiComment)
-                                                                        TextBlock.fontStyle FontStyle.Italic
-                                                                        TextBlock.textWrapping TextWrapping.Wrap
-                                                                    ]
+
+                                                // AI Comment Box (常時表示)
+                                                let hCommentBoxBg, hCommentBoxBorder, hCommentLabelText, hCommentFg, hCommentText =
+                                                    if c.IsAiProcessing then
+                                                        Color.Parse("#172554"), Color.Parse("#1e40af"), "🌐 AI COMMENT:", Color.Parse("#93c5fd"), "（DuckDuckGo (ddgs) より作品情報を検索中、またはLLMが命名理由を構成中...）"
+                                                    elif isDanger || isIncrease then
+                                                        let txt = c.AiComment |> Option.defaultValue "（文字数基準を超過しているため短縮が必要です）"
+                                                        bgAiComment, borderAiComment, "⚠️ AI COMMENT:", textAiComment, txt
+                                                    elif c.IsAiProposed then
+                                                        let txt = c.AiComment |> Option.defaultValue "（命名規則に基づき短縮しました）"
+                                                        Color.Parse("#18181b"), Color.Parse("#27272a"), "💬 AI COMMENT:", Color.Parse("#d4d4d8"), txt
+                                                    else
+                                                        let txt = c.AiComment |> Option.defaultValue "（AI提案の開始を待機しています...）"
+                                                        Color.Parse("#18181b"), Color.Parse("#27272a"), "💬 AI COMMENT:", Color.Parse("#a1a1aa"), txt
+
+                                                Border.create [
+                                                    Border.background (SolidColorBrush hCommentBoxBg)
+                                                    Border.borderBrush (SolidColorBrush hCommentBoxBorder)
+                                                    Border.borderThickness 1.0
+                                                    Border.cornerRadius 3.0
+                                                    Border.padding (6.0, 3.0)
+                                                    Border.clipToBounds true
+                                                    Border.child (
+                                                        DockPanel.create [
+                                                            DockPanel.children [
+                                                                TextBlock.create [
+                                                                    DockPanel.dock Dock.Left
+                                                                    TextBlock.text hCommentLabelText
+                                                                    TextBlock.fontSize 10.0
+                                                                    TextBlock.foreground (SolidColorBrush hCommentFg)
+                                                                    TextBlock.fontWeight FontWeight.Bold
+                                                                    TextBlock.margin (0.0, 0.0, 6.0, 0.0)
+                                                                ]
+                                                                SelectableTextBlock.create [
+                                                                    TextBlock.text hCommentText
+                                                                    TextBlock.fontSize 10.0
+                                                                    TextBlock.foreground (SolidColorBrush hCommentFg)
+                                                                    TextBlock.fontStyle FontStyle.Italic
+                                                                    TextBlock.textWrapping TextWrapping.Wrap
                                                                 ]
                                                             ]
-                                                        )
-                                                    ]
-                                                | _ -> ()
+                                                        ]
+                                                    )
+                                                ]
                                             ]
                                         ]
                                     )
@@ -1485,7 +1609,26 @@ module Views =
                                     TextBlock.fontWeight FontWeight.Bold
                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                 ]
-                                if model.Candidates.Length > 0 then
+                                if model.IsRequestingAi then
+                                    let completedCount = model.Candidates |> List.filter (fun c -> c.IsAiProposed) |> List.length
+                                    Border.create [
+                                        Border.background (SolidColorBrush (Color.Parse("#172554")))
+                                        Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
+                                        Border.borderThickness 1.0
+                                        Border.cornerRadius 4.0
+                                        Border.padding (8.0, 3.0)
+                                        Border.verticalAlignment VerticalAlignment.Center
+                                        Border.child (
+                                            TextBlock.create [
+                                                TextBlock.text $"🤖 AI提案中... ({completedCount}/{model.Candidates.Length}件完了)"
+                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                TextBlock.fontSize 11.0
+                                                TextBlock.fontWeight FontWeight.Bold
+                                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                            ]
+                                        )
+                                    ]
+                                elif model.Candidates.Length > 0 then
                                     let targets =
                                         let selected = model.Candidates |> List.filter (fun c -> c.IsSelected)
                                         if selected.IsEmpty then model.Candidates else selected
@@ -1529,20 +1672,21 @@ module Views =
                             ]
                         ]
 
-                        // 右側: リネームボタン群
+                        // 右側: リネームボタン群 (AI提案中は非活性)
                         StackPanel.create [
                             StackPanel.orientation Orientation.Horizontal
                             StackPanel.spacing 10.0
                             StackPanel.verticalAlignment VerticalAlignment.Center
                             StackPanel.margin (0.0, 0.0, 0.0, 4.0)
                             StackPanel.children [
+                                let isRenameEnabled = selectedCount > 0 && not model.IsRenaming && not model.IsRequestingAi && not model.IsScanning
                                 Button.create [
                                     Button.content "リネームのみ実行"
-                                    Button.isEnabled (selectedCount > 0 && not model.IsRenaming)
+                                    Button.isEnabled isRenameEnabled
                                     Button.background (SolidColorBrush btnDark)
                                     Button.borderBrush (SolidColorBrush borderFluent)
                                     Button.borderThickness 1.0
-                                    Button.foreground (SolidColorBrush textWhite)
+                                    Button.foreground (SolidColorBrush (if isRenameEnabled then textWhite else textZinc500))
                                     Button.cornerRadius 4.0
                                     Button.padding (14.0, 7.0)
                                     Button.fontSize 11.0
@@ -1551,9 +1695,10 @@ module Views =
                                 ]
                                 Button.create [
                                     Button.content "⚡ リネームしてコンテナ再起動"
-                                    Button.isEnabled (selectedCount > 0 && not model.IsRenaming)
-                                    Button.background (SolidColorBrush accentBlue)
-                                    Button.foreground (SolidColorBrush textWhite)
+                                    Button.isEnabled isRenameEnabled
+                                    Button.background (SolidColorBrush (if isRenameEnabled then accentBlue else btnDark))
+                                    Button.borderBrush (SolidColorBrush (if isRenameEnabled then accentBlue else borderFluent))
+                                    Button.foreground (SolidColorBrush (if isRenameEnabled then textWhite else textZinc500))
                                     Button.fontWeight FontWeight.Bold
                                     Button.cornerRadius 4.0
                                     Button.padding (16.0, 7.0)
