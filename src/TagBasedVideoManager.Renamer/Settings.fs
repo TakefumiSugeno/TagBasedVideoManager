@@ -156,14 +156,30 @@ module Settings =
                 PathLengthThreshold = envThreshold
         }
 
-        // 2. appsettings.json からの読み込み（最優先）
+        // 2. appsettings.{Configuration}.json / appsettings.json からの読み込み（最優先）
         // 探索優先度:
         //   明示指定 (jsonPathOpt)
         //   > envPathOpt 親ディレクトリ
-        //   > プロジェクト直下 src/TagBasedVideoManager.Renamer/appsettings.json
-        //   > カレントディレクトリ ./appsettings.json
-        //   > 実行ディレクトリ {BaseDirectory}\appsettings.json
-        //   > %APPDATA%\TagBasedVideoManager\appsettings.json (フォールバック)
+        //   > プロジェクト直下 src/TagBasedVideoManager.Renamer/
+        //   > カレントディレクトリ ./
+        //   > 実行ディレクトリ {BaseDirectory}
+        //   > %APPDATA%\TagBasedVideoManager (フォールバック)
+        let resolveConfigFileInDir (dirPath: string) : string option =
+            if String.IsNullOrWhiteSpace(dirPath) || not (Directory.Exists(dirPath)) then None
+            else
+                let configCandidate =
+                    match configNameOpt with
+                    | Some cfg when not (String.IsNullOrWhiteSpace(cfg)) ->
+                        let p = Path.Combine(dirPath, $"appsettings.{cfg}.json")
+                        if File.Exists(p) then Some p else None
+                    | _ -> None
+
+                let baseCandidate =
+                    let p = Path.Combine(dirPath, "appsettings.json")
+                    if File.Exists(p) then Some p else None
+
+                configCandidate |> Option.orElse baseCandidate
+
         let resolvedJsonPath =
             match jsonPathOpt with
             | Some p -> Some p
@@ -171,37 +187,33 @@ module Settings =
                 match envPathOpt with
                 | Some ep ->
                     let dir = Path.GetDirectoryName(ep)
-                    if not (String.IsNullOrWhiteSpace(dir)) then
-                        let candidate = Path.Combine(dir, "appsettings.json")
-                        if File.Exists(candidate) then Some candidate else None
-                    else None
+                    resolveConfigFileInDir dir
                 | None ->
-                    // 1. プロジェクトソース直下の appsettings.json（開発環境・リポジトリ内実行）
+                    // 1. プロジェクトソース直下（開発環境・リポジトリ内実行）
                     let findProjectJson () =
                         let rec findUp (dir: DirectoryInfo) (depth: int) =
                             if depth <= 0 || box dir = null then None
                             else
-                                let candidate = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.json")
-                                if File.Exists(candidate) then Some candidate
-                                else findUp dir.Parent (depth - 1)
+                                let candidateDir = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer")
+                                match resolveConfigFileInDir candidateDir with
+                                | Some p -> Some p
+                                | None -> findUp dir.Parent (depth - 1)
                         let current = DirectoryInfo(Directory.GetCurrentDirectory())
                         let baseDir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
                         findUp current 8 |> Option.orElseWith (fun () -> findUp baseDir 8)
 
-                    // 2. カレントディレクトリ直下の appsettings.json
+                    // 2. カレントディレクトリ直下
                     let findCurrentJson () =
-                        let current = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json")
-                        if File.Exists(current) then Some current else None
+                        resolveConfigFileInDir (Directory.GetCurrentDirectory())
 
-                    // 3. アプリケーション実行ディレクトリ直下の appsettings.json（バイナリ配布・ポータブル実行）
+                    // 3. アプリケーション実行ディレクトリ直下（バイナリ配布・ポータブル実行）
                     let findBaseJson () =
-                        let baseDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "appsettings.json")
-                        if File.Exists(baseDir) then Some baseDir else None
+                        resolveConfigFileInDir AppDomain.CurrentDomain.BaseDirectory
 
                     // 4. ユーザープロファイル領域（ローカルに一切存在しない場合のフォールバック）
                     let findAppDataJson () =
-                        let appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TagBasedVideoManager", "appsettings.json")
-                        if File.Exists(appDataPath) then Some appDataPath else None
+                        let appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TagBasedVideoManager")
+                        resolveConfigFileInDir appDataPath
 
                     findProjectJson ()
                     |> Option.orElseWith findCurrentJson

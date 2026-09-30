@@ -245,22 +245,24 @@ module SettingsTests =
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
     [<Fact>]
-    let ``loadConfiguration は AppData にファイルがあってもプロジェクト直下の appsettings.json を優先ロードする`` () =
-        // 引数なし loadConfiguration None None の実行時に、プロジェクトの appsettings.json がロードされることを検証
+    let ``loadConfiguration は AppData にファイルがあってもプロジェクト直下の構成別設定ファイルを優先ロードする`` () =
+        // 引数なし loadConfiguration None None の実行時に、プロジェクト直下の構成別設定ファイル（Debug構成時は appsettings.Debug.json）がロードされることを検証
         let loaded = Settings.loadConfiguration None None
-        // ユーザーが更新した設定（またはプロジェクト直下の設定）がロードされていること
+        // プロジェクト直下の設定がロードされていること
         let rec findRoot (dir: DirectoryInfo) (depth: int) =
             if depth <= 0 || box dir = null then None
             else
-                let candidate = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.json")
-                if File.Exists(candidate) then Some candidate
+                let candidateDebug = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.Debug.json")
+                let candidateBase = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.json")
+                if File.Exists(candidateDebug) then Some candidateDebug
+                elif File.Exists(candidateBase) then Some candidateBase
                 else findRoot dir.Parent (depth - 1)
         let current = DirectoryInfo(Directory.GetCurrentDirectory())
         let baseDir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
         let projJsonPath =
             findRoot current 8
             |> Option.orElseWith (fun () -> findRoot baseDir 8)
-            |> Option.defaultWith (fun () -> failwith "src/TagBasedVideoManager.Renamer/appsettings.json が見つかりません")
+            |> Option.defaultWith (fun () -> failwith "src/TagBasedVideoManager.Renamer/appsettings.(Debug.)json が見つかりません")
 
         let projJson = Settings.load projJsonPath
         match projJson with

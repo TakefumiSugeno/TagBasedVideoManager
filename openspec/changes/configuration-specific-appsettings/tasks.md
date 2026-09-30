@@ -12,7 +12,7 @@
 
 ## 3. Settings.fs の構成別読み込み実装とリファクタ (TDD: Green & Refactor)
 
-- [ ] 3.1 `src/TagBasedVideoManager.Renamer/Settings.fs` にコンパイル時ビルド構成判定および構成別ファイル（`appsettings.{Configuration}.json`）の優先探索・フォールバック処理を実装し、作成したテストをすべて通過（Green）させる
+- [x] 3.1 `src/TagBasedVideoManager.Renamer/Settings.fs` にコンパイル時ビルド構成判定および構成別ファイル（`appsettings.{Configuration}.json`）の優先探索・フォールバック処理を実装し、作成したテストをすべて通過（Green）させる
 - [ ] 3.2 `Settings.fs` のファイル探索処理をリファクタしてDRYを徹底し、自動フォーマット（`dotnet format`）を実行して全テストがGreenを維持することを確認する
 
 ## 4. 全体検証とエビデンス取得
