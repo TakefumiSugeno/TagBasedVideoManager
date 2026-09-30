@@ -8,7 +8,7 @@
 ## 2. 構成別設定読み込みのテスト先行作成 (TDD: Red)
 
 - [x] 2.1 `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` に、構成名（Debug/Release）に応じた `appsettings.{Configuration}.json` 優先読み込みおよび `appsettings.json` へのフォールバックを検証する仕様妥当性検証テストを作成し、意図通りテストが失敗（Red）することを確認する
-- [ ] 2.2 `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` に、既存の明示パス指定・.env読み込み・AppDataフォールバック動作が壊れていないことを保証する回帰テストを追加・整備する
+- [x] 2.2 `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` に、既存の明示パス指定・.env読み込み・AppDataフォールバック動作が壊れていないことを保証する回帰テストを追加・整備する
 
 ## 3. Settings.fs の構成別読み込み実装とリファクタ (TDD: Green & Refactor)
 

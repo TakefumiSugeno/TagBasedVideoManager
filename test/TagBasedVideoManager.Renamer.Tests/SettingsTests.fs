@@ -463,3 +463,65 @@ module SettingsTests =
             loadedRelease.SelectedModel |> should equal "model-from-base-only"
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は明示指定パス (jsonPathOpt) を構成別設定よりも最優先する`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerExplicitPathTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let dummyEnvPath = Path.Combine(tempDir, ".env")
+        File.WriteAllText(dummyEnvPath, "# dummy env\n")
+
+        let debugJsonPath = Path.Combine(tempDir, "appsettings.Debug.json")
+        let explicitJsonPath = Path.Combine(tempDir, "custom-explicit.json")
+
+        try
+            let debugJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "C:\\DebugConfigDir"
+                    SelectedModel = "model-debug"
+            }
+            let explicitJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "C:\\ExplicitDir"
+                    SelectedModel = "model-explicit"
+            }
+            Settings.save debugJsonPath debugJson |> ignore
+            Settings.save explicitJsonPath explicitJson |> ignore
+
+            // 明示パスを指定した場合、Debug構成であっても explicitJson が最優先されること
+            let loaded = Settings.loadConfigurationWithConfig (Some "Debug") (Some explicitJsonPath) (Some dummyEnvPath)
+            loaded.TargetDirectory |> should equal "C:\\ExplicitDir"
+            loaded.SelectedModel |> should equal "model-explicit"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は構成別設定と .env の併存時に構成別JSONを優先し未定義項目を .env から補完する`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerEnvCoexistTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let envPath = Path.Combine(tempDir, ".env")
+        File.WriteAllLines(envPath, [
+            "VIDEO_DIR=E:\\FromEnvDir"
+            "OPENROUTER_API_KEY=key-from-env"
+        ])
+
+        let debugJsonPath = Path.Combine(tempDir, "appsettings.Debug.json")
+
+        try
+            let debugJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "D:\\FromDebugJson"
+                    ApiKey = None // APIキーは未指定
+                    SelectedModel = "model-from-debug-json"
+            }
+            Settings.save debugJsonPath debugJson |> ignore
+
+            // Debug構成下で、.env と appsettings.Debug.json が存在する場合
+            // TargetDirectory は JSON 優先、ApiKey は .env から補完されること
+            let loaded = Settings.loadConfigurationWithConfig (Some "Debug") None (Some envPath)
+            // まだ構成別探索が未実装のため、このテストは現時点では失敗（Red）し、Task 3.1 実装後に通過する
+            loaded.TargetDirectory |> should equal "D:\\FromDebugJson"
+            loaded.ApiKey |> should equal (Some "key-from-env")
+            loaded.SelectedModel |> should equal "model-from-debug-json"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
