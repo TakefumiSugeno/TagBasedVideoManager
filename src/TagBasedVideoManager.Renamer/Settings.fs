@@ -15,6 +15,7 @@ module Settings =
             Pattern = "{Date}_{Location}_{Activity}.mp4"
             PromptInstruction = "ファイル名から撮影日(YYYYMMDD)、撮影場所、主な行動/内容を抽出しアンダースコア繋ぎで命名してください。情報が不足している場合は親ディレクトリ名や更新日時から推測してください。"
             Order = 0
+            EnableWebSearch = false
         }
         {
             Id = "rule-compact"
@@ -22,6 +23,7 @@ module Settings =
             Pattern = "{ShortTitle}.mp4"
             PromptInstruction = "動画の内容を表す最も重要で短いキーワード（20文字以内）で命名してください。"
             Order = 1
+            EnableWebSearch = false
         }
     ]
 

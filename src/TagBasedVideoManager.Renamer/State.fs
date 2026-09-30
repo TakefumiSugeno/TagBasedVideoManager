@@ -37,6 +37,7 @@ and Model = {
     IsRuleManagerOpen: bool
     EditingRule: NamingRule option
     ConfirmDialog: DialogConfig option
+    AiCancellationCts: System.Threading.CancellationTokenSource option
 }
 
 and Msg =
@@ -47,9 +48,13 @@ and Msg =
     | RuleSelected of string
     | ModelSelected of string
 
-    // 走査 & AI提案 (ワンアクション)
+    // 走査 & AI提案 (ワンアクション & 非同期パイプライン)
     | ExecuteScanAndPropose
     | ScanCompleted of Result<ScanCandidate list, RenamerError>
+    | CandidateAiProcessing of fullPath: string
+    | CandidateAiProposed of RenameProposal
+    | AllAiProposalsCompleted
+    | CancelAiProposal
     | AiProposeCompleted of Result<RenameProposal list, RenamerError>
 
     // 候補編集・ソート
@@ -77,6 +82,12 @@ and Msg =
     | SetLayoutMode of LayoutMode
     | OpenRuleManager
     | CloseRuleManager
+    | StartAddRule
+    | UpdateEditingRuleName of string
+    | UpdateEditingRulePattern of string
+    | UpdateEditingRulePrompt of string
+    | UpdateEditingRuleWebSearch of bool
+    | SaveEditingRule
     | SaveRule of NamingRule
     | DeleteRule of ruleId: string
     | MoveRuleOrder of ruleId: string * direction: int // -1: up, +1: down
@@ -94,6 +105,81 @@ module State =
         ContainerId = None
         LastChecked = DateTime.UtcNow
     }
+
+    let private createAsyncPipelineCmd
+        (apiKey: string)
+        (modelName: string)
+        (rule: NamingRule)
+        (candidates: ScanCandidate list)
+        (cancellationToken: System.Threading.CancellationToken)
+        : Cmd<Msg> =
+        let sub (dispatch: Msg -> unit) =
+            let runPipeline () =
+                task {
+                    try
+                        try
+                            for candidate in candidates do
+                                if not cancellationToken.IsCancellationRequested then
+                                    dispatch (CandidateAiProcessing candidate.FullPath)
+
+                                    // Web検索が有効な場合は ddgs 検索を実行
+                                    let! searchSnippets =
+                                        task {
+                                            if rule.EnableWebSearch then
+                                                let query = WebSearchClient.extractSearchQuery candidate.FileName
+                                                let! res = WebSearchClient.searchAsync query 3 cancellationToken
+                                                match res with
+                                                | Ok items -> return items
+                                                | Error _ -> return []
+                                            else
+                                                return []
+                                        }
+
+                                    if not cancellationToken.IsCancellationRequested then
+                                        let! proposalResult =
+                                            Async.StartAsTask(
+                                                OpenRouterClient.requestSingleProposal
+                                                    None
+                                                    (Some apiKey)
+                                                    modelName
+                                                    rule
+                                                    candidate
+                                                    searchSnippets
+                                                    cancellationToken,
+                                                cancellationToken = cancellationToken
+                                            )
+
+                                        match proposalResult with
+                                        | Ok proposed ->
+                                            dispatch (CandidateAiProposed proposed)
+                                        | Error err ->
+                                            // エラー時でも元候補をベースにエラーコメント付きで更新
+                                            let errProposal = {
+                                                OriginalFullPath = candidate.FullPath
+                                                OriginalFileName = candidate.FileName
+                                                DirectoryPath = candidate.DirectoryPath
+                                                OriginalLength = candidate.PathLength
+                                                ProposedFileName = candidate.FileName
+                                                ProposedLength = candidate.PathLength
+                                                AiComment = Some $"（AI提案取得失敗: {err}）"
+                                                IsSelected = true
+                                                LastWriteTime = candidate.LastWriteTime
+                                                IsAiProposed = false
+                                                IsAiProcessing = false
+                                            }
+                                            dispatch (CandidateAiProposed errProposal)
+
+                                    // レートリミット対策で少し待機
+                                    do! System.Threading.Tasks.Task.Delay(300, cancellationToken)
+                        with
+                        | :? System.OperationCanceledException -> ()
+                        | _ -> ()
+                    finally
+                        dispatch AllAiProposalsCompleted
+                }
+            runPipeline () |> ignore
+
+        [ sub ]
 
     let init () : Model * Cmd<Msg> =
         let initialSettings = Settings.loadConfiguration None None
@@ -115,6 +201,7 @@ module State =
             IsRuleManagerOpen = false
             EditingRule = None
             ConfirmDialog = None
+            AiCancellationCts = None
         }
 
         // 起動時に外部設定ファイルロードおよびDockerステータス確認を発行
@@ -157,19 +244,28 @@ module State =
 
         | ModelSelected newModel ->
             let updatedSettings = { model.Settings with SelectedModel = newModel }
+            Settings.save defaultSettingsPath updatedSettings |> ignore
             { model with Settings = updatedSettings }, Cmd.none
 
         // ワンアクション走査 & AI提案
         | ExecuteScanAndPropose ->
+            // 先行するAI提案処理が動いていれば自動キャンセル
+            model.AiCancellationCts |> Option.iter (fun cts ->
+                try
+                    if not cts.IsCancellationRequested then
+                        cts.Cancel()
+                    cts.Dispose()
+                with _ -> ()
+            )
             if String.IsNullOrWhiteSpace(model.Settings.TargetDirectory) then
-                { model with ErrorMessage = Some "対象ディレクトリが指定されていません。" }, Cmd.none
+                { model with ErrorMessage = Some "対象ディレクトリが指定されていません。"; AiCancellationCts = None }, Cmd.none
             else
                 let cmd =
                     Cmd.OfAsync.perform
                         (fun () -> async { return FileScanner.scanLongPaths model.Settings.TargetDirectory model.CurrentThreshold })
                         ()
                         ScanCompleted
-                { model with IsScanning = true; ErrorMessage = None; Candidates = [] }, cmd
+                { model with IsScanning = true; ErrorMessage = None; Candidates = []; AiCancellationCts = None }, cmd
 
         | ScanCompleted (Ok candidates) ->
             if List.isEmpty candidates then
@@ -180,23 +276,10 @@ module State =
                     |> List.tryFind (fun r -> r.Id = model.SelectedRuleId)
                     |> Option.defaultValue (List.head model.Settings.Rules)
 
-                // 走査直後の初期候補データ（未提案状態・勝手なAIコメントなし・手動編集用）
+                // 走査直後の初期候補データ（即時IO描画用・未提案状態）
                 let initialProposals =
                     candidates
-                    |> List.map (fun c ->
-                        {
-                            OriginalFullPath = c.FullPath
-                            OriginalFileName = c.FileName
-                            DirectoryPath = c.DirectoryPath
-                            OriginalLength = c.PathLength
-                            ProposedFileName = c.FileName // 初期状態は元ファイル名（手動編集用）
-                            ProposedLength = c.PathLength
-                            AiComment = None              // 勝手な固定コメントを捏造しない
-                            IsSelected = true
-                            LastWriteTime = c.LastWriteTime
-                            IsAiProposed = false          // 未提案フラグ
-                        }
-                    )
+                    |> List.map Proposal.createInitial
                     |> FileScanner.sortCandidates model.SortCriterion
 
                 match model.Settings.ApiKey with
@@ -210,19 +293,30 @@ module State =
                                 ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定またはプレースホルダー ('xxx') のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。AI自動命名を利用する場合は appsettings.json の apiKey に 'sk-or-v1-...' から始まる有効なキーを設定してください。"
                         }, Cmd.none
                     else
+                        // 先行CTSがあれば破棄
+                        model.AiCancellationCts |> Option.iter (fun cts ->
+                            try
+                                if not cts.IsCancellationRequested then
+                                    cts.Cancel()
+                                cts.Dispose()
+                            with _ -> ()
+                        )
+                        let newCts = new System.Threading.CancellationTokenSource()
                         let aiCmd =
-                            Cmd.OfAsync.perform
-                                (fun () ->
-                                    OpenRouterClient.requestProposals
-                                        None
-                                        (Some cleanKey)
-                                        model.Settings.SelectedModel
-                                        selectedRule
-                                        candidates
-                                )
-                                ()
-                                AiProposeCompleted
-                        { model with IsScanning = false; IsRequestingAi = true; Candidates = initialProposals }, aiCmd
+                            createAsyncPipelineCmd
+                                cleanKey
+                                model.Settings.SelectedModel
+                                selectedRule
+                                candidates
+                                newCts.Token
+
+                        {
+                            model with
+                                IsScanning = false
+                                IsRequestingAi = true
+                                Candidates = initialProposals
+                                AiCancellationCts = Some newCts
+                        }, aiCmd
                 | _ ->
                     // APIキー未設定時はAIのフリをせず、未提案状態としてユーザーに設定を案内
                     {
@@ -236,6 +330,66 @@ module State =
             { model with IsScanning = false; ErrorMessage = Some msg }, Cmd.none
         | ScanCompleted (Error other) ->
             { model with IsScanning = false; ErrorMessage = Some ($"走査失敗: {other}") }, Cmd.none
+
+        | CandidateAiProcessing fullPath ->
+            let updatedCandidates =
+                model.Candidates
+                |> List.map (fun c ->
+                    if c.OriginalFullPath = fullPath then
+                        { c with IsAiProcessing = true; AiComment = Some "（Web検索・LLM提案を実行中...）" }
+                    else c
+                )
+            { model with Candidates = updatedCandidates }, Cmd.none
+
+        | CandidateAiProposed proposed ->
+            let updatedCandidates =
+                model.Candidates
+                |> List.map (fun c ->
+                    if c.OriginalFullPath = proposed.OriginalFullPath then
+                        { proposed with IsAiProcessing = false; IsAiProposed = true }
+                    else c
+                )
+                |> FileScanner.sortCandidates model.SortCriterion
+            { model with Candidates = updatedCandidates }, Cmd.none
+
+        | AllAiProposalsCompleted ->
+            let cleanedCandidates =
+                model.Candidates
+                |> List.map (fun c ->
+                    if c.IsAiProcessing then
+                        { c with IsAiProcessing = false }
+                    else c
+                )
+            {
+                model with
+                    IsRequestingAi = false
+                    Candidates = cleanedCandidates
+                    AiCancellationCts = None
+            }, Cmd.none
+
+        | CancelAiProposal ->
+            model.AiCancellationCts |> Option.iter (fun cts ->
+                try
+                    if not cts.IsCancellationRequested then
+                        cts.Cancel()
+                    cts.Dispose()
+                with _ -> ()
+            )
+            let cancelledCandidates =
+                model.Candidates
+                |> List.map (fun c ->
+                    if c.IsAiProcessing then
+                        { c with
+                            IsAiProcessing = false
+                            AiComment = Some "（AI提案が中止されました）" }
+                    else c
+                )
+            {
+                model with
+                    IsRequestingAi = false
+                    Candidates = cancelledCandidates
+                    AiCancellationCts = None
+            }, Cmd.none
 
         | AiProposeCompleted (Ok proposals) ->
             let merged =
@@ -346,6 +500,7 @@ module State =
                                     ProposedLength = renamedFullPath.Length
                                     IsSelected = false
                                     IsAiProposed = false
+                                    IsAiProcessing = false
                                     AiComment = None
                             }
                     | None ->
@@ -444,10 +599,82 @@ module State =
             { model with Layout = mode }, Cmd.none
 
         | OpenRuleManager ->
-            { model with IsRuleManagerOpen = true; EditingRule = None }, Cmd.none
+            let templateRule = {
+                Id = Guid.NewGuid().ToString("N")
+                Name = ""
+                Pattern = "*.mp4"
+                PromptInstruction = ""
+                Order = model.Settings.Rules.Length
+                EnableWebSearch = true
+            }
+            { model with IsRuleManagerOpen = true; EditingRule = Some templateRule }, Cmd.none
 
         | CloseRuleManager ->
             { model with IsRuleManagerOpen = false; EditingRule = None }, Cmd.none
+
+        | StartAddRule ->
+            let templateRule = {
+                Id = Guid.NewGuid().ToString("N")
+                Name = ""
+                Pattern = "*.mp4"
+                PromptInstruction = ""
+                Order = model.Settings.Rules.Length
+                EnableWebSearch = true
+            }
+            { model with EditingRule = Some templateRule }, Cmd.none
+
+        | UpdateEditingRuleName name ->
+            let updated =
+                model.EditingRule
+                |> Option.map (fun r -> { r with Name = name })
+            { model with EditingRule = updated }, Cmd.none
+
+        | UpdateEditingRulePattern pattern ->
+            let updated =
+                model.EditingRule
+                |> Option.map (fun r -> { r with Pattern = pattern })
+            { model with EditingRule = updated }, Cmd.none
+
+        | UpdateEditingRulePrompt prompt ->
+            let updated =
+                model.EditingRule
+                |> Option.map (fun r -> { r with PromptInstruction = prompt })
+            { model with EditingRule = updated }, Cmd.none
+
+        | UpdateEditingRuleWebSearch enabled ->
+            let updated =
+                model.EditingRule
+                |> Option.map (fun r -> { r with EnableWebSearch = enabled })
+            { model with EditingRule = updated }, Cmd.none
+
+        | SaveEditingRule ->
+            match model.EditingRule with
+            | Some rule when not (String.IsNullOrWhiteSpace(rule.Name)) ->
+                let newRule = {
+                    rule with
+                        Name = rule.Name.Trim()
+                        Pattern = if String.IsNullOrWhiteSpace(rule.Pattern) then "*.*" else rule.Pattern.Trim()
+                        PromptInstruction = if String.IsNullOrWhiteSpace(rule.PromptInstruction) then "簡潔に短縮してください。" else rule.PromptInstruction.Trim()
+                        Order = model.Settings.Rules.Length
+                }
+                let updatedRules = model.Settings.Rules @ [ newRule ]
+                let newSettings = { model.Settings with Rules = updatedRules }
+                Settings.save defaultSettingsPath newSettings |> ignore
+                let nextTemplate = {
+                    Id = Guid.NewGuid().ToString("N")
+                    Name = ""
+                    Pattern = "*.mp4"
+                    PromptInstruction = ""
+                    Order = updatedRules.Length
+                    EnableWebSearch = true
+                }
+                { model with
+                    Settings = newSettings
+                    SelectedRuleId = newRule.Id
+                    EditingRule = Some nextTemplate
+                }, Cmd.none
+            | _ ->
+                { model with ErrorMessage = Some "ルール名を入力してください。" }, Cmd.none
 
         | SaveRule rule ->
             let existingIdx = model.Settings.Rules |> List.tryFindIndex (fun r -> r.Id = rule.Id)
@@ -459,7 +686,7 @@ module State =
                     model.Settings.Rules @ [ { rule with Order = model.Settings.Rules.Length } ]
             let newSettings = { model.Settings with Rules = updatedRules }
             Settings.save defaultSettingsPath newSettings |> ignore
-            { model with Settings = newSettings; EditingRule = None }, Cmd.none
+            { model with Settings = newSettings }, Cmd.none
 
         | DeleteRule ruleId ->
             let filteredRules =

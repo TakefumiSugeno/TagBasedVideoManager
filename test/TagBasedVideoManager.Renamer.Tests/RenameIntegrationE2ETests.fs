@@ -80,6 +80,7 @@ module RenameIntegrationE2ETests =
                     ProposedLength = proposedPath1.Length
                     AiComment = None // 正常時はコメントなし
                     IsAiProposed = true
+                    IsAiProcessing = false
                     IsSelected = true
                     LastWriteTime = DateTime.UtcNow
                 }
@@ -93,6 +94,7 @@ module RenameIntegrationE2ETests =
                     ProposedLength = proposedPath2.Length
                     AiComment = Some aiComment2 // 問題時のみコメントあり
                     IsAiProposed = true
+                    IsAiProcessing = false
                     IsSelected = true
                     LastWriteTime = DateTime.UtcNow
                 }
@@ -177,6 +179,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = targetPath.Length
                 AiComment = None
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -190,6 +193,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = targetPath.Length
                 AiComment = None
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -251,6 +255,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 39
                 AiComment = None
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -263,6 +268,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 41
                 AiComment = Some "元ファイル名に撮影日時が含まれていなかったため、本日の日付で補完しました。"
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -290,6 +296,7 @@ module RenameIntegrationE2ETests =
             IsRuleManagerOpen = false
             EditingRule = None
             ConfirmDialog = None
+            AiCancellationCts = None
         }
 
         let renderAndCaptureWithCustomSize (m: Model) (fileName: string) (width: float) (height: float) =
@@ -389,6 +396,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 250
                 AiComment = None
                 IsAiProposed = false
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -414,6 +422,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 245
                 AiComment = None
                 IsAiProposed = false
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -436,6 +445,7 @@ module RenameIntegrationE2ETests =
                 ProposedLength = 60
                 AiComment = Some "長いAIコメント：撮影地と日付を補完し、親コンテナ幅制約を検証します。"
                 IsAiProposed = true
+                IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
             }
@@ -490,9 +500,9 @@ module RenameIntegrationE2ETests =
                 // LLM未接続のため「未提案」状態（IsAiProposed = false）
                 prop1.IsAiProposed |> should equal false
                 prop2.IsAiProposed |> should equal false
-                // 勝手なAIコメントは捏造しない
-                prop1.AiComment |> should equal None
-                prop2.AiComment |> should equal None
+                // 初期状態は待機中コメント
+                prop1.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
+                prop2.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
                 // 初期提案名は元ファイル名（手動編集用）
                 prop1.ProposedFileName |> should equal longName1
                 prop2.ProposedFileName |> should equal longName2
@@ -561,6 +571,7 @@ module RenameIntegrationE2ETests =
             ProposedLength = 255
             AiComment = None
             IsAiProposed = false
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
         }
@@ -619,6 +630,7 @@ module RenameIntegrationE2ETests =
             ProposedLength = 350
             AiComment = Some "長いAIコメント：元ファイル名に撮影日時が含まれていなかったため補完しました。さらに親コンテナ幅制約を検証するための長文コメントです。"
             IsAiProposed = false
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
         }
@@ -677,6 +689,7 @@ module RenameIntegrationE2ETests =
             ProposedLength = 220 // 元より20文字増加
             AiComment = None
             IsAiProposed = false
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
         }
@@ -749,5 +762,106 @@ module RenameIntegrationE2ETests =
                 s.PathLengthThreshold |> should equal 240
                 s.Rules.Length |> should be (greaterThanOrEqualTo 2)
 
+    [<Fact>]
+    let ``GUI: async processing candidate displays processing indicator, 3-row layout, active stop button and disabled rename buttons`` () =
+        ensureAppInitialized ()
+        let baseModel, _ = State.init ()
+        let candidate1: RenameProposal = {
+            OriginalFullPath = "D:\\videos\\2024-01-01_completed_sample_video.mp4"
+            OriginalFileName = "2024-01-01_completed_sample_video.mp4"
+            DirectoryPath = "D:\\videos"
+            OriginalLength = 250
+            ProposedFileName = "2024-01-01_nature_documentary_short.mp4"
+            ProposedLength = 220
+            AiComment = Some "DuckDuckGo Web検索結果から正式タイトルと日付を特定して命名しました。"
+            IsAiProposed = true
+            IsAiProcessing = false
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+        }
+        let candidate2: RenameProposal = {
+            OriginalFullPath = "D:\\videos\\in_progress_sample_video.mp4"
+            OriginalFileName = "in_progress_sample_video.mp4"
+            DirectoryPath = "D:\\videos"
+            OriginalLength = 255
+            ProposedFileName = "in_progress_sample_video.mp4"
+            ProposedLength = 255
+            AiComment = Some "（AI提案の開始を待機しています...）"
+            IsAiProposed = false
+            IsAiProcessing = true // 処理中フラグ
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+        }
+        let testModel = {
+            baseModel with
+                Candidates = [ candidate1; candidate2 ]
+                CurrentThreshold = 240
+                IsRequestingAi = true // AI提案中フラグ
+        }
 
+        let w = new Avalonia.FuncUI.Hosts.HostWindow()
+        w.Width <- 1100.0
+        w.Height <- 720.0
+        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+        |> Avalonia.FuncUI.Elmish.Program.withHost w
+        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+        w.Show()
+        w.UpdateLayout()
 
+        let rec collectControls (control: Avalonia.Controls.Control) : Avalonia.Controls.Control list =
+            let current = [ control ]
+            let children =
+                match control with
+                | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectControls |> Seq.toList
+                | :? Avalonia.Controls.ContentControl as cc ->
+                    match cc.Content with
+                    | :? Avalonia.Controls.Control as c -> collectControls c
+                    | _ -> []
+                | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
+                    collectControls d.Child
+                | _ -> []
+            current @ children
+
+        let allControls = collectControls w
+        w.Close()
+
+        let textBlocks =
+            allControls
+            |> List.choose (fun c ->
+                match c with
+                | :? Avalonia.Controls.TextBlock as tb -> Some tb.Text
+                | _ -> None
+            )
+
+        let buttons =
+            allControls
+            |> List.choose (fun c ->
+                match c with
+                | :? Avalonia.Controls.Button as btn ->
+                    let contentStr = if btn.Content <> null then btn.Content.ToString() else ""
+                    Some (contentStr, btn.IsEnabled)
+                | _ -> None
+            )
+
+        // 1. 処理中行アニメーションインジケーターが表示されていること
+        textBlocks |> List.exists (fun t -> t <> null && t.Contains("DuckDuckGo (ddgs) 検索・LLM提案を実行中...")) |> should equal true
+
+        // 2. フッターに進捗バッジ（1/2件完了）が表示されていること
+        textBlocks |> List.exists (fun t -> t <> null && t.Contains("🤖 AI提案中... (1/2件完了)")) |> should equal true
+
+        // 3. 3行常時表示（BEFORE, AFTER, 💬 AI COMMENT:）が表示されていること
+        textBlocks |> List.exists (fun t -> t <> null && t.Contains("BEFORE")) |> should equal true
+        textBlocks |> List.exists (fun t -> t <> null && t.Contains("AFTER")) |> should equal true
+        textBlocks |> List.exists (fun t -> t <> null && t.Contains("💬 AI COMMENT:")) |> should equal true
+
+        // 4. 「⏹ 中止」ボタンが活性化（IsEnabled = true）されていること
+        let stopButton = buttons |> List.tryFind (fun (label, _) -> label.Contains("中止"))
+        stopButton |> should not' (equal None)
+        let (_, isStopEnabled) = stopButton.Value
+        isStopEnabled |> should equal true
+
+        // 5. リネームボタン（「リネームのみ実行」）が非活性（IsEnabled = false）であること
+        let renameButton = buttons |> List.tryFind (fun (label, _) -> label.Contains("リネームのみ実行"))
+        renameButton |> should not' (equal None)
+        let (_, isRenameEnabled) = renameButton.Value
+        isRenameEnabled |> should equal false

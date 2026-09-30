@@ -1,0 +1,1234 @@
+<!doctype html>
+<html lang="ja" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TagBasedVideoManager - AI File Renamer (ddgs & Async Mockup)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js CDN -->
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              fluent: {
+                bg: "#1a1a1a",
+                surface: "#222222",
+                card: "#2a2a2a",
+                border: "#383838",
+                accent: "#2563eb",
+                accentHover: "#3b82f6",
+                text: "#ffffff",
+                subtext: "#909090",
+                danger: "#ef4444",
+                dangerDark: "#450a0a",
+                dangerBorder: "#b91c1c",
+                warning: "#fbbf24",
+                success: "#10b981",
+                successDark: "#064e3b",
+                successBorder: "#065f46",
+              },
+            },
+            keyframes: {
+              shimmer: {
+                "0%": { transform: "translateX(-100%)" },
+                "100%": { transform: "translateX(100%)" },
+              },
+              pulseGlow: {
+                "0%, 100%": {
+                  opacity: 1,
+                  borderColor: "rgba(59, 130, 246, 0.4)",
+                },
+                "50%": { opacity: 0.7, borderColor: "rgba(59, 130, 246, 0.9)" },
+              },
+            },
+            animation: {
+              shimmer: "shimmer 1.8s infinite linear",
+              pulseGlow: "pulseGlow 1.5s infinite ease-in-out",
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #1a1a1a;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #404040;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #555555;
+      }
+      .font-mono-fluent {
+        font-family:
+          "Cascadia Mono", Consolas, "Meiryo UI", "Yu Gothic UI", monospace;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-slate-950 text-fluent-text font-sans p-2 sm:p-5 flex justify-center items-center min-h-screen antialiased select-none"
+    x-data="companionApp()"
+  >
+    <!-- Desktop App Window (Windows 11 Fluent) -->
+    <div
+      class="w-full max-w-6xl bg-fluent-bg border border-fluent-border rounded-xl shadow-2xl overflow-hidden flex flex-col h-[94vh] max-h-[920px]"
+    >
+      <!-- Titlebar -->
+      <div
+        class="bg-fluent-surface border-b border-fluent-border px-4 py-2 flex items-center justify-between flex-shrink-0"
+      >
+        <div class="flex items-center space-x-3">
+          <div
+            class="w-5 h-5 rounded bg-blue-600 flex items-center justify-center text-[10px] font-bold shadow text-white"
+          >
+            ▶
+          </div>
+          <span class="text-xs font-semibold text-fluent-text tracking-wide"
+            >TagBasedVideoManager - AI File Renamer (ddgs & Async Update)</span
+          >
+          <span
+            class="text-[10px] px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-400 font-mono"
+          >
+            Feature Mockup
+          </span>
+        </div>
+        <div class="flex items-center space-x-3 text-fluent-subtext text-xs">
+          <button class="hover:text-white px-2 py-1">─</button>
+          <button class="hover:text-white px-2 py-1">□</button>
+          <button class="hover:text-fluent-danger px-2 py-1 font-bold">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Container -->
+      <div class="flex-1 flex flex-col overflow-hidden p-3.5 space-y-3">
+        <!-- SECTION 1: Docker Status Controller -->
+        <div
+          class="bg-fluent-surface border border-fluent-border rounded-lg p-2.5 px-3 flex flex-wrap items-center justify-between gap-2 shadow-sm flex-shrink-0"
+        >
+          <div class="flex items-center space-x-3 text-xs">
+            <span
+              class="text-fluent-subtext font-semibold flex items-center gap-1.5"
+            >
+              <svg
+                class="w-3.5 h-3.5 text-blue-400"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M4.5 10.5C3.67 10.5 3 11.17 3 12s.67 1.5 1.5 1.5h15c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5h-15zM2 17h20v2H2v-2zm4-12h3v3H6V5zm4 0h3v3h-3V5zm4 0h3v3h-3V5z"
+                />
+              </svg>
+              Docker:
+            </span>
+            <span
+              class="flex items-center gap-1.5 bg-emerald-950/80 text-emerald-400 border border-emerald-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+            >
+              <span
+                class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"
+              ></span>
+              RUNNING (Port 5620)
+            </span>
+            <span class="text-zinc-500 font-mono text-[11px]"
+              >tag-based-video-manager</span
+            >
+          </div>
+
+          <div class="flex items-center space-x-2 text-xs">
+            <button
+              class="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-[11px] border border-zinc-700"
+            >
+              ■ Stop
+            </button>
+            <button
+              class="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-[11px] border border-zinc-700"
+            >
+              ⟳ Restart
+            </button>
+          </div>
+        </div>
+
+        <!-- SECTION 2: Configuration & Execution Bar -->
+        <div
+          class="bg-fluent-surface border border-fluent-border rounded-lg p-2.5 px-3 flex flex-wrap items-center justify-between gap-3 shadow-sm flex-shrink-0"
+        >
+          <!-- フォルダ・文字数閾値 -->
+          <div
+            class="flex items-center flex-wrap gap-2 text-xs flex-1 min-w-[320px]"
+          >
+            <span class="text-fluent-subtext font-semibold"
+              >📁 走査フォルダ:</span
+            >
+            <div
+              class="flex items-center flex-1 max-w-[280px] bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 font-mono-fluent text-[11px] truncate"
+            >
+              C:\Videos\Library\
+            </div>
+            <button
+              class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 rounded text-[11px]"
+            >
+              参照...
+            </button>
+
+            <span class="text-fluent-subtext font-semibold ml-2">閾値:</span>
+            <div class="flex items-center space-x-1">
+              <input
+                type="number"
+                x-model.number="threshold"
+                class="w-14 bg-zinc-900 border border-zinc-700 rounded px-1.5 py-1 text-center font-mono-fluent text-white text-[11px]"
+              />
+              <span class="text-fluent-subtext text-[11px]">字以上</span>
+            </div>
+          </div>
+
+          <!-- AIモデル, 命名規則 ＆ Web検索 (ddgs) 設定 -->
+          <div class="flex flex-wrap items-center gap-2.5 text-xs">
+            <!-- AIモデル選択 -->
+            <div class="flex items-center space-x-1.5">
+              <span class="text-fluent-subtext font-semibold">AIモデル:</span>
+              <select
+                x-model="selectedModel"
+                class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-white text-[11px] max-w-[210px] truncate"
+              >
+                <template x-for="m in models" :key="m">
+                  <option :value="m" x-text="m"></option>
+                </template>
+              </select>
+            </div>
+
+            <!-- 命名規則選択 -->
+            <div class="flex items-center space-x-1.5">
+              <span class="text-fluent-subtext font-semibold">命名規則:</span>
+              <select
+                x-model="selectedRule"
+                @change="onRuleChange()"
+                class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-white text-[11px] max-w-[170px] truncate"
+              >
+                <template x-for="(r, idx) in rules" :key="r.id">
+                  <option
+                    :value="r.id"
+                    x-text="(idx === 0 ? '★ ' : '') + r.name"
+                  ></option>
+                </template>
+              </select>
+
+              <!-- ⚙ 管理... ボタン -->
+              <button
+                @click="openRuleManager()"
+                class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded text-[11px] flex items-center space-x-1 transition-colors"
+                title="命名規則の追加・編集・並び替え"
+              >
+                <span>⚙ 管理...</span>
+              </button>
+            </div>
+
+            <!-- Web Search バッジ / トグル -->
+            <div
+              class="flex items-center gap-1.5 px-2 py-1 rounded border text-[11px] font-semibold cursor-pointer transition-colors"
+              :class="webSearchEnabled ? 'bg-blue-950/80 border-blue-700 text-blue-300' : 'bg-zinc-900 border-zinc-700 text-zinc-500'"
+              @click="webSearchEnabled = !webSearchEnabled"
+              title="DuckDuckGo Search (ddgs) の有効/無効を切り替え"
+            >
+              <span class="text-xs">🌐</span>
+              <span>ddgs 検索:</span>
+              <span
+                x-text="webSearchEnabled ? 'ON' : 'OFF'"
+                class="font-bold"
+              ></span>
+            </div>
+
+            <!-- アクション実行ボタン (提案中も常時活性で新条件リスタート可能) -->
+            <button
+              class="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded shadow-md text-xs flex items-center space-x-1.5 transition-all"
+              @click="startScanAndProposeSimulation()"
+              :title="isProcessing ? '現在の処理を中断し、新しい条件で最初から再実行します' : '抽出とAI提案を開始します'"
+            >
+              <span x-show="!isProcessing">⚡ 抽出＆AI提案を実行</span>
+              <span x-show="isProcessing" class="flex items-center gap-1.5">
+                <span
+                  class="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full"
+                ></span>
+                <span>⟳ 新条件で再実行</span>
+              </span>
+            </button>
+
+            <!-- 中止ボタン (常時表示・提案中のみ活性化) -->
+            <button
+              class="px-2.5 py-1.5 rounded border text-xs font-bold flex items-center space-x-1 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              :class="isProcessing ? 'bg-red-950/80 hover:bg-red-900 border-red-700 text-red-300 shadow-md animate-pulse' : 'bg-zinc-800/60 border-zinc-700 text-zinc-500'"
+              :disabled="!isProcessing"
+              @click="stopProcessing()"
+              :title="isProcessing ? '進行中のAI提案処理を直ちに中断します' : 'AI提案の処理中のみ中止できます'"
+            >
+              <span>⏹ 中止</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ツールバー: ソート順・一括選択・シミュレーション用ボタン群 -->
+        <div
+          class="flex items-center justify-between text-xs px-1 flex-shrink-0"
+        >
+          <div class="flex items-center space-x-3">
+            <span class="text-fluent-subtext font-semibold">ソート:</span>
+            <span
+              class="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 font-mono-fluent text-[11px]"
+            >
+              パス長 (降順)
+            </span>
+            <span class="text-zinc-500 text-[11px]">
+              抽出候補:
+              <strong class="text-white" x-text="candidates.length"></strong> 件
+            </span>
+          </div>
+
+          <!-- モック検証用クイックコントローラー -->
+          <div
+            class="flex items-center space-x-2 bg-zinc-900/90 border border-zinc-700/80 px-2.5 py-1 rounded-md text-[11px]"
+          >
+            <span class="text-zinc-400 font-semibold">🛠️ モック操作:</span>
+            <button
+              class="px-2 py-0.5 rounded bg-blue-700/40 hover:bg-blue-600/60 text-blue-300 border border-blue-600/50"
+              @click="startScanAndProposeSimulation()"
+            >
+              ▶ 非同期実行を再現
+            </button>
+            <button
+              class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
+              @click="resetToScanInitialState()"
+            >
+              ⏮ 即時IO描画状態に戻す
+            </button>
+            <button
+              class="px-2 py-0.5 rounded bg-amber-900/40 hover:bg-amber-800/60 text-amber-300 border border-amber-700/60"
+              @click="toggleDangerCard()"
+            >
+              ⚡ 文字数抵触を切り替え
+            </button>
+          </div>
+        </div>
+
+        <!-- SECTION 3: 候補一覧コンテナ (3行常時表示 & 非同期行アニメーション) -->
+        <div
+          class="flex-1 bg-fluent-surface border border-fluent-border rounded-lg overflow-y-auto p-2.5 space-y-2.5"
+        >
+          <template x-for="(c, idx) in candidates" :key="c.id">
+            <div
+              class="bg-[#18181b] border rounded-md p-2.5 space-y-2 transition-all duration-200 relative overflow-hidden"
+              :class="[
+                c.isSelected ? 'border-blue-600/80 shadow-md' : 'border-zinc-800',
+                c.state === 'searching' || c.state === 'generating' ? 'ring-1 ring-blue-500/50' : ''
+              ]"
+            >
+              <!-- 行上部アニメーションバー (処理中のみシマー光線が走る) -->
+              <div
+                x-show="c.state === 'searching' || c.state === 'generating'"
+                class="absolute top-0 left-0 right-0 h-0.5 bg-blue-900 overflow-hidden"
+              >
+                <div
+                  class="w-full h-full bg-gradient-to-r from-transparent via-blue-400 to-transparent animate-shimmer"
+                ></div>
+              </div>
+
+              <!-- Line 1: Header / Checkbox / Folder & Metrics -->
+              <div class="flex items-center justify-between text-xs">
+                <div class="flex items-center space-x-2 truncate">
+                  <input
+                    type="checkbox"
+                    x-model="c.isSelected"
+                    class="rounded border-zinc-700 bg-zinc-900 text-blue-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                  />
+                  <span
+                    class="font-bold text-zinc-400 font-mono-fluent text-[11px]"
+                    x-text="'#' + (idx + 1)"
+                  ></span>
+                  <span
+                    class="text-zinc-500 font-mono-fluent text-[10px] truncate"
+                    x-text="c.directory + '\\'"
+                  ></span>
+                </div>
+
+                <!-- 右側: 削減バッジ & ステータス -->
+                <div class="flex items-center space-x-2 flex-shrink-0">
+                  <!-- 短縮バッジ -->
+                  <div
+                    class="text-[10px] font-bold px-2 py-0.5 rounded border font-mono-fluent"
+                    :class="getDiffBadgeClass(c)"
+                    x-text="getDiffBadgeText(c)"
+                  ></div>
+
+                  <!-- 処理ステータス -->
+                  <div class="flex items-center gap-1 font-bold text-[10px]">
+                    <template x-if="c.state === 'idle'">
+                      <span class="text-zinc-500">⏳ 待機中</span>
+                    </template>
+                    <template x-if="c.state === 'searching'">
+                      <span
+                        class="text-blue-400 flex items-center gap-1 animate-pulse"
+                      >
+                        <span>🌐</span> ddgs 検索中...
+                      </span>
+                    </template>
+                    <template x-if="c.state === 'generating'">
+                      <span
+                        class="text-indigo-400 flex items-center gap-1 animate-pulse"
+                      >
+                        <span
+                          class="animate-spin inline-block w-2.5 h-2.5 border-2 border-indigo-400 border-t-transparent rounded-full"
+                        ></span>
+                        AI提案中...
+                      </span>
+                    </template>
+                    <template x-if="c.state === 'done'">
+                      <span
+                        :class="isDanger(c) ? 'text-red-400' : 'text-emerald-400'"
+                        x-text="isDanger(c) ? '⚠️ 要短縮 (危険)' : '✓ 安全'"
+                      ></span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Line 2: BEFORE 行 (薄赤背景・行高さ 32px 統一・ラベル幅 160px 固定) -->
+              <div
+                class="bg-[#3b1111] border border-[#7f1d1d] rounded px-2 py-1 flex items-center space-x-2 h-8"
+              >
+                <!-- ラベル幅 160px 固定 -->
+                <div
+                  class="w-40 flex-shrink-0 bg-[#450a0a] border border-[#7f1d1d] rounded px-1.5 py-0.5 text-center"
+                >
+                  <span
+                    class="text-[10px] font-bold text-red-400 font-mono-fluent"
+                    x-text="`BEFORE (${c.originalLength}字 [危険])`"
+                  ></span>
+                </div>
+
+                <!-- ファイル名本体 -->
+                <div
+                  class="flex-1 bg-[#09090b] border border-zinc-800 rounded px-2 py-0.5 h-[26px] flex items-center min-w-0"
+                >
+                  <span
+                    class="text-red-200 font-mono-fluent text-[11px] truncate"
+                    x-text="c.originalBaseName"
+                  ></span>
+                </div>
+
+                <!-- 拡張子ラベル -->
+                <div
+                  class="bg-[#27272a] border border-[#3f3f46] rounded px-2 py-0.5 h-[26px] flex items-center text-zinc-400 font-mono-fluent text-[11px] font-bold flex-shrink-0"
+                >
+                  .mp4
+                </div>
+
+                <!-- 幅合わせスペーサー (AFTER行のAI提案済バッジと幅を一致させる) -->
+                <div class="w-16 flex-shrink-0"></div>
+              </div>
+
+              <!-- Line 3: AFTER 行 (緑色基調・行高さ 32px 統一・文字数抵触時はラベル背景色のみ赤化！) -->
+              <div
+                class="bg-[#063327] border rounded px-2 py-1 flex items-center space-x-2 h-8 transition-colors duration-200"
+                :class="isDanger(c) ? 'border-red-600' : 'border-[#065f46]'"
+              >
+                <!-- ラベル幅 160px 固定: 文字数抵触(危険)時はここだけ背景色が赤色(#450a0a)に切り替わる！ -->
+                <div
+                  class="w-40 flex-shrink-0 rounded px-1.5 py-0.5 text-center transition-colors duration-200 border"
+                  :class="getAfterLabelBadgeClass(c)"
+                >
+                  <span
+                    class="text-[10px] font-bold font-mono-fluent"
+                    :class="getAfterLabelTextClass(c)"
+                    x-text="getAfterLabelText(c)"
+                  ></span>
+                </div>
+
+                <!-- 中央残余: 新ファイル名 TextBox または アニメーションインジケーター -->
+                <div class="flex-1 relative h-[26px] min-w-0">
+                  <!-- 処理中アニメーションバー -->
+                  <div
+                    x-show="c.state === 'searching' || c.state === 'generating'"
+                    class="w-full h-full bg-zinc-900/90 border border-blue-500/60 rounded flex items-center justify-center px-3 space-x-2 text-xs text-blue-300"
+                  >
+                    <span
+                      class="animate-spin inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full"
+                    ></span>
+                    <span
+                      class="text-[11px] font-medium font-mono-fluent truncate animate-pulse"
+                      x-text="c.state === 'searching' ? '🌐 DuckDuckGo (ddgs) より作品情報を検索中...' : '🤖 LLM が最適な短縮ファイル名を提案中...'"
+                    ></span>
+                  </div>
+
+                  <!-- 通常・提案完了時の編集可能 TextBox -->
+                  <input
+                    x-show="c.state !== 'searching' && c.state !== 'generating'"
+                    type="text"
+                    x-model="c.proposedBaseName"
+                    @input="recalculateLengths(c)"
+                    class="w-full h-full bg-[#09090b] rounded px-2 py-0.5 text-[11px] font-mono-fluent focus:outline-none transition-colors border"
+                    :class="[
+                      isDanger(c) ? 'border-red-500 text-red-200 focus:border-red-400' : 'border-[#059669] text-emerald-300 focus:border-emerald-400'
+                    ]"
+                  />
+                </div>
+
+                <!-- 拡張子ラベル -->
+                <div
+                  class="bg-[#27272a] border border-[#3f3f46] rounded px-2 py-0.5 h-[26px] flex items-center text-zinc-400 font-mono-fluent text-[11px] font-bold flex-shrink-0"
+                >
+                  .mp4
+                </div>
+
+                <!-- 右端: AI提案済 / 未提案 バッジ (width 64px) -->
+                <div
+                  class="w-16 flex-shrink-0 h-[26px] rounded px-1 flex items-center justify-center text-[10px] font-bold border transition-colors"
+                  :class="c.isAiProposed ? 'bg-blue-950/80 border-blue-800 text-blue-400' : 'bg-zinc-800 border-zinc-700 text-zinc-400'"
+                >
+                  <span x-text="c.isAiProposed ? 'AI提案済' : '未提案'"></span>
+                </div>
+              </div>
+
+              <!-- Line 4: AI COMMENT 行 (常時固定表示！) -->
+              <div
+                class="rounded px-2.5 py-1.5 flex items-start space-x-2 text-[11px] transition-colors border"
+                :class="getCommentBoxClass(c)"
+              >
+                <!-- コメントラベルアイコン -->
+                <div
+                  class="flex items-center space-x-1 flex-shrink-0 font-bold text-[10px] mt-0.5"
+                  :class="getCommentLabelClass(c)"
+                >
+                  <span>💬</span>
+                  <span>AI COMMENT:</span>
+                </div>
+
+                <!-- コメント本文 (常時表示) -->
+                <div class="flex-1 font-mono-fluent leading-tight">
+                  <template x-if="c.state === 'idle'">
+                    <span class="text-zinc-500 italic"
+                      >（AI提案の実行を待機しています...）</span
+                    >
+                  </template>
+                  <template x-if="c.state === 'searching'">
+                    <span class="text-blue-300/90 italic"
+                      >Web検索を実行中: 「<span x-text="c.searchQuery"></span
+                      >」の結果を取得しています...</span
+                    >
+                  </template>
+                  <template x-if="c.state === 'generating'">
+                    <span class="text-indigo-300/90 italic"
+                      >Web検索結果をプロンプトに注入し、LLMが命名理由を構成中...</span
+                    >
+                  </template>
+                  <template x-if="c.state === 'done'">
+                    <span
+                      :class="isDanger(c) ? 'text-amber-200' : 'text-zinc-300'"
+                      x-text="c.aiComment"
+                    ></span>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- FOOTER: リネーム実行 & Undo ボタン -->
+        <div
+          class="bg-fluent-surface border border-fluent-border rounded-lg p-2.5 px-3 flex items-center justify-between shadow-sm flex-shrink-0"
+        >
+          <div class="flex items-center space-x-3 text-xs">
+            <span class="text-fluent-subtext">選択中:</span>
+            <span
+              class="font-bold text-white font-mono-fluent"
+              x-text="selectedCount + ' 件'"
+            ></span>
+
+            <!-- AI提案中の進捗バッジ (パターンA) -->
+            <span
+              x-show="isProcessing"
+              class="text-blue-400 font-bold bg-blue-950/80 border border-blue-800 px-2.5 py-0.5 rounded text-[11px] flex items-center gap-1.5 animate-pulse"
+            >
+              <span
+                class="animate-spin inline-block w-2.5 h-2.5 border-2 border-blue-400 border-t-transparent rounded-full"
+              ></span>
+              <span
+                >AI提案中... (<span x-text="completedCount"></span>/<span
+                  x-text="candidates.length"
+                ></span>
+                件完了)</span
+              >
+            </span>
+
+            <!-- スキャン直後・未提案時の案内 -->
+            <span
+              x-show="!isProcessing && !isAllAiProposed && candidates.length > 0"
+              class="text-zinc-400 font-medium bg-zinc-900 border border-zinc-700 px-2 py-0.5 rounded text-[11px]"
+            >
+              ⏳ AI提案が完了するまでリネームは実行できません
+            </span>
+
+            <span
+              x-show="!isProcessing && isAllAiProposed && hasDangerFiles"
+              class="text-red-400 font-bold bg-red-950/80 border border-red-800 px-2 py-0.5 rounded text-[11px] animate-pulse"
+            >
+              ⚠️ 要短縮ファイルが含まれています
+            </span>
+            <span
+              x-show="!isProcessing && isAllAiProposed && !hasDangerFiles && candidates.length > 0"
+              class="text-emerald-400 font-bold bg-emerald-950/80 border border-emerald-800 px-2 py-0.5 rounded text-[11px]"
+            >
+              ✓ 全ファイルが240文字未満（安全）です
+            </span>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <button
+              class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow text-xs flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              :disabled="isProcessing || !isAllAiProposed || selectedCount === 0"
+              title="全件のAI提案完了後に実行可能"
+            >
+              <span>リネームのみ実行</span>
+            </button>
+            <button
+              class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded shadow text-xs flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              :disabled="isProcessing || !isAllAiProposed || selectedCount === 0"
+              title="全件のAI提案完了後に実行可能"
+            >
+              <span>⚡ リネーム＆Docker再起動</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 命名規則マネージャー モーダル (Windows 11 Fluent Dark) -->
+    <div
+      x-show="isRuleManagerOpen"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0 scale-95"
+      x-transition:enter-end="opacity-100 scale-100"
+      x-transition:leave="transition ease-in duration-150"
+      x-transition:leave-start="opacity-100 scale-100"
+      x-transition:leave-end="opacity-0 scale-95"
+      class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 select-none"
+      style="display: none"
+    >
+      <div
+        class="bg-fluent-surface border border-fluent-border rounded-xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col overflow-hidden"
+        @click.outside="closeRuleManager()"
+      >
+        <!-- モーダルヘッダー -->
+        <div
+          class="px-5 py-4 border-b border-fluent-border flex items-center justify-between flex-shrink-0 bg-fluent-bg/60"
+        >
+          <div class="flex items-center space-x-2.5">
+            <span
+              class="text-base font-bold text-white flex items-center gap-2"
+            >
+              <span>⚙</span> 命名規則マネージャー
+            </span>
+            <span
+              class="text-xs text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700"
+              x-text="rules.length + ' 件登録中'"
+            ></span>
+          </div>
+          <button
+            @click="closeRuleManager()"
+            class="text-zinc-400 hover:text-white px-2 py-1 rounded hover:bg-zinc-800 text-sm font-bold transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- モーダル説明 -->
+        <div
+          class="px-5 py-2.5 bg-blue-950/20 border-b border-blue-900/30 text-[11px] text-zinc-300"
+        >
+          AIが使用する命名プロンプト規則の優先度並び替え・追加・削除を行います。先頭のルール（★）が既定値になります。
+        </div>
+
+        <!-- スクロール領域: 既存ルール一覧 ＆ 新規追加フォーム -->
+        <div class="p-5 overflow-y-auto space-y-4 flex-1">
+          <!-- 既存ルール一覧 -->
+          <div class="space-y-2.5">
+            <div
+              class="text-xs font-bold text-zinc-300 flex items-center gap-1.5"
+            >
+              <span>📋 登録済みルール一覧</span>
+              <span class="text-[10px] text-zinc-500 font-normal"
+                >（▲▼で優先度を変更できます）</span
+              >
+            </div>
+
+            <template x-for="(r, idx) in rules" :key="r.id">
+              <div
+                class="p-3 rounded-lg border transition-all"
+                :class="idx === 0 ? 'bg-fluent-card border-blue-600/80 shadow-sm' : 'bg-fluent-card/70 border-zinc-700'"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <!-- 左側: ルール詳細 -->
+                  <div class="flex-1 min-w-0 space-y-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <!-- 先頭★バッジ -->
+                      <span
+                        x-show="idx === 0"
+                        class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-950 border border-blue-700 text-blue-300"
+                      >
+                        ★ 既定ルール
+                      </span>
+                      <span
+                        class="text-xs font-bold text-white"
+                        x-text="r.name"
+                      ></span>
+                      <span
+                        class="text-[10px] font-mono-fluent px-1.5 py-0.5 rounded bg-zinc-800 text-blue-400 border border-zinc-700"
+                        x-text="'パターン: ' + r.pattern"
+                      ></span>
+
+                      <!-- Web検索バッジ -->
+                      <span
+                        class="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 font-semibold"
+                        :class="r.enableWebSearch ? 'bg-blue-950/80 border border-blue-700 text-blue-300' : 'bg-zinc-800 border border-zinc-700 text-zinc-500'"
+                      >
+                        <span>🌐</span>
+                        <span
+                          x-text="r.enableWebSearch ? 'Web検索 有効' : 'Web検索 無効'"
+                        ></span>
+                      </span>
+                    </div>
+
+                    <!-- プロンプト指示文 -->
+                    <div
+                      class="text-[11px] text-zinc-400 line-clamp-2"
+                      x-text="r.promptInstruction"
+                    ></div>
+                  </div>
+
+                  <!-- 右側: 並び替え・削除ボタン群 -->
+                  <div class="flex items-center space-x-1 flex-shrink-0">
+                    <button
+                      @click="moveRule(r.id, -1)"
+                      :disabled="idx === 0"
+                      class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-white rounded border border-zinc-700 text-xs disabled:opacity-20 disabled:cursor-not-allowed"
+                      title="上へ"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      @click="moveRule(r.id, 1)"
+                      :disabled="idx === rules.length - 1"
+                      class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-white rounded border border-zinc-700 text-xs disabled:opacity-20 disabled:cursor-not-allowed"
+                      title="下へ"
+                    >
+                      ▼
+                    </button>
+                    <button
+                      @click="deleteRule(r.id)"
+                      :disabled="rules.length <= 1"
+                      class="px-2 py-1 bg-red-950/80 hover:bg-red-900 text-red-300 rounded border border-red-800 text-xs disabled:opacity-20 disabled:cursor-not-allowed"
+                      title="削除"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- ➕ 新規命名規則の追加フォーム -->
+          <div
+            class="p-4 rounded-lg bg-zinc-900/90 border border-blue-800/60 space-y-3 mt-4 shadow-inner"
+          >
+            <div
+              class="text-xs font-bold text-blue-400 flex items-center justify-between"
+            >
+              <span class="flex items-center gap-1.5">
+                <span>➕</span> 新規命名規則の追加
+              </span>
+              <span class="text-[10px] text-zinc-500 font-normal"
+                >入力後「追加する」をクリック</span
+              >
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label
+                  class="block text-fluent-subtext font-semibold mb-1 text-[11px]"
+                  >ルール名 (必須):</label
+                >
+                <input
+                  type="text"
+                  x-model="newRule.name"
+                  placeholder="例: バラエティ・特番用短縮"
+                  class="w-full bg-black/60 border border-zinc-700 rounded px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label
+                  class="block text-fluent-subtext font-semibold mb-1 text-[11px]"
+                  >対象パターン:</label
+                >
+                <input
+                  type="text"
+                  x-model="newRule.pattern"
+                  placeholder="*.mp4;*.mkv;*.ts"
+                  class="w-full bg-black/60 border border-zinc-700 rounded px-2.5 py-1.5 text-white font-mono-fluent text-xs focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div class="text-xs">
+              <label
+                class="block text-fluent-subtext font-semibold mb-1 text-[11px]"
+                >プロンプト指示文 (AIへの命名指示):</label
+              >
+              <textarea
+                x-model="newRule.promptInstruction"
+                rows="2"
+                placeholder="例: Web検索スニペットを参考に正式番組名と放送回・日付を特定し、半角スペース区切りで短縮してください。"
+                class="w-full bg-black/60 border border-zinc-700 rounded px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-none"
+              ></textarea>
+            </div>
+
+            <div class="flex items-center justify-between pt-1">
+              <!-- Web検索有効化チェックボックス -->
+              <label
+                class="flex items-center space-x-2 cursor-pointer select-none text-xs"
+              >
+                <input
+                  type="checkbox"
+                  x-model="newRule.enableWebSearch"
+                  class="rounded bg-black border-zinc-700 text-blue-600 focus:ring-blue-500"
+                />
+                <span class="text-white font-semibold flex items-center gap-1">
+                  <span>🌐</span> DuckDuckGo Web検索 (ddgs) を有効にする
+                </span>
+              </label>
+
+              <!-- 追加実行ボタン -->
+              <button
+                @click="addRule()"
+                class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow text-xs flex items-center space-x-1.5 transition-all"
+              >
+                <span>➕ この命名規則を追加する</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- モーダルフッター -->
+        <div
+          class="px-5 py-3 border-t border-fluent-border flex items-center justify-end bg-fluent-bg/60"
+        >
+          <button
+            @click="closeRuleManager()"
+            class="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded border border-zinc-700 text-xs transition-colors"
+          >
+            閉じる
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alpine.js Application Logic -->
+    <script>
+      function companionApp() {
+        return {
+          threshold: 240,
+          selectedModel: "meta-llama/llama-3.3-70b-instruct:free",
+          models: [
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "google/gemini-2.0-flash-exp:free",
+            "mistralai/mistral-small-24b-instruct-2501:free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+          ],
+          selectedRule: "drama",
+          rules: [
+            {
+              id: "drama",
+              name: "ドラマ・アニメ公式短縮",
+              pattern: "*.mp4;*.mkv",
+              promptInstruction:
+                "Web検索スニペットを参考に正式作品名と第何話かを特定し、半角スペース区切りで短縮してください。",
+              enableWebSearch: true,
+            },
+            {
+              id: "standard",
+              name: "標準タイトル短縮",
+              pattern: "*.*",
+              promptInstruction:
+                "冗長なタグや不要な記号を削除し、簡潔な作品名と話数のみに短縮してください。",
+              enableWebSearch: false,
+            },
+          ],
+          isRuleManagerOpen: false,
+          newRule: {
+            name: "",
+            pattern: "*.mp4",
+            promptInstruction: "",
+            enableWebSearch: true,
+          },
+          webSearchEnabled: true,
+          isProcessing: false,
+          runId: 0,
+
+          candidates: [
+            {
+              id: 1,
+              directory:
+                "C:\\Videos\\Dramas\\2026_Winter_Series\\ExtremelyLongDirectoryNameForTesting\\",
+              originalBaseName:
+                "Extremely.Long.Filename.Sample.Episode.01.2026.1080p.WEBRip.x264.AAC5.1-GROUPNAME_Over_Length",
+              originalLength: 258,
+              proposedBaseName:
+                "Extremely.Long.Filename.Sample.Episode.01.2026.1080p.WEBRip.x264.AAC5.1-GROUPNAME_Over_Length",
+              proposedLength: 258,
+              state: "idle", // 'idle' | 'searching' | 'generating' | 'done'
+              isAiProposed: false,
+              isSelected: true,
+              searchQuery: "Sample Episode 01 2026",
+              aiComment: "（AI提案の開始を待機しています...）",
+            },
+            {
+              id: 2,
+              directory:
+                "C:\\Videos\\Anime\\Ongoing_Season_Special_Collection_Directory_For_Testing\\",
+              originalBaseName:
+                "Anime.Special.Movie.The.Beginning.Of.Adventure.Chapter.1.2026.Remastered.SuperLongName",
+              originalLength: 252,
+              proposedBaseName:
+                "Anime.Special.Movie.The.Beginning.Of.Adventure.Chapter.1.2026.Remastered.SuperLongName",
+              proposedLength: 252,
+              state: "idle",
+              isAiProposed: false,
+              isSelected: true,
+              searchQuery: "Anime Special Movie Beginning Of Adventure",
+              aiComment: "（AI提案の開始を待機しています...）",
+            },
+            {
+              id: 3,
+              directory:
+                "C:\\Videos\\Documentary\\Space_Exploration_History_Archive_Volume_01\\",
+              originalBaseName:
+                "Deep.Space.Exploration.Chronicles.Episode.04.Beyond.The.Horizon.Extended.Cut.2026.1080p",
+              originalLength: 246,
+              proposedBaseName:
+                "Deep.Space.Exploration.Chronicles.Episode.04.Beyond.The.Horizon.Extended.Cut.2026.1080p",
+              proposedLength: 246,
+              state: "idle",
+              isAiProposed: false,
+              isSelected: true,
+              searchQuery: "Deep Space Exploration Chronicles Episode 4",
+              aiComment: "（AI提案の開始を待機しています...）",
+            },
+          ],
+
+          openRuleManager() {
+            this.isRuleManagerOpen = true;
+          },
+
+          closeRuleManager() {
+            this.isRuleManagerOpen = false;
+          },
+
+          onRuleChange() {
+            const rule = this.rules.find((r) => r.id === this.selectedRule);
+            if (rule) {
+              this.webSearchEnabled = rule.enableWebSearch;
+            }
+          },
+
+          addRule() {
+            if (!this.newRule.name.trim()) {
+              alert("ルール名を入力してください。");
+              return;
+            }
+            const id = "rule_" + Date.now();
+            const created = {
+              id: id,
+              name: this.newRule.name.trim(),
+              pattern: this.newRule.pattern.trim() || "*.*",
+              promptInstruction:
+                this.newRule.promptInstruction.trim() ||
+                "簡潔に短縮してください。",
+              enableWebSearch: this.newRule.enableWebSearch,
+            };
+            this.rules.push(created);
+            this.selectedRule = id;
+            this.webSearchEnabled = created.enableWebSearch;
+            this.newRule = {
+              name: "",
+              pattern: "*.mp4",
+              promptInstruction: "",
+              enableWebSearch: true,
+            };
+          },
+
+          deleteRule(id) {
+            if (this.rules.length <= 1) return;
+            this.rules = this.rules.filter((r) => r.id !== id);
+            if (this.selectedRule === id) {
+              this.selectedRule = this.rules[0].id;
+              this.webSearchEnabled = this.rules[0].enableWebSearch;
+            }
+          },
+
+          moveRule(id, dir) {
+            const idx = this.rules.findIndex((r) => r.id === id);
+            if (idx < 0) return;
+            const targetIdx = idx + dir;
+            if (targetIdx < 0 || targetIdx >= this.rules.length) return;
+            const temp = this.rules[idx];
+            this.rules[idx] = this.rules[targetIdx];
+            this.rules[targetIdx] = temp;
+          },
+
+          init() {
+            // 初期状態はスキャン直後（即時IO描画状態）
+            this.resetToScanInitialState();
+          },
+
+          get selectedCount() {
+            return this.candidates.filter((c) => c.isSelected).length;
+          },
+
+          get completedCount() {
+            return this.candidates.filter((c) => c.state === "done").length;
+          },
+
+          get isAllAiProposed() {
+            return (
+              this.candidates.length > 0 &&
+              this.candidates.every((c) => c.isAiProposed)
+            );
+          },
+
+          get hasDangerFiles() {
+            return this.candidates.some((c) => this.isDanger(c));
+          },
+
+          isDanger(c) {
+            return c.proposedLength >= this.threshold;
+          },
+
+          recalculateLengths(c) {
+            // ディレクトリ長 + ファイル名長 + 拡張子 (.mp4) 4文字
+            c.proposedLength =
+              c.directory.length + c.proposedBaseName.length + 4;
+          },
+
+          // 即時IO描画状態へリセット
+          resetToScanInitialState() {
+            this.isProcessing = false;
+            this.candidates[0].proposedBaseName =
+              this.candidates[0].originalBaseName;
+            this.candidates[0].proposedLength =
+              this.candidates[0].originalLength;
+            this.candidates[0].state = "idle";
+            this.candidates[0].isAiProposed = false;
+            this.candidates[0].aiComment =
+              "（AI提案の開始を待機しています...）";
+
+            this.candidates[1].proposedBaseName =
+              this.candidates[1].originalBaseName;
+            this.candidates[1].proposedLength =
+              this.candidates[1].originalLength;
+            this.candidates[1].state = "idle";
+            this.candidates[1].isAiProposed = false;
+            this.candidates[1].aiComment =
+              "（AI提案の開始を待機しています...）";
+
+            this.candidates[2].proposedBaseName =
+              this.candidates[2].originalBaseName;
+            this.candidates[2].proposedLength =
+              this.candidates[2].originalLength;
+            this.candidates[2].state = "idle";
+            this.candidates[2].isAiProposed = false;
+            this.candidates[2].aiComment =
+              "（AI提案の開始を待機しています...）";
+          },
+
+          // 非同期逐次パイプライン（ddgs検索 → LLM提案 → 反映）のシミュレーション
+          async startScanAndProposeSimulation() {
+            // 新しい実行IDを発行（進行中の古いループは自動的にキャンセルされる）
+            this.runId++;
+            const currentRunId = this.runId;
+
+            // Step 1: まずスキャン直後として即時IO描画
+            this.resetToScanInitialState();
+            this.isProcessing = true;
+
+            // 1ファイルずつ順番に非同期パイプラインを実行
+            for (let i = 0; i < this.candidates.length; i++) {
+              if (this.runId !== currentRunId) return; // 中止または新条件でリスタートされた場合は早期脱出
+              const c = this.candidates[i];
+
+              // 1. Web検索 (ddgs) 開始
+              if (this.webSearchEnabled) {
+                c.state = "searching";
+                await new Promise((r) => setTimeout(r, 700));
+                if (this.runId !== currentRunId) return;
+              }
+
+              // 2. LLM プロンプト生成＆問い合わせ
+              c.state = "generating";
+              await new Promise((r) => setTimeout(r, 800));
+              if (this.runId !== currentRunId) return;
+
+              // 3. 提案結果反映 (1件完了ごとに逐次UI更新！)
+              c.isAiProposed = true;
+              c.state = "done";
+
+              if (i === 0) {
+                // 安全に短縮できた例 (214文字)
+                c.proposedBaseName = "Sample Drama S01E01 (2026)";
+                this.recalculateLengths(c);
+                c.aiComment =
+                  "✓ ddgs検索より正式タイトル「Sample Drama」を特定し短縮しました。";
+              } else if (i === 1) {
+                // 危険（閾値240文字を超過している例: 245文字）
+                // ラベル背景色だけ赤化する検証用！
+                c.proposedBaseName =
+                  "Anime Special Movie Beginning Of Adventure Ch.1 2026 Remaster Edition";
+                this.recalculateLengths(c);
+                c.aiComment =
+                  "⚠️ 副題を含めたため閾値(240字)を超過しています。必要に応じて副題を手動で削ってください。";
+              } else if (i === 2) {
+                // 安全に短縮できた例 (198文字)
+                c.proposedBaseName =
+                  "Deep Space Chronicles E04 Beyond The Horizon";
+                this.recalculateLengths(c);
+                c.aiComment =
+                  "✓ Web検索スニペットと命名規則に従いエピソード名を簡潔に整理しました。";
+              }
+            }
+
+            if (this.runId === currentRunId) {
+              this.isProcessing = false;
+            }
+          },
+
+          // AI提案処理の中止 (キャンセル)
+          stopProcessing() {
+            this.runId++; // 進行中のループをキャンセル
+            this.isProcessing = false;
+            // 処理中だった行（未完了）のアニメーションを解除して待機状態に戻す
+            for (const c of this.candidates) {
+              if (c.state === "searching" || c.state === "generating") {
+                c.state = "idle";
+                c.aiComment = "（AI提案がユーザーにより中止されました）";
+              }
+            }
+          },
+
+          // 危険カードのトグル（モックテスト用）
+          toggleDangerCard() {
+            const c = this.candidates[1];
+            if (c.proposedLength >= this.threshold) {
+              c.proposedBaseName = "Anime Special Movie 2026";
+            } else {
+              c.proposedBaseName =
+                "Anime Special Movie Beginning Of Adventure Ch.1 2026 Remaster Edition";
+            }
+            this.recalculateLengths(c);
+          },
+
+          // AFTERラベルバッジの背景色クラス判定: 文字数抵触時はここだけ赤色！
+          getAfterLabelBadgeClass(c) {
+            if (c.state === "searching" || c.state === "generating") {
+              return "bg-blue-950/80 border-blue-700";
+            }
+            if (this.isDanger(c)) {
+              // 危険（閾値超過）: 背景色のみを赤色(#450a0a)・ボーダー(#b91c1c)に変更！
+              return "bg-[#450a0a] border-[#b91c1c] shadow-sm";
+            }
+            if (c.proposedLength === c.originalLength && !c.isAiProposed) {
+              return "bg-zinc-800 border-zinc-700";
+            }
+            // 安全: 緑色バッジ
+            return "bg-[#064e3b] border-[#065f46]";
+          },
+
+          getAfterLabelTextClass(c) {
+            if (c.state === "searching" || c.state === "generating") {
+              return "text-blue-300";
+            }
+            if (this.isDanger(c)) {
+              return "text-red-400 font-bold";
+            }
+            if (c.proposedLength === c.originalLength && !c.isAiProposed) {
+              return "text-zinc-400";
+            }
+            return "text-emerald-400";
+          },
+
+          getAfterLabelText(c) {
+            if (c.state === "searching") return "🌐 Web検索中...";
+            if (c.state === "generating") return "🤖 AI生成中...";
+            if (this.isDanger(c)) {
+              return `⚠️ AFTER (${c.proposedLength}字 [危険])`;
+            }
+            if (c.proposedLength === c.originalLength && !c.isAiProposed) {
+              return `AFTER (${c.proposedLength}字 [未提案])`;
+            }
+            return `AFTER (${c.proposedLength}字 [安全])`;
+          },
+
+          getDiffBadgeText(c) {
+            if (c.proposedLength > c.originalLength) {
+              return `+${c.proposedLength - c.originalLength}字 (増加)`;
+            }
+            if (c.proposedLength === c.originalLength) {
+              return "±0字 (未短縮)";
+            }
+            const diff = c.originalLength - c.proposedLength;
+            const pct = Math.round((diff / c.originalLength) * 100);
+            return `-${diff}字 (${pct}%短縮)`;
+          },
+
+          getDiffBadgeClass(c) {
+            if (c.proposedLength > c.originalLength) {
+              return "bg-red-950/80 border-red-800 text-red-300";
+            }
+            if (c.proposedLength === c.originalLength) {
+              return "bg-zinc-800 border-zinc-700 text-zinc-400";
+            }
+            return "bg-[#064e3b] border-[#065f46] text-emerald-400";
+          },
+
+          getCommentBoxClass(c) {
+            if (c.state === "searching" || c.state === "generating") {
+              return "bg-blue-950/30 border-blue-900/50";
+            }
+            if (this.isDanger(c)) {
+              return "bg-amber-950/40 border-amber-900/60";
+            }
+            return "bg-[#1f2937]/50 border-zinc-800";
+          },
+
+          getCommentLabelClass(c) {
+            if (c.state === "searching" || c.state === "generating") {
+              return "text-blue-400";
+            }
+            if (this.isDanger(c)) {
+              return "text-amber-400";
+            }
+            return "text-zinc-400";
+          },
+        };
+      }
+    </script>
+  </body>
+</html>

@@ -39,6 +39,7 @@ module StateTests =
             ProposedLength = 19
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -64,6 +65,7 @@ module StateTests =
             ProposedLength = 15
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -91,6 +93,7 @@ module StateTests =
             ProposedLength = 15
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = false
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -156,6 +159,7 @@ module StateTests =
             ProposedLength = 20
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -168,6 +172,7 @@ module StateTests =
             ProposedLength = 35
             AiComment = None
             IsAiProposed = true
+            IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
         }
@@ -206,8 +211,8 @@ module StateTests =
     [<Fact>]
     let ``MoveRuleOrder は命名規則の優先度順序を正しく入れ替える`` () =
         let initialModel, _ = State.init ()
-        let rule1 = { Id = "r1"; Name = "Rule 1"; Pattern = "{P1}"; PromptInstruction = "I1"; Order = 0 }
-        let rule2 = { Id = "r2"; Name = "Rule 2"; Pattern = "{P2}"; PromptInstruction = "I2"; Order = 1 }
+        let rule1 = { Id = "r1"; Name = "Rule 1"; Pattern = "{P1}"; PromptInstruction = "I1"; Order = 0; EnableWebSearch = false }
+        let rule2 = { Id = "r2"; Name = "Rule 2"; Pattern = "{P2}"; PromptInstruction = "I2"; Order = 1; EnableWebSearch = true }
         let modelWithRules = { initialModel with Settings = { initialModel.Settings with Rules = [ rule1; rule2 ] } }
 
         // rule2 を上へ移動 (direction = -1)
@@ -238,8 +243,8 @@ module StateTests =
 
         // 重要: LLM未接続なので「AI提案済」ではなく未提案状態
         proposal.IsAiProposed |> should equal false
-        // 重要: 勝手な固定コメントを捏造しない
-        proposal.AiComment |> should equal None
+        // 初期状態は待機中コメント
+        proposal.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
         // 初期状態は元ファイル名（手動編集用）
         proposal.ProposedFileName |> should equal dummyCandidate.FileName
         // 警告案内メッセージを表示
@@ -263,6 +268,7 @@ module StateTests =
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
             IsAiProposed = true
+            IsAiProcessing = false
         }
         let p2 = {
             OriginalFullPath = "C:\\Videos\\long_path_that_was_over_limit_sample_2.mp4"
@@ -275,6 +281,7 @@ module StateTests =
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
             IsAiProposed = true
+            IsAiProcessing = false
         }
         let p3_unselected = {
             OriginalFullPath = "C:\\Videos\\unselected_long_file.mp4"
@@ -287,6 +294,7 @@ module StateTests =
             IsSelected = false
             LastWriteTime = DateTime.UtcNow
             IsAiProposed = false
+            IsAiProcessing = false
         }
         let modelWithCandidates = { model with Candidates = [ p1; p2; p3_unselected ] }
 
@@ -322,4 +330,166 @@ module StateTests =
         let p3Found = updatedModel.Candidates |> List.find (fun c -> c.OriginalFullPath = p3_unselected.OriginalFullPath)
         p3Found.IsSelected |> should equal false
 
+    [<Fact>]
+    let ``ModelSelected は選択モデルを更新する`` () =
+        let initialModel, _ = State.init ()
+        let newModelName = "google/gemini-2.0-flash-exp:free"
+        let updatedModel, _ = State.update (ModelSelected newModelName) initialModel
+        updatedModel.Settings.SelectedModel |> should equal newModelName
+
+    [<Fact>]
+    let ``OpenRuleManager と SaveEditingRule で新規命名規則を追加できる`` () =
+        let initialModel, _ = State.init ()
+        let initialRuleCount = initialModel.Settings.Rules.Length
+
+        // 1. マネージャーオープン（編集用テンプレートが初期化される）
+        let openModel, _ = State.update OpenRuleManager initialModel
+        openModel.IsRuleManagerOpen |> should equal true
+        openModel.EditingRule |> should not' (equal None)
+
+        // 2. 編集内容入力
+        let m1, _ = State.update (UpdateEditingRuleName "テスト新ルール") openModel
+        let m2, _ = State.update (UpdateEditingRulePattern "*.mkv") m1
+        let m3, _ = State.update (UpdateEditingRulePrompt "テスト用プロンプト指示") m2
+        let m4, _ = State.update (UpdateEditingRuleWebSearch true) m3
+
+        // 3. ルール保存
+        let savedModel, _ = State.update SaveEditingRule m4
+        savedModel.Settings.Rules.Length |> should equal (initialRuleCount + 1)
+        let added = savedModel.Settings.Rules |> List.last
+        added.Name |> should equal "テスト新ルール"
+        added.Pattern |> should equal "*.mkv"
+        added.PromptInstruction |> should equal "テスト用プロンプト指示"
+        added.EnableWebSearch |> should equal true
+        savedModel.SelectedRuleId |> should equal added.Id
+
+    [<Fact>]
+    let ``Proposal.createInitial はスキャン候補から即時IO描画用の初期未提案レコードを生成する`` () =
+        let candidate: ScanCandidate = {
+            FullPath = "C:\\Videos\\long_test_sample.mp4"
+            FileName = "long_test_sample.mp4"
+            DirectoryPath = "C:\\Videos"
+            PathLength = 30
+            FileSizeBytes = 2048L
+            LastWriteTime = DateTime(2025, 1, 1)
+        }
+        let initial = Proposal.createInitial candidate
+        initial.OriginalFullPath |> should equal candidate.FullPath
+        initial.OriginalFileName |> should equal candidate.FileName
+        initial.DirectoryPath |> should equal candidate.DirectoryPath
+        initial.OriginalLength |> should equal candidate.PathLength
+        initial.ProposedFileName |> should equal candidate.FileName
+        initial.ProposedLength |> should equal candidate.PathLength
+        initial.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
+        initial.IsSelected |> should equal true
+        initial.LastWriteTime |> should equal candidate.LastWriteTime
+        initial.IsAiProposed |> should equal false
+        initial.IsAiProcessing |> should equal false
+
+    [<Fact>]
+    let ``CandidateAiProcessing は対象候補を処理中状態（IsAiProcessing = true）に更新する`` () =
+        let initialModel, _ = State.init ()
+        let p1 = {
+            OriginalFullPath = "C:\\Videos\\v1.mp4"
+            OriginalFileName = "v1.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 15
+            ProposedFileName = "v1.mp4"
+            ProposedLength = 15
+            AiComment = Some "（待機中...）"
+            IsAiProposed = false
+            IsAiProcessing = false
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+        }
+        let p2 = { p1 with OriginalFullPath = "C:\\Videos\\v2.mp4"; OriginalFileName = "v2.mp4" }
+        let model = { initialModel with Candidates = [ p1; p2 ]; IsRequestingAi = true }
+
+        let updatedModel, _ = State.update (CandidateAiProcessing p1.OriginalFullPath) model
+        let updatedP1 = updatedModel.Candidates |> List.find (fun c -> c.OriginalFullPath = p1.OriginalFullPath)
+        let updatedP2 = updatedModel.Candidates |> List.find (fun c -> c.OriginalFullPath = p2.OriginalFullPath)
+        updatedP1.IsAiProcessing |> should equal true
+        updatedP2.IsAiProcessing |> should equal false
+
+    [<Fact>]
+    let ``CandidateAiProposed は1件ごとの提案結果を反映し IsAiProcessing を解除する`` () =
+        let initialModel, _ = State.init ()
+        let p1 = {
+            OriginalFullPath = "C:\\Videos\\v1.mp4"
+            OriginalFileName = "v1.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 250
+            ProposedFileName = "v1.mp4"
+            ProposedLength = 250
+            AiComment = Some "（待機中...）"
+            IsAiProposed = false
+            IsAiProcessing = true
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+        }
+        let model = { initialModel with Candidates = [ p1 ]; IsRequestingAi = true }
+
+        let proposed: RenameProposal = {
+            p1 with
+                ProposedFileName = "v1_short.mp4"
+                ProposedLength = 20
+                AiComment = Some "ddgs検索結果より短縮"
+                IsAiProposed = true
+                IsAiProcessing = false
+        }
+        let updatedModel, _ = State.update (CandidateAiProposed proposed) model
+        let result = updatedModel.Candidates.Head
+        result.ProposedFileName |> should equal "v1_short.mp4"
+        result.ProposedLength |> should equal 20
+        result.AiComment |> should equal (Some "ddgs検索結果より短縮")
+        result.IsAiProposed |> should equal true
+        result.IsAiProcessing |> should equal false
+
+    [<Fact>]
+    let ``AllAiProposalsCompleted は IsRequestingAi を false にし CTS をクリアする`` () =
+        let initialModel, _ = State.init ()
+        let cts = new System.Threading.CancellationTokenSource()
+        let model = { initialModel with IsRequestingAi = true; AiCancellationCts = Some cts }
+
+        let updatedModel, _ = State.update AllAiProposalsCompleted model
+        updatedModel.IsRequestingAi |> should equal false
+        updatedModel.AiCancellationCts |> should equal None
+
+    [<Fact>]
+    let ``CancelAiProposal は CTS をキャンセルし、処理中フラグを解除して中止コメントを付与する`` () =
+        let initialModel, _ = State.init ()
+        let cts = new System.Threading.CancellationTokenSource()
+        let p1 = {
+            OriginalFullPath = "C:\\Videos\\v1.mp4"
+            OriginalFileName = "v1.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 250
+            ProposedFileName = "v1.mp4"
+            ProposedLength = 250
+            AiComment = Some "（待機中...）"
+            IsAiProposed = false
+            IsAiProcessing = true
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+        }
+        let model = { initialModel with Candidates = [ p1 ]; IsRequestingAi = true; AiCancellationCts = Some cts }
+
+        let updatedModel, _ = State.update CancelAiProposal model
+        cts.IsCancellationRequested |> should equal true
+        updatedModel.IsRequestingAi |> should equal false
+        updatedModel.AiCancellationCts |> should equal None
+        let updatedP1 = updatedModel.Candidates.Head
+        updatedP1.IsAiProcessing |> should equal false
+        updatedP1.AiComment |> should equal (Some "（AI提案が中止されました）")
+
+    [<Fact>]
+    let ``ExecuteScanAndPropose は先行の AI 処理 CTS が存在する場合に自動キャンセルする`` () =
+        let initialModel, _ = State.init ()
+        let cts = new System.Threading.CancellationTokenSource()
+        let model = { initialModel with IsRequestingAi = true; AiCancellationCts = Some cts }
+
+        let updatedModel, _ = State.update ExecuteScanAndPropose model
+        cts.IsCancellationRequested |> should equal true
+        updatedModel.IsScanning |> should equal true
+        updatedModel.AiCancellationCts |> should equal None
 

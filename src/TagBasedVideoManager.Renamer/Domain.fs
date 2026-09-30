@@ -9,6 +9,14 @@ type NamingRule = {
     Pattern: string
     PromptInstruction: string
     Order: int
+    EnableWebSearch: bool
+}
+
+/// DuckDuckGo 検索結果アイテム
+type SearchResultItem = {
+    Title: string
+    Snippet: string
+    Url: string
 }
 
 /// スキャン結果の候補ファイル情報
@@ -33,7 +41,25 @@ type RenameProposal = {
     IsSelected: bool
     LastWriteTime: DateTime
     IsAiProposed: bool      // LLMによる提案完了フラグ (未提案時はfalse)
+    IsAiProcessing: bool    // 現在AI提案処理中フラグ (行アニメーション表示用)
 }
+
+/// 提案データ操作ヘルパー
+module Proposal =
+    /// スキャン直後の初期リネーム候補データ生成（即時IO描画用）
+    let createInitial (candidate: ScanCandidate) : RenameProposal = {
+        OriginalFullPath = candidate.FullPath
+        OriginalFileName = candidate.FileName
+        DirectoryPath = candidate.DirectoryPath
+        OriginalLength = candidate.PathLength
+        ProposedFileName = candidate.FileName
+        ProposedLength = candidate.PathLength
+        AiComment = Some "（AI提案の開始を待機しています...）"
+        IsSelected = true
+        LastWriteTime = candidate.LastWriteTime
+        IsAiProposed = false
+        IsAiProcessing = false
+    }
 
 /// リネームUndo履歴レコード
 type UndoRecord = {

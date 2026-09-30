@@ -12,6 +12,7 @@
     <Compile Include="SettingsTests.fs" />
     <Compile Include="FileScannerTests.fs" />
     <Compile Include="FileRenamerTests.fs" />
+    <Compile Include="WebSearchClientTests.fs" />
     <Compile Include="OpenRouterClientTests.fs" />
     <Compile Include="DockerControllerTests.fs" />
     <Compile Include="StateTests.fs" />
