@@ -335,3 +335,131 @@ module SettingsTests =
             if File.Exists(filePath) then File.Delete(filePath)
             let dir = Path.GetDirectoryName(filePath)
             if Directory.Exists(dir) then Directory.Delete(dir, true)
+
+    [<Fact>]
+    let ``プロジェクト直下の appsettings.Debug.json と appsettings.Release.json は正しくデシリアライズできる`` () =
+        let rec findRoot (dir: DirectoryInfo) (depth: int) =
+            if depth <= 0 || box dir = null then None
+            else
+                let candidateDebug = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.Debug.json")
+                if File.Exists(candidateDebug) then Some dir.FullName
+                else findRoot dir.Parent (depth - 1)
+        let current = DirectoryInfo(Directory.GetCurrentDirectory())
+        let baseDir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
+        let rootDir =
+            findRoot current 8
+            |> Option.orElseWith (fun () -> findRoot baseDir 8)
+            |> Option.defaultWith (fun () -> failwith "プロジェクトルートが見つかりません")
+
+        let debugPath = Path.Combine(rootDir, "src", "TagBasedVideoManager.Renamer", "appsettings.Debug.json")
+        let releasePath = Path.Combine(rootDir, "src", "TagBasedVideoManager.Renamer", "appsettings.Release.json")
+
+        File.Exists(debugPath) |> should equal true
+        File.Exists(releasePath) |> should equal true
+
+        match Settings.load debugPath with
+        | Ok debugSettings ->
+            debugSettings.TargetDirectory |> should equal "test/videos"
+            debugSettings.PathLengthThreshold |> should equal 240
+            debugSettings.SelectedModel |> should not' (be EmptyString)
+            debugSettings.ApiKey |> should equal (Some "[API_KEY]")
+            debugSettings.Rules.Length |> should be (greaterThan 0)
+        | Error err -> failwith $"Debug settings load failed: {err}"
+
+        match Settings.load releasePath with
+        | Ok releaseSettings ->
+            releaseSettings.TargetDirectory |> should equal ""
+            releaseSettings.PathLengthThreshold |> should equal 240
+            releaseSettings.SelectedModel |> should not' (be EmptyString)
+            releaseSettings.ApiKey |> should equal None
+            releaseSettings.Rules.Length |> should be (greaterThan 0)
+        | Error err -> failwith $"Release settings load failed: {err}"
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は Debug 構成時に appsettings.Debug.json を appsettings.json より優先ロードする`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerDebugConfigTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let dummyEnvPath = Path.Combine(tempDir, ".env")
+        File.WriteAllText(dummyEnvPath, "# dummy env\n")
+
+        let baseJsonPath = Path.Combine(tempDir, "appsettings.json")
+        let debugJsonPath = Path.Combine(tempDir, "appsettings.Debug.json")
+
+        try
+            let baseJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "C:\\BaseDir"
+                    SelectedModel = "model-from-base"
+            }
+            let debugJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "C:\\DebugDir"
+                    SelectedModel = "model-from-debug"
+            }
+            Settings.save baseJsonPath baseJson |> ignore
+            Settings.save debugJsonPath debugJson |> ignore
+
+            let loaded = Settings.loadConfigurationWithConfig (Some "Debug") None (Some dummyEnvPath)
+            loaded.TargetDirectory |> should equal "C:\\DebugDir"
+            loaded.SelectedModel |> should equal "model-from-debug"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は Release 構成時に appsettings.Release.json を appsettings.json より優先ロードする`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerReleaseConfigTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let dummyEnvPath = Path.Combine(tempDir, ".env")
+        File.WriteAllText(dummyEnvPath, "# dummy env\n")
+
+        let baseJsonPath = Path.Combine(tempDir, "appsettings.json")
+        let releaseJsonPath = Path.Combine(tempDir, "appsettings.Release.json")
+
+        try
+            let baseJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "C:\\BaseDir"
+                    SelectedModel = "model-from-base"
+            }
+            let releaseJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "C:\\ReleaseDir"
+                    SelectedModel = "model-from-release"
+            }
+            Settings.save baseJsonPath baseJson |> ignore
+            Settings.save releaseJsonPath releaseJson |> ignore
+
+            let loaded = Settings.loadConfigurationWithConfig (Some "Release") None (Some dummyEnvPath)
+            loaded.TargetDirectory |> should equal "C:\\ReleaseDir"
+            loaded.SelectedModel |> should equal "model-from-release"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は 構成別ファイル不在時に appsettings.json へ安全にフォールバックする`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerFallbackConfigTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let dummyEnvPath = Path.Combine(tempDir, ".env")
+        File.WriteAllText(dummyEnvPath, "# dummy env\n")
+
+        let baseJsonPath = Path.Combine(tempDir, "appsettings.json")
+
+        try
+            let baseJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "C:\\BaseDirOnly"
+                    SelectedModel = "model-from-base-only"
+            }
+            Settings.save baseJsonPath baseJson |> ignore
+
+            // Debug構成を指定しても appsettings.Debug.json が無ければ appsettings.json をロード
+            let loadedDebug = Settings.loadConfigurationWithConfig (Some "Debug") None (Some dummyEnvPath)
+            loadedDebug.TargetDirectory |> should equal "C:\\BaseDirOnly"
+            loadedDebug.SelectedModel |> should equal "model-from-base-only"
+
+            // Release構成を指定しても appsettings.Release.json が無ければ appsettings.json をロード
+            let loadedRelease = Settings.loadConfigurationWithConfig (Some "Release") None (Some dummyEnvPath)
+            loadedRelease.TargetDirectory |> should equal "C:\\BaseDirOnly"
+            loadedRelease.SelectedModel |> should equal "model-from-base-only"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)

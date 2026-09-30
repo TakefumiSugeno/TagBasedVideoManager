@@ -118,10 +118,20 @@ module Settings =
             with _ -> Map.empty
 
     /// <summary>
-    /// 外部ファイル（appsettings.json / .env）を統合ロードする
-    /// 優先順位: appsettings.json > .env > 組み込み既定値（※OS環境変数は参照しない）
+    /// コンパイル時シンボルに基づく既定の構成名（Debug または Release）
     /// </summary>
-    let loadConfiguration (jsonPathOpt: string option) (envPathOpt: string option) : RenamerSettings =
+    let defaultConfigurationName =
+#if DEBUG
+        "Debug"
+#else
+        "Release"
+#endif
+
+    /// <summary>
+    /// ビルド構成名を指定して外部ファイル（appsettings.{Configuration}.json / appsettings.json / .env）を統合ロードする
+    /// 優先順位: appsettings.{Configuration}.json > appsettings.json > .env > 組み込み既定値
+    /// </summary>
+    let loadConfigurationWithConfig (configNameOpt: string option) (jsonPathOpt: string option) (envPathOpt: string option) : RenamerSettings =
         let baseSettings = defaultSettings ()
         let envMap = parseDotEnv envPathOpt
 
@@ -222,6 +232,13 @@ module Settings =
                 interimSettings
         | None ->
             interimSettings
+
+    /// <summary>
+    /// 外部ファイル（appsettings.json / .env）を統合ロードする（既定のビルド構成を使用）
+    /// 優先順位: appsettings.{Configuration}.json > appsettings.json > .env > 組み込み既定値
+    /// </summary>
+    let loadConfiguration (jsonPathOpt: string option) (envPathOpt: string option) : RenamerSettings =
+        loadConfigurationWithConfig (Some defaultConfigurationName) jsonPathOpt envPathOpt
 
     /// <summary>
     /// 設定ファイル（appsettings.json）の保存先パスを決定する
