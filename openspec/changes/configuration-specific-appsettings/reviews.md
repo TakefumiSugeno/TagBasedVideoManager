@@ -85,3 +85,29 @@
 
 - **LGTM**: true
 - **次のアクション**: タスク 1.2 へ進む
+
+---
+
+# レビュー記録: configuration-specific-appsettings / apply / 1.2
+
+- **日時**: 2026-10-01
+- **フェーズ**: apply
+- **タスク**: 1.2 `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj` に MSBuild の構成別コピー定義を追加し、`dotnet build -c Debug` および `dotnet build -c Release` 実行時に各出力ディレクトリへ正しく配置されることを検証する
+- **レビュアー**: PG Agent
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj`
+
+## チェックリスト結果
+
+| #   | 観点                                        | 判定 | コメント                                                                                                                    |
+| --- | ------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 設計書（`design.md`）と実装が整合しているか | ✅   | `design.md` の条件分岐および共通フォールバック配置が正確に実装されている                                                   |
+| 2   | インターフェース・データ構造が設計通りか    | ✅   | MSBuild 標準の Content / CopyToOutputDirectory 構造に準拠                                                                   |
+| 3   | 依存関係の方向性・責務分離が適切か          | ✅   | ビルド設定としてプロジェクトファイル内に完結している                                                                        |
+| 4   | 命名規則・コード品質                        | ✅   | XMLの構造・インデントが既存ファイルと整合している                                                                          |
+| 5   | 境界値・異常系・エラー処理                  | ✅   | 実機ビルドにより Debug 時に `appsettings.Debug.json`、Release 時に `appsettings.Release.json` のみが配置されることを検証済み |
+| 6   | フォーマット・規約                          | ✅   | XML構文・スキーマに問題なし                                                                                                 |
+
+## 判定
+
+- **LGTM**: true
+- **次のアクション**: タスク 2.1 へ進む

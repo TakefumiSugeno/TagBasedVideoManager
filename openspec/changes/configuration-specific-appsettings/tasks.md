@@ -3,7 +3,7 @@
 ## 1. 構成別設定ファイルの作成とビルド設定
 
 - [x] 1.1 `src/TagBasedVideoManager.Renamer/appsettings.Debug.json` および `appsettings.Release.json` を作成し、JSON構造が `RenamerSettings` と適合することを検証する
-- [ ] 1.2 `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj` に MSBuild の構成別コピー定義を追加し、`dotnet build -c Debug` および `dotnet build -c Release` 実行時に各出力ディレクトリへ正しく配置されることを検証する
+- [x] 1.2 `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj` に MSBuild の構成別コピー定義を追加し、`dotnet build -c Debug` および `dotnet build -c Release` 実行時に各出力ディレクトリへ正しく配置されることを検証する
 
 ## 2. 構成別設定読み込みのテスト先行作成 (TDD: Red)
 
