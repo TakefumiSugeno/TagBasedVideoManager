@@ -59,3 +59,29 @@
 
 - **LGTM**: true
 - **次のアクション**: Propose完了・ユーザー合意および Apply フェーズへ進行可能
+
+---
+
+# レビュー記録: configuration-specific-appsettings / apply / 1.1
+
+- **日時**: 2026-10-01
+- **フェーズ**: apply
+- **タスク**: 1.1 `src/TagBasedVideoManager.Renamer/appsettings.Debug.json` および `appsettings.Release.json` を作成し、JSON構造が `RenamerSettings` と適合することを検証する
+- **レビュアー**: PG Agent
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/appsettings.Debug.json`, `src/TagBasedVideoManager.Renamer/appsettings.Release.json`
+
+## チェックリスト結果
+
+| #   | 観点                                        | 判定 | コメント                                                                                                                    |
+| --- | ------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 設計書（`design.md`）と実装が整合しているか | ✅   | `design.md` の設計方針通り、Debug用（テストパス `test/videos` 等）とRelease用（空パス、nullキー等）が意図通りに定義されている |
+| 2   | インターフェース・データ構造が設計通りか    | ✅   | `RenamerSettings` および `NamingRule` の各フィールド定義と完全一致している                                                 |
+| 3   | 依存関係の方向性・責務分離が適切か          | ✅   | 静的構成ファイルとして単一責務で独立配置されている                                                                         |
+| 4   | 命名規則・コード品質                        | ✅   | .NET 標準の `appsettings.{Configuration}.json` 形式に準拠し CamelCase で統一されている                                     |
+| 5   | 境界値・異常系・エラー処理                  | ✅   | Release構成での `apiKey: null` や空文字パスが正しく表現されている                                                          |
+| 6   | フォーマット・規約                          | ✅   | Prettier によるフォーマット済み                                                                                             |
+
+## 判定
+
+- **LGTM**: true
+- **次のアクション**: タスク 1.2 へ進む
