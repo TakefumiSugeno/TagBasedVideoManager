@@ -12,8 +12,8 @@
 
 ## 3. Settings.fs の階層オーバーライドマージ実装とリファクタ (TDD: Green & Refactor)
 
-- [ ] 3.1 `src/TagBasedVideoManager.Renamer/Settings.fs` に環境名解決および `appsettings.json` + `appsettings.{Environment}.json` のキー単位オーバーライドマージロジックを実装し、テストをすべて通過（Green）させる
-- [ ] 3.2 コードのリファクタと自動フォーマット（`dotnet format` / `npx prettier`）を実施し、全テスト Green を維持する
+- [x] 3.1 `src/TagBasedVideoManager.Renamer/Settings.fs` に環境名解決および `appsettings.json` + `appsettings.{Environment}.json` のキー単位オーバーライドマージロジックを実装し、テストをすべて通過（Green）させる
+- [x] 3.2 コードのリファクタと自動フォーマット（`dotnet format` / `npx prettier`）を実施し、全テスト Green を維持する
 
 ## 4. 全体検証とエビデンス取得
 

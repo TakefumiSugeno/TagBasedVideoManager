@@ -246,31 +246,30 @@ module SettingsTests =
 
     [<Fact>]
     let ``loadConfiguration は AppData にファイルがあってもプロジェクト直下の構成別設定ファイルを優先ロードする`` () =
-        // 引数なし loadConfiguration None None の実行時に、プロジェクト直下の構成別設定ファイル（Debug構成時は appsettings.Debug.json）がロードされることを検証
+        // 引数なし loadConfiguration None None の実行時に、プロジェクト直下の環境別設定ファイル（Debug構成時は appsettings.Development.json）がオーバーライドマージされることを検証
         let loaded = Settings.loadConfiguration None None
         // プロジェクト直下の設定がロードされていること
         let rec findRoot (dir: DirectoryInfo) (depth: int) =
             if depth <= 0 || box dir = null then None
             else
-                let candidateDebug = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.Debug.json")
-                let candidateBase = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.json")
-                if File.Exists(candidateDebug) then Some candidateDebug
-                elif File.Exists(candidateBase) then Some candidateBase
+                let candidateDev = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
+                if File.Exists(candidateDev) then Some dir.FullName
                 else findRoot dir.Parent (depth - 1)
         let current = DirectoryInfo(Directory.GetCurrentDirectory())
         let baseDir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
-        let projJsonPath =
+        let rootDir =
             findRoot current 8
             |> Option.orElseWith (fun () -> findRoot baseDir 8)
-            |> Option.defaultWith (fun () -> failwith "src/TagBasedVideoManager.Renamer/appsettings.(Debug.)json が見つかりません")
+            |> Option.defaultWith (fun () -> failwith "src/TagBasedVideoManager.Renamer/appsettings.Development.json が見つかりません")
 
-        let projJson = Settings.load projJsonPath
-        match projJson with
+        let devJsonPath = Path.Combine(rootDir, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
+        let devJson = Settings.load devJsonPath
+        match devJson with
         | Ok expected ->
             loaded.TargetDirectory |> should equal expected.TargetDirectory
             loaded.SelectedModel |> should equal expected.SelectedModel
             loaded.ApiKey |> should equal expected.ApiKey
-        | Error err -> failwith $"Project json load failed: {err}"
+        | Error err -> failwith $"Project dev json load failed: {err}"
 
     [<Fact>]
     let ``save と load は NamingRule の EnableWebSearch フラグを正しく永続化・復元できる`` () =

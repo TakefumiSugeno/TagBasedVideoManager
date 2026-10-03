@@ -130,3 +130,31 @@
 
 - **LGTM**: true
 - **次のアクション**: タスク 3.1 へ進む
+
+---
+
+# レビュー記録: configuration-specific-appsettings / apply / 3.1 & 3.2
+
+- **日時**: 2026-10-03
+- **フェーズ**: apply
+- **タスク**:
+  - 3.1 `src/TagBasedVideoManager.Renamer/Settings.fs` に環境名解決および `appsettings.json` + `appsettings.{Environment}.json` のキー単位オーバーライドマージロジックを実装し、テストをすべて通過（Green）させる
+  - 3.2 コードのリファクタと自動フォーマット（`dotnet format` / `npx prettier`）を実施し、全テスト Green を維持する
+- **レビュアー**: PG Agent
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/Settings.fs`
+
+## チェックリスト結果
+
+| #   | 観点                                        | 判定 | コメント                                                                                                                  |
+| --- | ------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 設計書（`design.md`）と実装が整合しているか | ✅   | `DOTNET_ENVIRONMENT` > `ASPNETCORE_ENVIRONMENT` > `#if DEBUG` の優先解決、およびベース + 環境別 + .env の階層マージフロー |
+| 2   | インターフェース・データ構造が設計通りか    | ✅   | `JsonDocument` による安全なプロパティ探索と内部レコード `PartialSettings`（`ApiKey: string option option` の三値表現）    |
+| 3   | 依存関係の方向性・責務分離が適切か          | ✅   | `Domain.fs` のドメインモデルにのみ依存し設定探索・読み込み・マージ責務が完結                                              |
+| 4   | 命名規則・コード品質                        | ✅   | F# 慣習に則った明瞭な命名、`pickValue` 等のヘルパー分割による DRY 化                                                      |
+| 5   | 境界値・異常系・エラー処理                  | ✅   | 不正構文やファイル不在時の安全なフォールバック、null/空文字の適切なハンドリング                                           |
+| 6   | フォーマット・規約                          | ✅   | XMLドキュメントコメント、Prettier による設定ファイル整形、全91テスト（SettingsTests 23件含む）Pass                        |
+
+## 判定
+
+- **LGTM**: true
+- **次のアクション**: タスク 4.1 へ進む
