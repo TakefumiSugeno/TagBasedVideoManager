@@ -7,8 +7,8 @@
 
 ## 2. 階層オーバーライドマージのテスト先行作成 (TDD: Red)
 
-- [ ] 2.1 `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` に、`Development` / `Production` 各環境での `appsettings.{Environment}.json` によるキー単位オーバーライドマージ、未定義キーのベース値維持、環境別ファイル不在時の単独動作を検証する仕様妥当性テストを作成し、Red を確認する
-- [ ] 2.2 `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` に、環境変数（`DOTNET_ENVIRONMENT` / `ASPNETCORE_ENVIRONMENT`）解決や明示パス指定、.env補完の回帰テストを追加・整備する
+- [x] 2.1 `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` に、`Development` / `Production` 各環境での `appsettings.{Environment}.json` によるキー単位オーバーライドマージ、未定義キーのベース値維持、環境別ファイル不在時の単独動作を検証する仕様妥当性テストを作成し、Red を確認する
+- [x] 2.2 `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` に、環境変数（`DOTNET_ENVIRONMENT` / `ASPNETCORE_ENVIRONMENT`）解決や明示パス指定、.env補完の回帰テストを追加・整備する
 
 ## 3. Settings.fs の階層オーバーライドマージ実装とリファクタ (TDD: Green & Refactor)
 

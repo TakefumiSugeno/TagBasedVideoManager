@@ -128,6 +128,11 @@ module Settings =
 #endif
 
     /// <summary>
+    /// 実行時の環境名（Development / Production 等）を解決するスタブ
+    /// </summary>
+    let resolveEnvironmentName () : string = ""
+
+    /// <summary>
     /// ビルド構成名を指定して外部ファイル（appsettings.{Configuration}.json / appsettings.json / .env）を統合ロードする
     /// 優先順位: appsettings.{Configuration}.json > appsettings.json > .env > 組み込み既定値
     /// </summary>
