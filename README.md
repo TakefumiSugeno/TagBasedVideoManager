@@ -142,24 +142,34 @@ docker compose up -d --build
 
 ### 4. AI File Renamer の構成設定 (`appsettings.json` / `.env`)
 
-AI File Renamer は .NET 標準の構成ファイル `appsettings.json` または環境変数 (`.env`) から各種設定を読み込みます。
+AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベース構成ファイル `appsettings.json` および環境別設定ファイル `appsettings.{Environment}.json`（`appsettings.Development.json` や `appsettings.Production.json` 等）、ならびに環境設定ファイル (`.env`) から各種設定を読み込み・マージします。
 
-#### (1) 設定読み込みの探索優先順位
+#### (1) 環境名の解決と階層オーバーライドマージ
+
+- **環境名の解決順序**:
+  1. OS 環境変数 `DOTNET_ENVIRONMENT`
+  2. OS 環境変数 `ASPNETCORE_ENVIRONMENT`
+  3. コンパイル時ビルド構成（Debug ビルド時は `Development`、Release ビルド時は `Production`）
+- **階層マージ**:
+  ベースとなる `appsettings.json` を読み込んだ上で、該当する環境別設定ファイル（例: `appsettings.Development.json`）が存在する場合、キー単位でオーバーライドマージされます（環境別ファイルで未定義のキーはベース値が維持されます）。
+  さらに `.env` が存在する場合は指定されたキーが最終的にオーバーライドされます。
+
+#### (2) 設定読み込みの探索優先順位
 
 1. **ユーザー個別設定**: `%APPDATA%\TagBasedVideoManager\appsettings.json` (Windows: `C:\Users\<UserName>\AppData\Roaming\TagBasedVideoManager\appsettings.json`)
-2. **カレントディレクトリ**: `./appsettings.json`
-3. **アプリケーション実行ディレクトリ**: `{AppDirectory}\appsettings.json` (ポータブル運用向け)
+2. **カレントディレクトリ**: `./appsettings.json` および `./appsettings.{Environment}.json`
+3. **アプリケーション実行ディレクトリ**: `{AppDirectory}\appsettings.json` および `{AppDirectory}\appsettings.{Environment}.json` (ポータブル運用向け)
 4. **環境設定ファイル**: `.env` (上記 `VIDEO_DIR`, `OPENROUTER_API_KEY` 等)
 5. **組み込み既定値**
 
-※**OS環境変数の非参照**: システム全体や別アプリケーションの意図しない環境変数が混入・干渉することを防ぐため、OS環境変数は直接参照しません。設定は構成ファイル（`appsettings.json`）またはプロジェクト/カレントの `.env` ファイルに定義してください。
+※**OS環境変数の非参照**: システム全体や別アプリケーションの意図しない環境変数が混入・干渉することを防ぐため、設定値そのものはOS環境変数から直接参照しません（環境名指定用 `DOTNET_ENVIRONMENT` / `ASPNETCORE_ENVIRONMENT` を除く）。設定は構成ファイル（`appsettings*.json`）またはプロジェクト/カレントの `.env` ファイルに定義してください。
 
-#### (2) 設定ファイルの保存先パス決定ロジック
+#### (3) 設定ファイルの保存先パス決定ロジック
 
 - アプリケーション実行ディレクトリに既に `appsettings.json` が配置されている場合、そのファイルを直接上書き更新します（ポータブル運用の維持）。
 - 配置されていない場合、アクセス権限エラー（Program Files 配下等）を防止するため、ユーザープロファイル配下（`%APPDATA%\TagBasedVideoManager\appsettings.json`）にディレクトリを自動作成して安全に保存します。
 
-#### (3) `appsettings.json` の書式例
+#### (4) `appsettings.json` の書式例
 
 ```json
 {
@@ -187,7 +197,7 @@ AI File Renamer は .NET 標準の構成ファイル `appsettings.json` また�
 ※`NamingRules` の先頭に定義されたルールが起動時の既定ルールとして自動適用されます。
 ※`OpenRouterApiKey` が未設定または空文字の場合、AIファイル名の自動提案は行われず「未提案」状態（元のファイル名維持）で安全に起動します。
 
-#### (4) `.env` 環境変数との対応表
+#### (5) `.env` 環境変数との対応表
 
 | 環境変数名              | appsettings.json キー | 既定値                                            | 説明                                         |
 | :---------------------- | :-------------------- | :------------------------------------------------ | :------------------------------------------- |
