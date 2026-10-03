@@ -51,3 +51,55 @@
 
 - **LGTM**: true
 - **次のアクション**: Propose合意完了、Apply フェーズへ進行可能
+
+---
+
+# レビュー記録: configuration-specific-appsettings / apply / 1.1
+
+- **日時**: 2026-10-03
+- **フェーズ**: apply
+- **タスク**: 1.1 `src/TagBasedVideoManager.Renamer/appsettings.Development.json` および `appsettings.Production.json` を作成し、旧Debug/Release設定から移行・削除して JSON 構造を適合させる
+- **レビュアー**: PG Agent
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/appsettings.Development.json`, `src/TagBasedVideoManager.Renamer/appsettings.Production.json`
+
+## チェックリスト結果
+
+| #   | 観点                                        | 判定 | コメント                                                                                                     |
+| --- | ------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------ |
+| 1   | 設計書（`design.md`）と実装が整合しているか | ✅   | `appsettings.Development.json` と `appsettings.Production.json` が配置され旧ファイルから正しく移行・削除     |
+| 2   | インターフェース・データ構造が設計通りか    | ✅   | `Domain.fs` の `RenamerSettings` および `NamingRule` の各フィールド定義と完全一致                            |
+| 3   | 依存関係の方向性・責務分離が適切か          | ✅   | ベース設定と環境固有設定の役割が明確に分離されている                                                         |
+| 4   | 命名規則・コード品質                        | ✅   | .NET 標準の環境名規約（`Development` / `Production`）に準拠したファイル名および camelCase プロパティ名で統一 |
+| 5   | 境界値・異常系・エラー処理                  | ✅   | Production 設定で `apiKey` を null、`targetDirectory` を空文字に設定し初期境界値が適切に表現されている       |
+| 6   | フォーマット・規約                          | ✅   | Prettier によるフォーマット済み                                                                              |
+
+## 判定
+
+- **LGTM**: true
+- **次のアクション**: タスク 1.2 へ進む
+
+---
+
+# レビュー記録: configuration-specific-appsettings / apply / 1.2
+
+- **日時**: 2026-10-03
+- **フェーズ**: apply
+- **タスク**: 1.2 `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj` のビルド定義を修正し、`appsettings*.json` がビルド時にすべて出力ディレクトリへ配置されるようにする
+- **レビュアー**: PG Agent
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj`
+
+## チェックリスト結果
+
+| #   | 観点                                        | 判定 | コメント                                                                                                                                            |
+| --- | ------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 設計書（`design.md`）と実装が整合しているか | ✅   | `design.md` の MSBuild 定義（`<Content Include="appsettings*.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>`）と一致 |
+| 2   | インターフェース・データ構造が設計通りか    | ✅   | MSBuild プロジェクト構成として標準的な glob パターンで記述されている                                                                                |
+| 3   | 依存関係の方向性・責務分離が適切か          | ✅   | 出力アセットの配置管理責務がプロジェクトファイル内で適切に定義され、特定構成分岐が解消されている                                                    |
+| 4   | 命名規則・コード品質                        | ✅   | MSBuild 標準タグおよび .NET 標準のファイルパターン（`appsettings*.json`）が用いられ極めて明瞭                                                       |
+| 5   | 境界値・異常系・エラー処理                  | ✅   | Debug / Release いずれのビルドでも `appsettings.json`, `appsettings.Development.json`, `appsettings.Production.json` が配置されることを実機確認済み |
+| 6   | フォーマット・規約                          | ✅   | XML のインデント・構文が既存ファイルと完全に整合                                                                                                    |
+
+## 判定
+
+- **LGTM**: true
+- **次のアクション**: タスク 2.1 へ進む

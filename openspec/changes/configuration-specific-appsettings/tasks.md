@@ -2,8 +2,8 @@
 
 ## 1. 環境別設定ファイルの作成とビルド設定
 
-- [ ] 1.1 `src/TagBasedVideoManager.Renamer/appsettings.Development.json` および `appsettings.Production.json` を作成し、旧Debug/Release設定から移行・削除して JSON 構造を適合させる
-- [ ] 1.2 `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj` のビルド定義を修正し、`appsettings*.json` がビルド時にすべて出力ディレクトリへ配置されるようにする
+- [x] 1.1 `src/TagBasedVideoManager.Renamer/appsettings.Development.json` および `appsettings.Production.json` を作成し、旧Debug/Release設定から移行・削除して JSON 構造を適合させる
+- [x] 1.2 `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj` のビルド定義を修正し、`appsettings*.json` がビルド時にすべて出力ディレクトリへ配置されるようにする
 
 ## 2. 階層オーバーライドマージのテスト先行作成 (TDD: Red)
 
