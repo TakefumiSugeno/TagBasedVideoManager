@@ -1,20 +1,20 @@
 # Tasks: configuration-specific-appsettings
 
-## 1. 構成別設定ファイルの作成とビルド設定
+## 1. 環境別設定ファイルの作成とビルド設定
 
-- [x] 1.1 `src/TagBasedVideoManager.Renamer/appsettings.Debug.json` および `appsettings.Release.json` を作成し、JSON構造が `RenamerSettings` と適合することを検証する
-- [x] 1.2 `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj` に MSBuild の構成別コピー定義を追加し、`dotnet build -c Debug` および `dotnet build -c Release` 実行時に各出力ディレクトリへ正しく配置されることを検証する
+- [ ] 1.1 `src/TagBasedVideoManager.Renamer/appsettings.Development.json` および `appsettings.Production.json` を作成し、旧Debug/Release設定から移行・削除して JSON 構造を適合させる
+- [ ] 1.2 `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj` のビルド定義を修正し、`appsettings*.json` がビルド時にすべて出力ディレクトリへ配置されるようにする
 
-## 2. 構成別設定読み込みのテスト先行作成 (TDD: Red)
+## 2. 階層オーバーライドマージのテスト先行作成 (TDD: Red)
 
-- [x] 2.1 `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` に、構成名（Debug/Release）に応じた `appsettings.{Configuration}.json` 優先読み込みおよび `appsettings.json` へのフォールバックを検証する仕様妥当性検証テストを作成し、意図通りテストが失敗（Red）することを確認する
-- [x] 2.2 `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` に、既存の明示パス指定・.env読み込み・AppDataフォールバック動作が壊れていないことを保証する回帰テストを追加・整備する
+- [ ] 2.1 `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` に、`Development` / `Production` 各環境での `appsettings.{Environment}.json` によるキー単位オーバーライドマージ、未定義キーのベース値維持、環境別ファイル不在時の単独動作を検証する仕様妥当性テストを作成し、Red を確認する
+- [ ] 2.2 `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` に、環境変数（`DOTNET_ENVIRONMENT` / `ASPNETCORE_ENVIRONMENT`）解決や明示パス指定、.env補完の回帰テストを追加・整備する
 
-## 3. Settings.fs の構成別読み込み実装とリファクタ (TDD: Green & Refactor)
+## 3. Settings.fs の階層オーバーライドマージ実装とリファクタ (TDD: Green & Refactor)
 
-- [x] 3.1 `src/TagBasedVideoManager.Renamer/Settings.fs` にコンパイル時ビルド構成判定および構成別ファイル（`appsettings.{Configuration}.json`）の優先探索・フォールバック処理を実装し、作成したテストをすべて通過（Green）させる
-- [x] 3.2 `Settings.fs` のファイル探索処理をリファクタしてDRYを徹底し、自動フォーマット（`dotnet format`）を実行して全テストがGreenを維持することを確認する
+- [ ] 3.1 `src/TagBasedVideoManager.Renamer/Settings.fs` に環境名解決および `appsettings.json` + `appsettings.{Environment}.json` のキー単位オーバーライドマージロジックを実装し、テストをすべて通過（Green）させる
+- [ ] 3.2 コードのリファクタと自動フォーマット（`dotnet format` / `npx prettier`）を実施し、全テスト Green を維持する
 
 ## 4. 全体検証とエビデンス取得
 
-- [x] 4.1 `dotnet test` を実行して全単体テストが通過することを確認し、TRXテストレポートを出力して検証する
+- [ ] 4.1 全単体テストを実行して 100% 通過することを確認し、TRXテストレポートおよびカバレッジレポートを出力して検証する
