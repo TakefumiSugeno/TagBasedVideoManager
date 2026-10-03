@@ -245,30 +245,31 @@ module SettingsTests =
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
     [<Fact>]
-    let ``loadConfiguration は AppData にファイルがあってもプロジェクト直下の appsettings.json を優先ロードする`` () =
-        // 引数なし loadConfiguration None None の実行時に、プロジェクトの appsettings.json がロードされることを検証
+    let ``loadConfiguration は AppData にファイルがあってもプロジェクト直下の構成別設定ファイルを優先ロードする`` () =
+        // 引数なし loadConfiguration None None の実行時に、プロジェクト直下の環境別設定ファイル（Debug構成時は appsettings.Development.json）がオーバーライドマージされることを検証
         let loaded = Settings.loadConfiguration None None
-        // ユーザーが更新した設定（またはプロジェクト直下の設定）がロードされていること
+        // プロジェクト直下の設定がロードされていること
         let rec findRoot (dir: DirectoryInfo) (depth: int) =
             if depth <= 0 || box dir = null then None
             else
-                let candidate = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.json")
-                if File.Exists(candidate) then Some candidate
+                let candidateDev = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
+                if File.Exists(candidateDev) then Some dir.FullName
                 else findRoot dir.Parent (depth - 1)
         let current = DirectoryInfo(Directory.GetCurrentDirectory())
         let baseDir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
-        let projJsonPath =
+        let rootDir =
             findRoot current 8
             |> Option.orElseWith (fun () -> findRoot baseDir 8)
-            |> Option.defaultWith (fun () -> failwith "src/TagBasedVideoManager.Renamer/appsettings.json が見つかりません")
+            |> Option.defaultWith (fun () -> failwith "src/TagBasedVideoManager.Renamer/appsettings.Development.json が見つかりません")
 
-        let projJson = Settings.load projJsonPath
-        match projJson with
+        let devJsonPath = Path.Combine(rootDir, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
+        let devJson = Settings.load devJsonPath
+        match devJson with
         | Ok expected ->
             loaded.TargetDirectory |> should equal expected.TargetDirectory
             loaded.SelectedModel |> should equal expected.SelectedModel
             loaded.ApiKey |> should equal expected.ApiKey
-        | Error err -> failwith $"Project json load failed: {err}"
+        | Error err -> failwith $"Project dev json load failed: {err}"
 
     [<Fact>]
     let ``save と load は NamingRule の EnableWebSearch フラグを正しく永続化・復元できる`` () =
@@ -335,3 +336,254 @@ module SettingsTests =
             if File.Exists(filePath) then File.Delete(filePath)
             let dir = Path.GetDirectoryName(filePath)
             if Directory.Exists(dir) then Directory.Delete(dir, true)
+
+    [<Fact>]
+    let ``プロジェクト直下の appsettings.Development.json と appsettings.Production.json は正しくデシリアライズできる`` () =
+        let rec findRoot (dir: DirectoryInfo) (depth: int) =
+            if depth <= 0 || box dir = null then None
+            else
+                let candidateDev = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
+                if File.Exists(candidateDev) then Some dir.FullName
+                else findRoot dir.Parent (depth - 1)
+        let current = DirectoryInfo(Directory.GetCurrentDirectory())
+        let baseDir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
+        let rootDir =
+            findRoot current 8
+            |> Option.orElseWith (fun () -> findRoot baseDir 8)
+            |> Option.defaultWith (fun () -> failwith "プロジェクトルートが見つかりません")
+
+        let devPath = Path.Combine(rootDir, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
+        let prodPath = Path.Combine(rootDir, "src", "TagBasedVideoManager.Renamer", "appsettings.Production.json")
+
+        File.Exists(devPath) |> should equal true
+        File.Exists(prodPath) |> should equal true
+
+        match Settings.load devPath with
+        | Ok devSettings ->
+            devSettings.TargetDirectory |> should equal "test/videos"
+            devSettings.PathLengthThreshold |> should equal 240
+            devSettings.SelectedModel |> should not' (be EmptyString)
+            devSettings.ApiKey |> should equal (Some "[API_KEY]")
+            devSettings.Rules.Length |> should be (greaterThan 0)
+        | Error err -> failwith $"Development settings load failed: {err}"
+
+        match Settings.load prodPath with
+        | Ok prodSettings ->
+            prodSettings.TargetDirectory |> should equal ""
+            prodSettings.PathLengthThreshold |> should equal 240
+            prodSettings.SelectedModel |> should not' (be EmptyString)
+            prodSettings.ApiKey |> should equal None
+            prodSettings.Rules.Length |> should be (greaterThan 0)
+        | Error err -> failwith $"Production settings load failed: {err}"
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は Development 環境時に appsettings.Development.json で appsettings.json をオーバーライドマージする`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerDevMergeTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let dummyEnvPath = Path.Combine(tempDir, ".env")
+        File.WriteAllText(dummyEnvPath, "# dummy env\n")
+
+        let baseJsonPath = Path.Combine(tempDir, "appsettings.json")
+        let devJsonPath = Path.Combine(tempDir, "appsettings.Development.json")
+
+        try
+            // ベース設定: TargetDirectory="C:\\BaseDir", SelectedModel="base-model", PathLengthThreshold=210
+            let baseJson = """
+            {
+              "targetDirectory": "C:\\BaseDir",
+              "pathLengthThreshold": 210,
+              "selectedModel": "base-model",
+              "apiKey": "base-key"
+            }
+            """
+            // Developmentオーバーライド: TargetDirectory="C:\\DevDir", SelectedModel="dev-model" (PathLengthThresholdは未指定)
+            let devJson = """
+            {
+              "targetDirectory": "C:\\DevDir",
+              "selectedModel": "dev-model"
+            }
+            """
+            File.WriteAllText(baseJsonPath, baseJson)
+            File.WriteAllText(devJsonPath, devJson)
+
+            let loaded = Settings.loadConfigurationWithConfig (Some "Development") None (Some dummyEnvPath)
+            // オーバーライドされたキーの検証
+            loaded.TargetDirectory |> should equal "C:\\DevDir"
+            loaded.SelectedModel |> should equal "dev-model"
+            // ベース設定から維持されたキーの検証（部分オーバーライド・階層マージ）
+            loaded.PathLengthThreshold |> should equal 210
+            loaded.ApiKey |> should equal (Some "base-key")
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は Production 環境時に appsettings.Production.json で appsettings.json をオーバーライドマージする`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerProdMergeTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let dummyEnvPath = Path.Combine(tempDir, ".env")
+        File.WriteAllText(dummyEnvPath, "# dummy env\n")
+
+        let baseJsonPath = Path.Combine(tempDir, "appsettings.json")
+        let prodJsonPath = Path.Combine(tempDir, "appsettings.Production.json")
+
+        try
+            let baseJson = """
+            {
+              "targetDirectory": "C:\\BaseDir",
+              "pathLengthThreshold": 210,
+              "selectedModel": "base-model",
+              "apiKey": "base-key"
+            }
+            """
+            // Productionオーバーライド: TargetDirectory="" (空文字上書き), apiKey=null (明示的null上書き)
+            let prodJson = """
+            {
+              "targetDirectory": "",
+              "apiKey": null
+            }
+            """
+            File.WriteAllText(baseJsonPath, baseJson)
+            File.WriteAllText(prodJsonPath, prodJson)
+
+            let loaded = Settings.loadConfigurationWithConfig (Some "Production") None (Some dummyEnvPath)
+            loaded.TargetDirectory |> should equal ""
+            loaded.ApiKey |> should equal None
+            // 未指定キーはベースが維持されること
+            loaded.SelectedModel |> should equal "base-model"
+            loaded.PathLengthThreshold |> should equal 210
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は 環境別ファイル不在時に appsettings.json へ安全にフォールバックする`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerFallbackConfigTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let dummyEnvPath = Path.Combine(tempDir, ".env")
+        File.WriteAllText(dummyEnvPath, "# dummy env\n")
+
+        let baseJsonPath = Path.Combine(tempDir, "appsettings.json")
+
+        try
+            let baseJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "C:\\BaseDirOnly"
+                    SelectedModel = "model-from-base-only"
+                    PathLengthThreshold = 225
+            }
+            Settings.save baseJsonPath baseJson |> ignore
+
+            // Development指定でも appsettings.Development.json が無ければ appsettings.json をロード
+            let loadedDev = Settings.loadConfigurationWithConfig (Some "Development") None (Some dummyEnvPath)
+            loadedDev.TargetDirectory |> should equal "C:\\BaseDirOnly"
+            loadedDev.SelectedModel |> should equal "model-from-base-only"
+            loadedDev.PathLengthThreshold |> should equal 225
+
+            // Production指定でも appsettings.Production.json が無ければ appsettings.json をロード
+            let loadedProd = Settings.loadConfigurationWithConfig (Some "Production") None (Some dummyEnvPath)
+            loadedProd.TargetDirectory |> should equal "C:\\BaseDirOnly"
+            loadedProd.SelectedModel |> should equal "model-from-base-only"
+            loadedProd.PathLengthThreshold |> should equal 225
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は明示指定パス (jsonPathOpt) を構成別設定よりも最優先する`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerExplicitPathTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let dummyEnvPath = Path.Combine(tempDir, ".env")
+        File.WriteAllText(dummyEnvPath, "# dummy env\n")
+
+        let devJsonPath = Path.Combine(tempDir, "appsettings.Development.json")
+        let explicitJsonPath = Path.Combine(tempDir, "custom-explicit.json")
+
+        try
+            let devJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "C:\\DevConfigDir"
+                    SelectedModel = "model-dev"
+            }
+            let explicitJson = {
+                Settings.defaultSettings () with
+                    TargetDirectory = "C:\\ExplicitDir"
+                    SelectedModel = "model-explicit"
+            }
+            Settings.save devJsonPath devJson |> ignore
+            Settings.save explicitJsonPath explicitJson |> ignore
+
+            // 明示パスを指定した場合、Development環境であっても explicitJson が最優先されること
+            let loaded = Settings.loadConfigurationWithConfig (Some "Development") (Some explicitJsonPath) (Some dummyEnvPath)
+            loaded.TargetDirectory |> should equal "C:\\ExplicitDir"
+            loaded.SelectedModel |> should equal "model-explicit"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は構成別設定と .env の併存時に構成別JSONを優先し未定義項目を .env から補完する`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerEnvCoexistTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let envPath = Path.Combine(tempDir, ".env")
+        File.WriteAllLines(envPath, [
+            "VIDEO_DIR=E:\\FromEnvDir"
+            "OPENROUTER_API_KEY=key-from-env"
+        ])
+
+        let baseJsonPath = Path.Combine(tempDir, "appsettings.json")
+        let devJsonPath = Path.Combine(tempDir, "appsettings.Development.json")
+
+        try
+            let baseJson = """
+            {
+              "pathLengthThreshold": 200
+            }
+            """
+            let devJson = """
+            {
+              "targetDirectory": "D:\\FromDevJson",
+              "selectedModel": "model-from-dev-json"
+            }
+            """
+            File.WriteAllText(baseJsonPath, baseJson)
+            File.WriteAllText(devJsonPath, devJson)
+
+            // Development構成下で、appsettings.json + appsettings.Development.json + .env が存在する場合
+            // TargetDirectory は Development JSON 優先
+            // ApiKey は JSON 未指定のため .env から補完
+            // PathLengthThreshold は baseJson から継承
+            let loaded = Settings.loadConfigurationWithConfig (Some "Development") None (Some envPath)
+            loaded.TargetDirectory |> should equal "D:\\FromDevJson"
+            loaded.ApiKey |> should equal (Some "key-from-env")
+            loaded.SelectedModel |> should equal "model-from-dev-json"
+            loaded.PathLengthThreshold |> should equal 200
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``resolveEnvironmentName は環境変数を最優先し未設定時はコンパイル構成にフォールバックする`` () =
+        // 既存の環境変数を退避
+        let origDotnet = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+        let origAspnet = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+        try
+            // 1. DOTNET_ENVIRONMENT 優先
+            Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", "Staging")
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development")
+            Settings.resolveEnvironmentName () |> should equal "Staging"
+
+            // 2. ASPNETCORE_ENVIRONMENT 優先（DOTNET_ENVIRONMENT が空の場合）
+            Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", null)
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "CustomEnv")
+            Settings.resolveEnvironmentName () |> should equal "CustomEnv"
+
+            // 3. 両方未設定時はコンパイル時シンボル (#if DEBUG なら Development, それ以外は Production)
+            Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", null)
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", null)
+            let expectedDefault =
+#if DEBUG
+                "Development"
+#else
+                "Production"
+#endif
+            Settings.resolveEnvironmentName () |> should equal expectedDefault
+        finally
+            Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", origDotnet)
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", origAspnet)
+
