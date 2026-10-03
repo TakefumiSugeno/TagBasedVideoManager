@@ -59,6 +59,7 @@ context: |
 rules:
   # プロポーザル作成時のルール
   proposal:
+    - "Explore完了後、Propose開始（openspec new change）直前に必ず作業ツリー確認（必要時stash退避）を行い、最新の develop から feature/<change-name>（または fix/<change-name>）ブランチを作成・切り替える"
     - "変更の「What & Why」を簡潔に記述（500語以内推奨）"
     - "Non-goals（やらないこと）セクションを含める"
     - "Propose完了時: User Agent・SE Agentによるレビュー必須（checklist_propose.md 使用）"
@@ -107,3 +108,5 @@ operations:
       - "アーカイブ時に変更のサマリ（何が変わったか、テスト結果、レビュー指摘の対応状況）を記録する"
       - "Archive前: 全役割（User/SE/PG/QA Agent）による総括レビュー必須（checklist_archive.md 使用：テスト結果・エビデンス確認含む）"
       - "ユーザー最終合意記録後に openspec archive 実行"
+      - "Archive完了コミットを push 後、AIが GitHub CLI (gh) を用いて OpenSpec 仕様・成果物に基づく Pull Request を自動作成する"
+      - "PRのマージは Merge commit（gh pr merge --merge）で行い、マージ後に作業完了したローカルブランチを削除する"

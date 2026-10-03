@@ -94,11 +94,45 @@
 | **F# / .NET ソースコード**     | `src/**/*.fs`, `test/**/*.fs`    | dotnet format     | `dotnet format whitespace` / `dotnet format`            |
 | **F# ソースコード (Fantomas)** | `src/**/*.fs`, `test/**/*.fs`    | Fantomas (導入時) | `dotnet fantomas "src/**/*.fs" "test/**/*.fs"`          |
 
-### Git操作ルール（Commit / Push タイミング）
+### Git操作ルール（ブランチ戦略・Commit / Push / PR タイミング）
 
 OpenSpecのアーティファクト（`openspec/` 配下）もGit管理対象とする。
 
-#### Commit タイミング（ローカルリポジトリへの記録）
+#### 1. ブランチ戦略と作成タイミング（Explore → Propose 移行フロー）
+
+本プロジェクトでは、すべての機能開発・仕様変更・バグ修正をトピックブランチで実施し、Pull Request を経由して `develop` へ統合します。
+
+##### ブランチ作成タイミングと安全シーケンス（チェックアウト前確認・stash退避）
+
+要件の探索・アイデア検討（Explore フェーズ）が完了し、OpenSpec の変更提案（Propose フェーズ）へ移行するタイミング（`openspec new change "<change-name>"` 実行直前）において、AIエージェントおよび開発者は**必ず以下の安全シーケンスを順に実行**しなければならない:
+
+1. **作業ツリーの確認とバックアップ（stash退避）**:
+   - `git status --porcelain` で未コミットの変更・新規ファイルが存在しないか確認する。
+   - もし変更が存在する場合は、勝手に破棄・上書きせず、stash で退避・バックアップする:
+     ```bash
+     git stash push -u -m "wip: backup before switch to <change-name>"
+     ```
+2. **develop ブランチの最新化**:
+   ```bash
+   git checkout develop
+   git pull origin develop
+   ```
+3. **Feature ブランチの作成・チェックアウト**:
+   ```bash
+   git checkout -b feature/<change-name>
+   ```
+4. **ブランチ確認**:
+   - `git branch --show-current` で対象の Feature ブランチにいることを確認してから、`openspec new change "<change-name>"` およびアーティファクト作成に着手する。
+
+##### ブランチ命名規約
+
+- 新機能・通常変更: `feature/<change-name>` （例: `feature/ai-file-rename`）
+- バグ修正・不具合対応: `fix/<change-name>` （例: `fix/appsettings-merge-path`）
+- リファクタリング・運用改善: `refactor/<change-name>` または `chore/<change-name>`
+
+---
+
+#### 2. Commit タイミング（ローカルリポジトリへの記録）
 
 以下のタイミングで **必ず commit** する:
 
@@ -127,16 +161,76 @@ OpenSpecのアーティファクト（`openspec/` 配下）もGit管理対象と
 - scope: 変更名 (例: `install-openspec`, `streaming`) または `spec`, `design`, `impl` 等
 - subject: 50文字以内で簡潔に（日本語可）
 
-#### Push タイミング（リモートリポジトリへの反映）
+---
+
+#### 3. Push および Pull Request (PR) 運用ルール
+
+##### Push タイミング
 
 1. **日次または作業区切りのタイミング**（1日1回以上推奨）
 2. **Archive 完了・ユーザー最終合意後** (Phase 3 完了時)
-   - 成果物が完成し、ユーザー確認済みの状態で push
-3. **Pull Request 作成時**
+   - 成果物が完成し、ユーザー確認済みの状態で push:
+     ```bash
+     git push -u origin feature/<change-name>
+     ```
 
-#### 禁止事項
+##### AI による GitHub CLI (`gh`) を用いた PR 作成（Spec駆動）
 
-- **ユーザー合意なしでの push は禁止**（特にメインブランチへの直接 push）
+Archive 完了コミットを push した後、**AIエージェントが GitHub CLI (`gh pr create`) を実行して Pull Request を自動作成**する。PRのタイトルと本文は OpenSpec の仕様・レビュー成果物を正本として構成する。
+
+- **PR作成コマンド**:
+  ```bash
+  gh pr create --base develop --head feature/<change-name> --title "<type>(<scope>): <subject>" --body-file "<一時ファイルまたはPR本文>"
+  ```
+- **PR 本文構造（Spec駆動テンプレート）**:
+  ```markdown
+  ## 概要 (What & Why)
+
+  <!-- proposal.md から目的・課題・ビジネス価値を明記 -->
+
+  ## 仕様変更・追加要件 (Spec Delta)
+
+  <!-- specs/<capability>/spec.md から ADDED / MODIFIED 要件一覧を明記 -->
+
+  ## 設計・実装内容 (Design & Tasks)
+
+  <!-- design.md / tasks.md から主要設計方針・変更コンポーネントを明記 -->
+
+  ## テスト結果・品質エビデンス (Verification & Evidence)
+
+  <!-- reviews.md の Archive レビューから全テスト件数、100%Pass、カバレッジ結果を明記 -->
+
+  - 単体/結合テスト: 〇件 Pass (失敗0件, スキップ0件)
+  - テストエビデンス: `test/TestResults/` 配下に TRX レポートおよび HTML カバレッジ出力済み
+
+  ## 申し送り事項・残課題 (Handover)
+
+  <!-- handover.md の内容（将来の改善候補・注意事項）を明記（ない場合は「特になし」） -->
+  ```
+
+##### マージ戦略（Merge Commit 運用）
+
+- **マージ方式**: **Merge Commit** を採用する（Squash merge や Rebase merge は禁止）。
+  - 各タスク単位のコミット履歴、TDD の Red-Green-Refactor 履歴、およびサブエージェントレビュー履歴の完全性を `develop` へ保持するため。
+- **マージ実行**:
+  - ユーザー確認・合意後、GitHub CLI または Web UI より Merge Commit でマージする:
+    ```bash
+    gh pr merge <PR番号またはブランチ名> --merge --delete-branch
+    ```
+- **マージ後のローカルクリーンアップ**:
+  - マージ完了後は、ローカルの `develop` を最新化し、作業完了した Feature ブランチを削除してリポジトリを整理する:
+    ```bash
+    git checkout develop
+    git pull origin develop
+    git branch -d feature/<change-name>
+    ```
+
+---
+
+#### 4. 禁止事項
+
+- **`develop` および `main` ブランチへの直接コミット・直接 push は禁止**（必ずトピックブランチから PR を作成し、Merge commit で統合する）
+- **ユーザー合意なしでの push および PR マージは禁止**
 - **未フォーマット・未テスト状態での commit は禁止**
 - **テストエビデンス（`test/TestResults/`, `test-results/`）やカバレッジレポートの commit は禁止（Git管理対象外）**
 - **作業中の一時的な変更（WIP）を commit する場合は、メッセージに `wip:` プレフィックスを付与し、後で整理すること**
@@ -178,6 +272,7 @@ OpenSpecの3フェーズ（Propose → Apply → Archive）それぞれで、定
   - **User Agent**: 要件妥当性・ビジネス価値・UX・受け入れ基準
   - **SE Agent**: 技術的実現性・アーキテクチャ整合・影響範囲・非機能要件
 - **観点チェックリスト** (`checklist_propose.md` 使用):
+  - **Gitブランチ**: 最新の `develop` ブランチから切り出された適切なトピックブランチ（`feature/<name>` 等）上で作業されているか
   - What/Why が明確かつ500語以内か
   - Non-goals（やらないこと）が明記されているか
   - 既存仕様（`openspec/specs/`）との矛盾・影響範囲が整理されているか
