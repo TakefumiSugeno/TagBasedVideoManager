@@ -277,6 +277,7 @@ module RenameIntegrationE2ETests =
         let baseModel : Model = {
             Settings = { settings with TargetDirectory = "D:\\Videos" }
             CurrentThreshold = 240
+            FilterNonJapaneseOnly = false
             SelectedRuleId = "rule-date-action"
             IsScanning = false
             IsRequestingAi = false

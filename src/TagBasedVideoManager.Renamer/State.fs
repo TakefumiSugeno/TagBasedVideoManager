@@ -17,6 +17,7 @@ and Model = {
     // 設定
     Settings: RenamerSettings
     CurrentThreshold: int         // UIで変更可能なセッション限定閾値 (非保存)
+    FilterNonJapaneseOnly: bool   // 日本語を含まないファイル名のみ抽出するフラグ (セッション限定, 非保存)
     SelectedRuleId: string
 
     // 状態
@@ -44,6 +45,7 @@ and Msg =
     // 初期化・設定
     | SettingsLoaded of Result<RenamerSettings, RenamerError>
     | ThresholdChanged of int
+    | ToggleFilterNonJapaneseOnly of bool
     | TargetDirectoryChanged of string
     | RuleSelected of string
     | ModelSelected of string
@@ -187,6 +189,7 @@ module State =
         let model = {
             Settings = initialSettings
             CurrentThreshold = initialSettings.PathLengthThreshold
+            FilterNonJapaneseOnly = false
             SelectedRuleId = firstRuleId
             IsScanning = false
             IsRequestingAi = false
@@ -235,6 +238,10 @@ module State =
             // 最重要: セッション内一時変更（Settings.save は呼ばない）
             { model with CurrentThreshold = max 1 newThreshold }, Cmd.none
 
+        | ToggleFilterNonJapaneseOnly isChecked ->
+            // セッション内一時変更（Settings.save は呼ばない）
+            { model with FilterNonJapaneseOnly = isChecked }, Cmd.none
+
         | TargetDirectoryChanged newDir ->
             let updatedSettings = { model.Settings with TargetDirectory = newDir }
             { model with Settings = updatedSettings }, Cmd.none
@@ -262,7 +269,7 @@ module State =
             else
                 let cmd =
                     Cmd.OfAsync.perform
-                        (fun () -> async { return FileScanner.scanLongPaths model.Settings.TargetDirectory model.CurrentThreshold false })
+                        (fun () -> async { return FileScanner.scanLongPaths model.Settings.TargetDirectory model.CurrentThreshold model.FilterNonJapaneseOnly })
                         ()
                         ScanCompleted
                 { model with IsScanning = true; ErrorMessage = None; Candidates = []; AiCancellationCts = None }, cmd

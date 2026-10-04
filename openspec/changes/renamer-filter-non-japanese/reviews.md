@@ -128,3 +128,29 @@
 
 - **LGTM**: true
 - **次のアクション**: タスク 2.2（State 実装・Green）へ進む
+
+---
+
+# レビュー記録: renamer-filter-non-japanese / apply / 2.2
+
+- **日時**: 2026-10-04
+- **フェーズ**: apply
+- **タスク**: 2.2 `State.fs` に `FilterNonJapaneseOnly` モデルフィールドおよび `ToggleFilterNonJapaneseOnly` メッセージ処理を実装し、テストをすべてパス（Green）させる
+- **レビュアー**: PG Agent
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/State.fs`, `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs`
+
+## チェックリスト結果 (`checklist_apply_impl.md` 準拠)
+
+| #   | 観点                                        | 判定 | コメント                                                                                                                                   |
+| --- | ------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | 設計書（`design.md`）と実装が整合しているか | ✅   | `Model` に `FilterNonJapaneseOnly: bool` を追加、`init ()` で `false` 初期化、`ToggleFilterNonJapaneseOnly` の `update` 処理を設計通り実装 |
+| 2   | インターフェース・データ構造が設計通りか    | ✅   | `ExecuteScanAndPropose` 実行時に `model.FilterNonJapaneseOnly` が `FileScanner.scanLongPaths` へ正確に渡されている                         |
+| 3   | 依存関係の方向性・責務分離が適切か          | ✅   | Elmish の一方向データフロー（Unidirectional Data Flow）および ROP に従い、副作用なく純粋なモデル状態遷移として実装                         |
+| 4   | 命名規則・コード品質                        | ✅   | F# イディオムに準拠、明瞭なドキュメントコメントと命名                                                                                      |
+| 5   | 境界値・異常系・エラー処理                  | ✅   | テストスイート（`RenameIntegrationE2ETests.fs` を含む）の整合性が担保され、全103件のテストが100%通過（Green達成）                          |
+| 6   | フォーマット・規約                          | ✅   | 既存コードのスタイル・インデントに合致                                                                                                     |
+
+## 判定
+
+- **LGTM**: true
+- **次のアクション**: タスク 2.3（Views.fs チェックボックスUI実装）へ進む

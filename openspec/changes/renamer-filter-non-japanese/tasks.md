@@ -8,7 +8,7 @@
 ## 2. 状態管理（Elmish Model / Msg）とUIコントロールの統合
 
 - [x] 2.1 `StateTests.fs` に `ToggleFilterNonJapaneseOnly` メッセージによるモデル状態更新および `ExecuteScanAndPropose` 実行時の引数連携を検証するテストを作成する
-- [ ] 2.2 `State.fs` に `FilterNonJapaneseOnly` モデルフィールドおよび `ToggleFilterNonJapaneseOnly` メッセージ処理を実装し、テストをパスさせる
+- [x] 2.2 `State.fs` に `FilterNonJapaneseOnly` モデルフィールドおよび `ToggleFilterNonJapaneseOnly` メッセージ処理を実装し、テストをパスさせる
 - [ ] 2.3 `Views.fs` の抽出基準エリア（Row 1）に `[ ] ファイル名に日本語を含まないもののみ抽出` チェックボックスを配置し、ダークテーマ・フォント指定を `mockup.html` に準拠して実装する
 
 ## 3. 総合検証・回帰テストと品質エビデンス出力
