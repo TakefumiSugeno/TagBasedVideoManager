@@ -356,6 +356,28 @@ module Views =
                                                     TextBlock.fontSize 10.0
                                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                                 ]
+                                                // 縦区切り線
+                                                Border.create [
+                                                    Border.width 1.0
+                                                    Border.height 14.0
+                                                    Border.background (SolidColorBrush borderZinc700)
+                                                    Border.margin (4.0, 0.0, 4.0, 0.0)
+                                                    Border.verticalAlignment VerticalAlignment.Center
+                                                ]
+                                                // 日本語除外抽出チェックボックス
+                                                CheckBox.create [
+                                                    CheckBox.content "ファイル名に日本語を含まないもののみ抽出"
+                                                    CheckBox.isChecked model.FilterNonJapaneseOnly
+                                                    CheckBox.foreground (SolidColorBrush textSub)
+                                                    CheckBox.fontSize 11.0
+                                                    CheckBox.verticalAlignment VerticalAlignment.Center
+                                                    CheckBox.onIsCheckedChanged (fun e ->
+                                                        match getCheckBoxValue e with
+                                                        | Some isChecked when isChecked <> model.FilterNonJapaneseOnly ->
+                                                            dispatch (ToggleFilterNonJapaneseOnly isChecked)
+                                                        | _ -> ()
+                                                    )
+                                                ]
                                                 // 該当件数
                                                 TextBlock.create [
                                                     TextBlock.text $"| 該当: {model.Candidates.Length} 件"
