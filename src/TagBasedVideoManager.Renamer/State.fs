@@ -262,7 +262,7 @@ module State =
             else
                 let cmd =
                     Cmd.OfAsync.perform
-                        (fun () -> async { return FileScanner.scanLongPaths model.Settings.TargetDirectory model.CurrentThreshold })
+                        (fun () -> async { return FileScanner.scanLongPaths model.Settings.TargetDirectory model.CurrentThreshold false })
                         ()
                         ScanCompleted
                 { model with IsScanning = true; ErrorMessage = None; Candidates = []; AiCancellationCts = None }, cmd

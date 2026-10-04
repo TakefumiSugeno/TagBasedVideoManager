@@ -21,8 +21,19 @@ module FileScanner =
             Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
         with _ -> path
 
-    /// 指定フォルダを再帰走査し、絶対パス長が閾値以上の動画ファイルを抽出する（ジャンクション追跡＆循環参照防止）
-    let scanLongPaths (targetDirectory: string) (threshold: int) : Result<ScanCandidate list, RenamerError> =
+    let private japaneseRegex =
+        System.Text.RegularExpressions.Regex(
+            @"[\p{IsHiragana}\p{IsKatakana}\p{IsCJKUnifiedIdeographs}]",
+            System.Text.RegularExpressions.RegexOptions.Compiled
+        )
+
+    /// ファイル名（ベース名等）に日本語文字（ひらがな、カタカナ、CJK統合漢字）が含まれるか判定する
+    let containsJapanese (name: string) : bool =
+        if String.IsNullOrEmpty(name) then false
+        else japaneseRegex.IsMatch(name)
+
+    /// 指定フォルダを再帰走査し、絶対パス長が閾値以上（かつオプションに応じて日本語を含まない）の動画ファイルを抽出する（ジャンクション追跡＆循環参照防止）
+    let scanLongPaths (targetDirectory: string) (threshold: int) (filterNonJapaneseOnly: bool) : Result<ScanCandidate list, RenamerError> =
         try
             if not (Directory.Exists(targetDirectory)) then
                 Error (IoError ($"指定されたディレクトリが存在しません: {targetDirectory}", None))
@@ -62,7 +73,13 @@ module FileScanner =
                             let files = Directory.EnumerateFiles(currentDir, "*.*", SearchOption.TopDirectoryOnly)
                             for file in files do
                                 try
-                                    if isVideoFile file && file.Length >= threshold then
+                                    let baseName = Path.GetFileNameWithoutExtension(file)
+                                    let isTarget =
+                                        isVideoFile file
+                                        && file.Length >= threshold
+                                        && (not filterNonJapaneseOnly || not (containsJapanese baseName))
+
+                                    if isTarget then
                                         let fi = FileInfo(file)
                                         candidates.Add({
                                             FullPath = file

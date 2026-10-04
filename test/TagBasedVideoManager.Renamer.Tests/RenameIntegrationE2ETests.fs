@@ -54,7 +54,7 @@ module RenameIntegrationE2ETests =
             // -----------------------------------------------------------------
             // 2. 走査 (FileScanner.scanLongPaths)
             // -----------------------------------------------------------------
-            let scanResult = FileScanner.scanLongPaths tempDir 240
+            let scanResult = FileScanner.scanLongPaths tempDir 240 false
             match scanResult with
             | Error err -> failwith $"走査エラー: {err}"
             | Ok scannedFiles ->
@@ -125,7 +125,7 @@ module RenameIntegrationE2ETests =
                     // -----------------------------------------------------------------
                     // 5. リネーム後の再走査で対象件数が 0 件になることを検証
                     // -----------------------------------------------------------------
-                    let reScanResult = FileScanner.scanLongPaths tempDir 240
+                    let reScanResult = FileScanner.scanLongPaths tempDir 240 false
                     match reScanResult with
                     | Error err -> failwith $"再走査エラー: {err}"
                     | Ok reScannedFiles ->
@@ -149,7 +149,7 @@ module RenameIntegrationE2ETests =
                         File.ReadAllText(longPath2) |> should equal "video-content-2"
 
                         // 再度走査すると、元通り2件の長パスファイルが抽出されること
-                        let restoredScanResult = FileScanner.scanLongPaths tempDir 240
+                        let restoredScanResult = FileScanner.scanLongPaths tempDir 240 false
                         match restoredScanResult with
                         | Error err -> failwith $"復元後走査エラー: {err}"
                         | Ok restoredScanned ->
@@ -481,7 +481,7 @@ module RenameIntegrationE2ETests =
             let model1 = { baseModel with Settings = initialSettings }
 
             // 3. 走査実行 (FileScanner.scanLongPaths)
-            let scanResult = FileScanner.scanLongPaths tempDir 240
+            let scanResult = FileScanner.scanLongPaths tempDir 240 false
             match scanResult with
             | Error err -> failwith $"走査失敗: {err}"
             | Ok candidates ->

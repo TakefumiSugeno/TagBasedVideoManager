@@ -38,7 +38,7 @@ module FileScannerTests =
 
             let threshold = longVideoPath.Length - 10
 
-            let result = FileScanner.scanLongPaths root threshold
+            let result = FileScanner.scanLongPaths root threshold false
             match result with
             | Error err -> failwith $"scanLongPaths failed: {err}"
             | Ok candidates ->
@@ -65,7 +65,7 @@ module FileScannerTests =
 
             let threshold = 50
 
-            let result = FileScanner.scanLongPaths root threshold
+            let result = FileScanner.scanLongPaths root threshold false
             match result with
             | Error err -> failwith $"scanLongPaths failed: {err}"
             | Ok candidates ->
@@ -92,17 +92,17 @@ module FileScannerTests =
             let exactLen = exactPath.Length
 
             // 1. threshold = exactLen の場合 -> 抽出される
-            match FileScanner.scanLongPaths root exactLen with
+            match FileScanner.scanLongPaths root exactLen false with
             | Ok list -> list.Length |> should equal 1
             | Error e -> failwith $"{e}"
 
             // 2. threshold = exactLen + 1 の場合 -> 除外される
-            match FileScanner.scanLongPaths root (exactLen + 1) with
+            match FileScanner.scanLongPaths root (exactLen + 1) false with
             | Ok list -> list.Length |> should equal 0
             | Error e -> failwith $"{e}"
 
             // 3. threshold = exactLen - 1 の場合 -> 抽出される
-            match FileScanner.scanLongPaths root (exactLen - 1) with
+            match FileScanner.scanLongPaths root (exactLen - 1) false with
             | Ok list -> list.Length |> should equal 1
             | Error e -> failwith $"{e}"
         finally
@@ -111,7 +111,7 @@ module FileScannerTests =
     [<Fact>]
     let ``存在しないディレクトリを指定した場合は IoError を返す`` () =
         let nonExistent = Path.Combine(Path.GetTempPath(), "NonExistentDir_" + Guid.NewGuid().ToString("N"))
-        let result = FileScanner.scanLongPaths nonExistent 240
+        let result = FileScanner.scanLongPaths nonExistent 240 false
         match result with
         | Ok _ -> failwith "Expected failure for non-existent directory"
         | Error (IoError (msg, _)) -> msg |> should not' (be EmptyString)
@@ -140,7 +140,7 @@ module FileScannerTests =
                 let junctionLink = Path.Combine(root, "JunctionDir")
                 createJunction junctionLink externalDir
 
-                let result = FileScanner.scanLongPaths root 10
+                let result = FileScanner.scanLongPaths root 10 false
                 match result with
                 | Error err -> failwith $"scanLongPaths failed: {err}"
                 | Ok candidates ->
@@ -165,7 +165,7 @@ module FileScannerTests =
                 let loopLink = Path.Combine(childDir, "LoopToRoot")
                 createJunction loopLink root
 
-                let result = FileScanner.scanLongPaths root 10
+                let result = FileScanner.scanLongPaths root 10 false
                 match result with
                 | Error err -> failwith $"scanLongPaths failed on loop: {err}"
                 | Ok candidates ->

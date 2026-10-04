@@ -77,3 +77,29 @@
 
 - **LGTM**: true
 - **次のアクション**: タスク 1.2（Green 実装）へ進む
+
+---
+
+# レビュー記録: renamer-filter-non-japanese / apply / 1.2
+
+- **日時**: 2026-10-04
+- **フェーズ**: apply
+- **タスク**: 1.2 `FileScanner.fs` にコンパイル済み正規表現による `containsJapanese` 関数と `scanLongPaths` への `filterNonJapaneseOnly` 引数・フィルタ条件を実装し、テストをすべてパス（Green）させてリファクタする
+- **レビュアー**: PG Agent
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/FileScanner.fs`, `test/TagBasedVideoManager.Renamer.Tests/FileScannerTests.fs`, `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs`
+
+## チェックリスト結果 (`checklist_apply_impl.md` 準拠)
+
+| #   | 観点                                        | 判定 | コメント                                                                                                                                                   |
+| --- | ------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 設計書（`design.md`）と実装が整合しているか | ✅   | コンパイル済み正規表現（`RegexOptions.Compiled`）を用いた `containsJapanese` および `scanLongPaths` への `filterNonJapaneseOnly` 適用が設計通り整合        |
+| 2   | インターフェース・データ構造が設計通りか    | ✅   | `scanLongPaths: targetDir -> threshold -> filterNonJapaneseOnly -> Result<ScanCandidate list, RenamerError>` のシグネチャを正確に実現                      |
+| 3   | 依存関係の方向性・責務分離が適切か          | ✅   | `FileScanner` 内で日本語判定と走査フィルタリングの責務が完結し、ショートサーキット評価（動画判定・パス長閾値判定後の正規表現実行）により高効率に分離       |
+| 4   | 命名規則・コード品質                        | ✅   | F# イディオムに準拠したキャメルケース関数・変数名、明確なドキュメントコメントを整備                                                                        |
+| 5   | 境界値・異常系・エラー処理                  | ✅   | 空文字列・nullガード、大文字小文字拡張子、循環参照ジャンクション、空ディレクトリ等の各異常系・境界系がすべて保護され、101件のテストが100%通過（Green確認） |
+| 6   | フォーマット・規約                          | ✅   | コードスタイルが既存コードベースと調和し、インデント・構文が統一されている                                                                                 |
+
+## 判定
+
+- **LGTM**: true
+- **次のアクション**: タスク 2.1（StateTests Red）へ進む
