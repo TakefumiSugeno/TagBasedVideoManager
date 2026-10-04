@@ -103,3 +103,28 @@
 
 - **LGTM**: true
 - **次のアクション**: タスク 2.1（StateTests Red）へ進む
+
+---
+
+# レビュー記録: renamer-filter-non-japanese / apply / 2.1
+
+- **日時**: 2026-10-04
+- **フェーズ**: apply
+- **タスク**: 2.1 `StateTests.fs` に `ToggleFilterNonJapaneseOnly` メッセージによるモデル状態更新および `ExecuteScanAndPropose` 実行時の引数連携を検証するテストを作成する
+- **レビュアー**: QA Agent
+- **対象成果物**: `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs`
+
+## チェックリスト結果 (`checklist_apply_test.md` 準拠)
+
+| #   | 観点                                                   | 判定 | コメント                                                                                                                                              |
+| --- | ------------------------------------------------------ | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 仕様妥当性検証テストが記述されているか                 | ✅   | 初期状態 `FilterNonJapaneseOnly = false` の検証、および `ToggleFilterNonJapaneseOnly` による true/false の状態遷移テストを網羅作成                    |
+| 2   | 回帰テスト観点が含まれているか                         | ✅   | 既存の Elmish update サイクルや他の Model プロパティに悪影響を与えないことを検証するアサーションを含む                                                |
+| 3   | 境界値・異常系・エッジケースが網羅されているか         | ✅   | 初期状態からの true 化、および再度 false への反転トグルの両シナリオを Fact で確認                                                                     |
+| 4   | テストファースト（Red-Green-Refactor）が守られているか | ✅   | 未定義状態でのコンパイルエラー（`FS0039: Model does not define FilterNonJapaneseOnly`, `FS0039: ToggleFilterNonJapaneseOnly is undefined`）を確認済み |
+| 5   | テストコードの品質・可読性                             | ✅   | FsUnit 構文に従い、シンプルかつ意図が明確なアサーション構成となっている                                                                               |
+
+## 判定
+
+- **LGTM**: true
+- **次のアクション**: タスク 2.2（State 実装・Green）へ進む

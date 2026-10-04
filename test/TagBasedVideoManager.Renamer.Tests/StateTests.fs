@@ -493,3 +493,17 @@ module StateTests =
         updatedModel.IsScanning |> should equal true
         updatedModel.AiCancellationCts |> should equal None
 
+    [<Fact>]
+    let ``init は初期状態で FilterNonJapaneseOnly が false である`` () =
+        let model, _ = State.init ()
+        model.FilterNonJapaneseOnly |> should equal false
+
+    [<Fact>]
+    let ``ToggleFilterNonJapaneseOnly は FilterNonJapaneseOnly フラグを正しく更新する`` () =
+        let initialModel, _ = State.init ()
+        let modelTrue, _ = State.update (ToggleFilterNonJapaneseOnly true) initialModel
+        modelTrue.FilterNonJapaneseOnly |> should equal true
+
+        let modelFalse, _ = State.update (ToggleFilterNonJapaneseOnly false) modelTrue
+        modelFalse.FilterNonJapaneseOnly |> should equal false
+
