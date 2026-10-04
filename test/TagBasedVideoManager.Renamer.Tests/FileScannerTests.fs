@@ -250,4 +250,61 @@ module FileScannerTests =
         sortedModAsc |> List.map (fun x -> x.OriginalFileName)
         |> should equal [ "AAA_Middle.mp4"; "BBB_Longest_File_Name_Here.mp4"; "CCC_Short.mp4" ]
 
+    [<Theory>]
+    [<InlineData("video_title_1080p", false)>]
+    [<InlineData("SPY_FAMILY_Episode_01", false)>]
+    [<InlineData("2024-10-04_Sample-File.part1", false)>]
+    [<InlineData("動画タイトル", true)>]
+    [<InlineData("アニメ_第1話", true)>]
+    [<InlineData("English_and_日本語混在", true)>]
+    [<InlineData("カタカナのみ", true)>]
+    [<InlineData("ひらがなのみ", true)>]
+    [<InlineData("漢字のみ", true)>]
+    let ``containsJapanese はファイル名本体の日本語（ひらがな・カタカナ・漢字）の有無を正しく判定する`` (input: string, expected: bool) =
+        FileScanner.containsJapanese input |> should equal expected
+
+    [<Fact>]
+    let ``scanLongPaths は filterNonJapaneseOnly が true の場合に日本語を含まない動画のみを抽出する`` () =
+        let root, subDir = createTestEnvironment ()
+        let japaneseDir = Path.Combine(root, "日本語フォルダ")
+        Directory.CreateDirectory(japaneseDir) |> ignore
+        try
+            // 1. 英数字のみの長パス動画 (抽出されるべき)
+            let englishVideo = Path.Combine(subDir, "english_video_file_1080p.mp4")
+            File.WriteAllText(englishVideo, "dummy")
+
+            // 2. 日本語を含む長パス動画 (除外されるべき)
+            let japaneseVideo = Path.Combine(subDir, "日本語タイトル動画_01.mp4")
+            File.WriteAllText(japaneseVideo, "dummy")
+
+            // 3. 親フォルダ名に日本語が含まれるが、ファイル名自体は英数字のみの動画 (抽出されるべき)
+            let englishInJapaneseFolder = Path.Combine(japaneseDir, "sample_english_video.mp4")
+            File.WriteAllText(englishInJapaneseFolder, "dummy")
+
+            let threshold = 10
+
+            // フィルタ有効時: 1 と 3 が抽出され、2 は除外される
+            let resultFiltered = FileScanner.scanLongPaths root threshold true
+            match resultFiltered with
+            | Error err -> failwith $"scanLongPaths failed: {err}"
+            | Ok candidates ->
+                let names = candidates |> List.map (fun c -> c.FileName)
+                names |> should contain "english_video_file_1080p.mp4"
+                names |> should contain "sample_english_video.mp4"
+                names |> should not' (contain "日本語タイトル動画_01.mp4")
+                candidates.Length |> should equal 2
+
+            // フィルタ無効時: 1, 2, 3 の全件が抽出される
+            let resultUnfiltered = FileScanner.scanLongPaths root threshold false
+            match resultUnfiltered with
+            | Error err -> failwith $"scanLongPaths failed: {err}"
+            | Ok candidates ->
+                let names = candidates |> List.map (fun c -> c.FileName)
+                names |> should contain "english_video_file_1080p.mp4"
+                names |> should contain "sample_english_video.mp4"
+                names |> should contain "日本語タイトル動画_01.mp4"
+                candidates.Length |> should equal 3
+        finally
+            cleanup root
+
 
