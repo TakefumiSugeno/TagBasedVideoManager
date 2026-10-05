@@ -33,6 +33,20 @@
       .custom-scrollbar::-webkit-scrollbar-thumb:hover {
         background: #52525b;
       }
+      @keyframes highlightPulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+        }
+        70% {
+          box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+        }
+      }
+      .animate-highlight {
+        animation: highlightPulse 0.8s ease-out;
+      }
     </style>
   </head>
   <body
@@ -63,7 +77,7 @@
 
     <!-- 命名規則マネージャー モーダル (左右2ペイン) -->
     <div
-      class="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50"
+      class="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-40"
     >
       <div
         class="bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl w-[960px] max-w-full h-[680px] max-h-full flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
@@ -174,10 +188,10 @@
                         ✏️
                       </button>
                       <button
-                        class="px-1.5 py-0.5 text-[11px] bg-red-950/40 hover:bg-red-900/60 text-red-300 rounded border border-red-900/50 disabled:opacity-30 disabled:pointer-events-none"
+                        class="px-1.5 py-0.5 text-[11px] bg-red-950/40 hover:bg-red-900/60 text-red-300 rounded border border-red-900/50 disabled:opacity-30 disabled:pointer-events-none transition"
                         :disabled="rules.length <= 1"
-                        @click="deleteRule(rule.id)"
-                        title="削除"
+                        @click="requestDelete(rule)"
+                        title="削除確認を開く"
                       >
                         🗑
                       </button>
@@ -206,20 +220,26 @@
               </template>
             </div>
 
-            <!-- 新規作成ボタン (常時配置) -->
+            <!-- 新規作成ボタン (常時配置・クリックイベントでフォーカス＆フラッシュ) -->
             <div class="p-3 border-t border-zinc-800 bg-zinc-900/70">
               <button
-                class="w-full py-2 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold rounded-lg border border-zinc-700 flex items-center justify-center space-x-1.5 transition"
+                class="w-full py-2.5 px-3 text-xs font-semibold rounded-lg border flex items-center justify-center space-x-1.5 transition shadow-sm active:scale-98"
+                :class="!isEditing ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-500 ring-2 ring-blue-500/30' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'"
                 @click="startNew()"
               >
                 <span>➕</span>
-                <span>新規ルールを作成</span>
+                <span
+                  x-text="!isEditing ? '➕ 新規ルールを作成中' : '新規ルールを作成'"
+                ></span>
               </button>
             </div>
           </div>
 
           <!-- 右ペイン: ルール詳細・編集フォーム (可変幅・広々スペース) -->
-          <div class="flex-1 flex flex-col bg-zinc-900 p-6 overflow-hidden">
+          <div
+            class="flex-1 flex flex-col bg-zinc-900 p-6 overflow-hidden transition-all duration-300"
+            :class="isFlashing ? 'animate-highlight bg-zinc-900/90 ring-2 ring-blue-500/40 rounded-r-xl' : ''"
+          >
             <!-- フォームヘッダー -->
             <div
               class="flex items-center justify-between pb-3 mb-4 border-b border-zinc-800"
@@ -230,14 +250,14 @@
                   x-text="isEditing ? '✏️ ルールの編集' : '➕ 新規ルールの作成'"
                 ></span>
                 <span
-                  class="text-xs px-2 py-0.5 rounded font-medium"
+                  class="text-xs px-2 py-0.5 rounded font-medium transition"
                   :class="isEditing ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'bg-blue-950 text-blue-300 border border-blue-800'"
-                  x-text="isEditing ? '既存ルール更新モード' : '新規追加モード'"
+                  x-text="isEditing ? '既存ルール更新モード: ' + (rules.find(r => r.id === editingId)?.name || '') : '新規追加モード (入力後に保存してください)'"
                 ></span>
               </div>
               <button
                 x-show="isEditing"
-                class="text-xs text-zinc-400 hover:text-white px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 transition"
+                class="text-xs text-zinc-400 hover:text-white px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 transition"
                 @click="cancelEdit()"
               >
                 ✕ 編集をキャンセル
@@ -255,6 +275,7 @@
                   >
                   <input
                     type="text"
+                    x-ref="nameInput"
                     x-model="form.name"
                     placeholder="例: 品番_要約_出演者(推奨)"
                     class="w-full bg-zinc-950 border border-zinc-700 focus:border-blue-500 rounded px-3 py-1.5 text-xs text-white outline-none transition"
@@ -360,6 +381,65 @@
       </div>
     </div>
 
+    <!-- 🗑 ルール削除確認ダイアログ (オーバーレイ) -->
+    <div
+      x-show="showDeleteConfirm"
+      x-transition.opacity
+      class="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50"
+      style="display: none"
+    >
+      <div
+        class="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-[440px] max-w-full p-6 animate-in fade-in zoom-in-95 duration-150"
+        @click.outside="cancelDelete()"
+      >
+        <div class="flex items-center space-x-3 mb-3">
+          <div
+            class="w-10 h-10 rounded-full bg-red-950/60 border border-red-800 flex items-center justify-center text-red-400 text-lg"
+          >
+            🗑
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">命名規則の削除</h3>
+            <p class="text-xs text-zinc-400">削除確認</p>
+          </div>
+        </div>
+
+        <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-3 my-4">
+          <p class="text-xs text-zinc-300 leading-relaxed">
+            命名規則「<span
+              class="font-bold text-white text-sm"
+              x-text="deleteTarget?.name"
+            ></span
+            >」を削除しますか？
+          </p>
+          <p
+            class="text-[11px] text-red-400/90 mt-1.5 flex items-center space-x-1"
+          >
+            <span>⚠️</span>
+            <span
+              >この操作は取り消せません。設定ファイルからも削除されます。</span
+            >
+          </p>
+        </div>
+
+        <div class="flex justify-end space-x-3 pt-2">
+          <button
+            class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold rounded-lg border border-zinc-700 transition"
+            @click="cancelDelete()"
+          >
+            キャンセル
+          </button>
+          <button
+            class="px-5 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1.5"
+            @click="confirmDelete()"
+          >
+            <span>🗑</span>
+            <span>削除する</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script>
       function renamerApp() {
         return {
@@ -384,6 +464,9 @@
             },
           ],
           editingId: null,
+          isFlashing: false,
+          showDeleteConfirm: false,
+          deleteTarget: null,
           form: {
             name: "",
             pattern: "{Code}_{Summary}_{Actor}",
@@ -393,6 +476,12 @@
           get isEditing() {
             return this.editingId !== null;
           },
+          flashForm() {
+            this.isFlashing = true;
+            setTimeout(() => {
+              this.isFlashing = false;
+            }, 800);
+          },
           startEdit(rule) {
             this.editingId = rule.id;
             this.form = {
@@ -401,6 +490,10 @@
               enableWebSearch: rule.enableWebSearch,
               promptInstruction: rule.promptInstruction,
             };
+            this.flashForm();
+            this.$nextTick(() => {
+              if (this.$refs.nameInput) this.$refs.nameInput.focus();
+            });
           },
           startNew() {
             this.editingId = null;
@@ -410,6 +503,13 @@
               enableWebSearch: true,
               promptInstruction: "",
             };
+            this.flashForm();
+            this.$nextTick(() => {
+              if (this.$refs.nameInput) {
+                this.$refs.nameInput.focus();
+                this.$refs.nameInput.select();
+              }
+            });
           },
           cancelEdit() {
             this.startNew();
@@ -447,12 +547,24 @@
             }
             this.startNew();
           },
-          deleteRule(id) {
+          requestDelete(rule) {
             if (this.rules.length <= 1) return;
+            this.deleteTarget = rule;
+            this.showDeleteConfirm = true;
+          },
+          confirmDelete() {
+            if (!this.deleteTarget) return;
+            const id = this.deleteTarget.id;
             this.rules = this.rules.filter((r) => r.id !== id);
+            this.rules.forEach((r, idx) => (r.order = idx));
             if (this.editingId === id) {
               this.startNew();
             }
+            this.cancelDelete();
+          },
+          cancelDelete() {
+            this.showDeleteConfirm = false;
+            this.deleteTarget = null;
           },
           moveRule(index, delta) {
             const targetIndex = index + delta;

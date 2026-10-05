@@ -53,6 +53,7 @@
     - `StartEditRule of string`: 指定されたルールIdを読み込み、編集モードに切り替え。
     - `CancelEditRule`: 編集モードを終了し、空の新規作成テンプレートにリセット。
     - `SaveEditingRule`: `EditingRule` が既存のルール一覧に存在するか判定し、存在する場合は同一位置（Order維持）で置換、存在しない場合は末尾に追加して `appsettings.json` に永続化。
+    - `RequestDeleteRule of string`: ルール一覧の「🗑」押下時に直接削除せず、対象ルール名を明示した `ConfirmDialog` を生成して表示。確認時に `DeleteRule of string` を実行して削除を確定。
 - **代替案と理由**:
   - モーダルを「一覧画面」と「編集画面」で別画面に遷移させる案: 画面切り替えのコストが高く一覧を見ながらの編集ができないため、左右2ペインで同一画面上に配置する方式を採用。
 
