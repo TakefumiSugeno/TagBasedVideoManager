@@ -611,3 +611,18 @@ module StateTests =
             finalModel.Settings.Rules |> List.exists (fun r -> r.Id = ruleToDelete.Id) |> should equal false
         | None -> failwith "ConfirmDialog should be Some"
 
+    [<Fact>]
+    let ``init は初期状態で FilterNonJapaneseOnly が false である`` () =
+        let model, _ = State.init ()
+        model.FilterNonJapaneseOnly |> should equal false
+
+    [<Fact>]
+    let ``ToggleFilterNonJapaneseOnly は FilterNonJapaneseOnly フラグを正しく更新する`` () =
+        let initialModel, _ = State.init ()
+        let modelTrue, _ = State.update (ToggleFilterNonJapaneseOnly true) initialModel
+        modelTrue.FilterNonJapaneseOnly |> should equal true
+
+        let modelFalse, _ = State.update (ToggleFilterNonJapaneseOnly false) modelTrue
+        modelFalse.FilterNonJapaneseOnly |> should equal false
+
+
