@@ -265,13 +265,13 @@
                     class="block text-xs font-semibold text-zinc-300 mb-1.5"
                     >命名パターン (テンプレート)
                     <span class="text-zinc-500 font-normal"
-                      >※AIへのフォーマット指示</span
+                      >※拡張子は自動付与のため不要</span
                     ></label
                   >
                   <input
                     type="text"
                     x-model="form.pattern"
-                    placeholder="例: {Code}_{Summary}_{Actor}.mp4"
+                    placeholder="例: {Code}_{Summary}_{Actor}"
                     class="w-full bg-zinc-950 border border-zinc-700 focus:border-blue-500 font-mono rounded px-3 py-1.5 text-xs text-blue-400 outline-none transition"
                   />
                 </div>
@@ -367,7 +367,7 @@
             {
               id: "rule-code-name-actor",
               name: "品番_要約_出演者(推奨)",
-              pattern: "{Code}_{Summary}_{Actor}.mp4",
+              pattern: "{Code}_{Summary}_{Actor}",
               promptInstruction:
                 "既存のファイル名から品番、タイトルの要約、出演者を抽出しアンダースコア繋ぎで命名（短すぎても内容が把握しずらくなるので日本語で200文字前後となるように）してください。日本語タイトルや出演者が不明な場合は品番をWeb検索してそれぞれFANZAから日本語を取得してください。",
               order: 0,
@@ -376,7 +376,7 @@
             {
               id: "rule-compact",
               name: "短縮",
-              pattern: "{ShortTitle}.mp4",
+              pattern: "{ShortTitle}",
               promptInstruction:
                 "既存のファイル名から動画の内容を表す最も重要で短いキーワード（200文字以内）で命名してください。",
               order: 1,
@@ -386,7 +386,7 @@
           editingId: null,
           form: {
             name: "",
-            pattern: "{Code}_{Summary}_{Actor}.mp4",
+            pattern: "{Code}_{Summary}_{Actor}",
             enableWebSearch: true,
             promptInstruction: "",
           },
@@ -406,7 +406,7 @@
             this.editingId = null;
             this.form = {
               name: "",
-              pattern: "{Code}_{Summary}_{Actor}.mp4",
+              pattern: "{Code}_{Summary}_{Actor}",
               enableWebSearch: true,
               promptInstruction: "",
             };
@@ -425,7 +425,7 @@
                 this.rules[index] = {
                   ...this.rules[index],
                   name: this.form.name.trim(),
-                  pattern: this.form.pattern.trim() || "{Title}.mp4",
+                  pattern: this.form.pattern.trim() || "{Title}",
                   enableWebSearch: this.form.enableWebSearch,
                   promptInstruction:
                     this.form.promptInstruction.trim() ||
@@ -436,7 +436,7 @@
               const newRule = {
                 id: "rule-" + Date.now(),
                 name: this.form.name.trim(),
-                pattern: this.form.pattern.trim() || "{Title}.mp4",
+                pattern: this.form.pattern.trim() || "{Title}",
                 enableWebSearch: this.form.enableWebSearch,
                 promptInstruction:
                   this.form.promptInstruction.trim() ||

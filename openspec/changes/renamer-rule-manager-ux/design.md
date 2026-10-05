@@ -67,7 +67,7 @@
     - 下部に「➕ 新規ルールを作成」ボタンを常時配置。
   - 右ペイン（可変幅・広域エディタ）:
     - ヘッダーに現在の状態表示（「✏️ ルール編集中: 〇〇」または「➕ 新規ルールの作成」）。
-    - ルール名（TextBox）、命名パターン（TextBox: ウォーターマーク `{Code}_{Summary}_{Actor}.mp4`）、Web検索トグル（CheckBox）。
+    - ルール名（TextBox）、命名パターン（TextBox: ウォーターマーク `{Code}_{Summary}_{Actor}` ※拡張子不要）、Web検索トグル（CheckBox）。
     - プロンプト指示文（TextBox: `height 280.0`, `acceptsReturn true`, `textWrapping TextWrapping.Wrap`）。
     - フッターに「✕ 編集をキャンセル」（編集中のみ有効）と「💾 この内容で保存」ボタン。
 
