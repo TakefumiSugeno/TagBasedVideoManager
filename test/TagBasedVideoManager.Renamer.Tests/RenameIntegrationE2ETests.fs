@@ -369,9 +369,27 @@ module RenameIntegrationE2ETests =
         }
         renderAndCapture undoDialogModel "E2E_04_Undo_Confirm_Dialog.png"
 
-        // 5. 命名規則マネージャーモーダル表示状態
+        // 5. 命名規則マネージャーモーダル表示状態 (新規作成モード)
         let ruleManagerModel = { proposedModel with IsRuleManagerOpen = true }
         renderAndCapture ruleManagerModel "E2E_05_Rule_Manager_Modal.png"
+
+        // 5b. 命名規則マネージャーモーダル表示状態 (既存ルール編集モード)
+        let ruleToEdit = ruleManagerModel.Settings.Rules.[0]
+        let editingRuleModel = { ruleManagerModel with EditingRule = Some ruleToEdit }
+        renderAndCapture editingRuleModel "E2E_05b_Rule_Manager_Editing_Modal.png"
+
+        // 5c. 命名規則削除確認ダイアログ表示状態
+        let deleteConfirmModel = {
+            ruleManagerModel with
+                ConfirmDialog = Some {
+                    Title = "🗑 命名規則の削除"
+                    Message = $"命名規則「{ruleToEdit.Name}」を削除しますか？\nこの操作は取り消せません。"
+                    ConfirmText = "削除する"
+                    CancelText = "キャンセル"
+                    OnConfirm = DeleteRule ruleToEdit.Id
+                }
+        }
+        renderAndCapture deleteConfirmModel "E2E_05c_Rule_Manager_Delete_Confirm_Dialog.png"
 
         // 6. ウィンドウ幅を超える長大ファイル名（300文字超）のカード外枠非見切れ検証
         let longPathModel = {
@@ -865,3 +883,76 @@ module RenameIntegrationE2ETests =
         renameButton |> should not' (equal None)
         let (_, isRenameEnabled) = renameButton.Value
         isRenameEnabled |> should equal false
+
+    [<Fact>]
+    let ``GUI: rule manager modal displays two-pane layout, edit buttons, large textarea, and proper template labels`` () =
+        ensureAppInitialized ()
+        let baseModel, _ = State.init ()
+        let testModel = { baseModel with IsRuleManagerOpen = true }
+
+        let w = new Avalonia.FuncUI.Hosts.HostWindow()
+        w.Width <- 1100.0
+        w.Height <- 750.0
+        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+        |> Avalonia.FuncUI.Elmish.Program.withHost w
+        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+        w.Show()
+        w.UpdateLayout()
+
+        let rec collectControls (control: Avalonia.Controls.Control) : Avalonia.Controls.Control list =
+            let current = [ control ]
+            let children =
+                match control with
+                | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectControls |> Seq.toList
+                | :? Avalonia.Controls.ContentControl as cc ->
+                    match cc.Content with
+                    | :? Avalonia.Controls.Control as c -> collectControls c
+                    | _ -> []
+                | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
+                    collectControls d.Child
+                | _ -> []
+            current @ children
+
+        let allControls = collectControls w
+        w.Close()
+
+        let textBlocks =
+            allControls
+            |> List.choose (fun c ->
+                match c with
+                | :? Avalonia.Controls.TextBlock as tb -> Some (if tb.Text <> null then tb.Text else "")
+                | _ -> None
+            )
+
+        let buttons =
+            allControls
+            |> List.choose (fun c ->
+                match c with
+                | :? Avalonia.Controls.Button as btn ->
+                    let contentStr = if btn.Content <> null then btn.Content.ToString() else ""
+                    Some (contentStr, btn.IsEnabled)
+                | _ -> None
+            )
+
+        let textBoxes =
+            allControls
+            |> List.choose (fun c ->
+                match c with
+                | :? Avalonia.Controls.TextBox as tb -> Some tb
+                | _ -> None
+            )
+
+        // 1. ヘッダーに「左右2ペイン構成」バッジが存在すること
+        textBlocks |> List.exists (fun t -> t.Contains("左右2ペイン構成")) |> should equal true
+
+        // 2. 左ペインの各カードに「✏」ボタンが存在すること
+        buttons |> List.exists (fun (lbl, _) -> lbl.Contains("✏")) |> should equal true
+
+        // 3. 右ペインに「命名パターン (テンプレート)」の表記が存在し、旧「対象パターン」が存在しないこと
+        textBlocks |> List.exists (fun t -> t.Contains("命名パターン (テンプレート)")) |> should equal true
+        textBlocks |> List.exists (fun t -> t.Contains("対象パターン:")) |> should equal false
+
+        // 4. プロンプト指示文のTextBoxが複数行対応かつ高さ280px以上確保されていること
+        let promptBoxes = textBoxes |> List.filter (fun tb -> tb.Height >= 280.0 && tb.AcceptsReturn)
+        promptBoxes.Length |> should be (greaterThanOrEqualTo 1)
+

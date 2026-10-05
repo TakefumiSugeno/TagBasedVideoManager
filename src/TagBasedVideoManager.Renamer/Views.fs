@@ -21,6 +21,7 @@ module Views =
         | _ -> None
 
     let private monoFontFamily = FontFamily("Cascadia Mono, Consolas, Meiryo UI, Yu Gothic UI, monospace")
+    let private emojiFontFamily = FontFamily("Segoe UI Emoji, Segoe UI Symbol, Cascadia Mono, Meiryo UI, sans-serif")
 
     let private splitFileName (fileName: string) : string * string =
         if String.IsNullOrEmpty(fileName) then ("", "")
@@ -1843,12 +1844,28 @@ module Views =
         | None -> Border.create [ Border.isVisible false ]
 
     // ==========================================
-    // 7. 命名規則マネージャーモーダル
+    // 7. 命名規則マネージャーモーダル (左右2ペイン構成)
     // ==========================================
     let ruleManagerModal (model: Model) (dispatch: Msg -> unit) =
         if not model.IsRuleManagerOpen then
             Border.create [ Border.isVisible false ]
         else
+            let curRule =
+                model.EditingRule
+                |> Option.defaultValue {
+                    Id = Guid.NewGuid().ToString("N")
+                    Name = ""
+                    Pattern = "{Code}_{Summary}_{Actor}"
+                    PromptInstruction = ""
+                    Order = model.Settings.Rules.Length
+                    EnableWebSearch = true
+                }
+
+            let isEditing =
+                match model.EditingRule with
+                | Some r -> model.Settings.Rules |> List.exists (fun existing -> existing.Id = r.Id)
+                | None -> false
+
             Border.create [
                 Border.background (SolidColorBrush (Color.FromArgb(180uy, 0uy, 0uy, 0uy)))
                 Border.child (
@@ -1856,19 +1873,20 @@ module Views =
                         Border.background (SolidColorBrush bgSurface)
                         Border.borderBrush (SolidColorBrush borderFluent)
                         Border.borderThickness 1.0
-                        Border.cornerRadius 8.0
-                        Border.padding 20.0
-                        Border.width 640.0
-                        Border.maxHeight 560.0
+                        Border.cornerRadius 10.0
+                        Border.width 960.0
+                        Border.height 680.0
+                        Border.maxWidth 960.0
+                        Border.maxHeight 680.0
                         Border.horizontalAlignment HorizontalAlignment.Center
                         Border.verticalAlignment VerticalAlignment.Center
                         Border.child (
                             DockPanel.create [
                                 DockPanel.children [
-                                    // ヘッダー
+                                    // ヘッダー (Dock.Top)
                                     DockPanel.create [
                                         DockPanel.dock Dock.Top
-                                        DockPanel.margin (0.0, 0.0, 0.0, 14.0)
+                                        DockPanel.margin (16.0, 14.0, 16.0, 12.0)
                                         DockPanel.children [
                                             Button.create [
                                                 DockPanel.dock Dock.Right
@@ -1883,14 +1901,35 @@ module Views =
                                             StackPanel.create [
                                                 StackPanel.spacing 4.0
                                                 StackPanel.children [
-                                                    TextBlock.create [
-                                                        TextBlock.text "⚙ 命名規則マネージャー"
-                                                        TextBlock.foreground (SolidColorBrush textWhite)
-                                                        TextBlock.fontWeight FontWeight.Bold
-                                                        TextBlock.fontSize 15.0
+                                                    StackPanel.create [
+                                                        StackPanel.orientation Orientation.Horizontal
+                                                        StackPanel.spacing 8.0
+                                                        StackPanel.children [
+                                                            TextBlock.create [
+                                                                TextBlock.text "⚙ 命名規則マネージャー"
+                                                                TextBlock.foreground (SolidColorBrush textWhite)
+                                                                TextBlock.fontWeight FontWeight.Bold
+                                                                TextBlock.fontSize 15.0
+                                                            ]
+                                                            Border.create [
+                                                                Border.background (SolidColorBrush (Color.Parse("#172554")))
+                                                                Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
+                                                                Border.borderThickness 1.0
+                                                                Border.cornerRadius 4.0
+                                                                Border.padding (6.0, 1.0)
+                                                                Border.child (
+                                                                    TextBlock.create [
+                                                                        TextBlock.text "左右2ペイン構成"
+                                                                        TextBlock.fontSize 10.0
+                                                                        TextBlock.fontWeight FontWeight.SemiBold
+                                                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#93c5fd")))
+                                                                    ]
+                                                                )
+                                                            ]
+                                                        ]
                                                     ]
                                                     TextBlock.create [
-                                                        TextBlock.text "AIが使用する命名プロンプト規則の優先度並び替え・追加・削除を行います。先頭のルールが既定値になります。"
+                                                        TextBlock.text "AIが使用する命名プロンプト規則の並び替え・追加・編集を行います。先頭のルールが既定値になります。"
                                                         TextBlock.foreground (SolidColorBrush textSub)
                                                         TextBlock.fontSize 11.0
                                                     ]
@@ -1899,199 +1938,456 @@ module Views =
                                         ]
                                     ]
 
-                                    // フッター: 閉じるボタン
-                                    StackPanel.create [
+                                    // 全体フッター (Dock.Bottom): 閉じるボタン
+                                    Border.create [
                                         DockPanel.dock Dock.Bottom
-                                        StackPanel.orientation Orientation.Horizontal
-                                        StackPanel.horizontalAlignment HorizontalAlignment.Right
-                                        StackPanel.margin (0.0, 14.0, 0.0, 0.0)
-                                        StackPanel.children [
-                                            Button.create [
-                                                Button.content "閉じる"
-                                                Button.background (SolidColorBrush btnDark)
-                                                Button.borderBrush (SolidColorBrush borderFluent)
-                                                Button.borderThickness 1.0
-                                                Button.foreground (SolidColorBrush textWhite)
-                                                Button.cornerRadius 4.0
-                                                Button.padding (16.0, 6.0)
-                                                Button.fontSize 11.0
-                                                Button.fontWeight FontWeight.SemiBold
-                                                Button.onClick (fun _ -> dispatch CloseRuleManager)
+                                        Border.borderBrush (SolidColorBrush borderZinc800)
+                                        Border.borderThickness (0.0, 1.0, 0.0, 0.0)
+                                        Border.padding (16.0, 10.0)
+                                        Border.child (
+                                            StackPanel.create [
+                                                StackPanel.orientation Orientation.Horizontal
+                                                StackPanel.horizontalAlignment HorizontalAlignment.Right
+                                                StackPanel.children [
+                                                    Button.create [
+                                                        Button.content "閉じる"
+                                                        Button.background (SolidColorBrush btnDark)
+                                                        Button.borderBrush (SolidColorBrush borderFluent)
+                                                        Button.borderThickness 1.0
+                                                        Button.foreground (SolidColorBrush textWhite)
+                                                        Button.cornerRadius 4.0
+                                                        Button.padding (16.0, 6.0)
+                                                        Button.fontSize 11.0
+                                                        Button.fontWeight FontWeight.SemiBold
+                                                        Button.onClick (fun _ -> dispatch CloseRuleManager)
+                                                    ]
+                                                ]
                                             ]
-                                        ]
+                                        )
                                     ]
 
-                                    // ルール一覧 (ScrollViewer)
-                                    ScrollViewer.create [
-                                        ScrollViewer.content (
-                                            StackPanel.create [
-                                                StackPanel.spacing 8.0
-                                                StackPanel.children [
-                                                    for idx, rule in List.indexed model.Settings.Rules do
-                                                        Border.create [
-                                                            Border.background (SolidColorBrush bgCard)
-                                                            Border.borderBrush (SolidColorBrush (if idx = 0 then accentBlue else borderZinc700))
-                                                            Border.borderThickness (if idx = 0 then 1.5 else 1.0)
-                                                            Border.cornerRadius 6.0
-                                                            Border.padding 10.0
-                                                            Border.child (
-                                                                DockPanel.create [
-                                                                    DockPanel.children [
-                                                                        // 操作ボタン群 (右側): 上へ / 下へ / 削除
-                                                                        StackPanel.create [
-                                                                            DockPanel.dock Dock.Right
-                                                                            StackPanel.orientation Orientation.Horizontal
-                                                                            StackPanel.spacing 6.0
-                                                                            StackPanel.verticalAlignment VerticalAlignment.Center
-                                                                            StackPanel.children [
-                                                                                Button.create [
-                                                                                    Button.content "▲"
-                                                                                    Button.isEnabled (idx > 0)
-                                                                                    Button.background (SolidColorBrush btnDark)
-                                                                                    Button.borderBrush (SolidColorBrush borderZinc700)
-                                                                                    Button.borderThickness 1.0
-                                                                                    Button.foreground (SolidColorBrush textWhite)
-                                                                                    Button.cornerRadius 3.0
-                                                                                    Button.padding (8.0, 4.0)
-                                                                                    Button.fontSize 10.0
-                                                                                    Button.onClick (fun _ -> dispatch (MoveRuleOrder (rule.Id, -1)))
-                                                                                ]
-                                                                                Button.create [
-                                                                                    Button.content "▼"
-                                                                                    Button.isEnabled (idx < model.Settings.Rules.Length - 1)
-                                                                                    Button.background (SolidColorBrush btnDark)
-                                                                                    Button.borderBrush (SolidColorBrush borderZinc700)
-                                                                                    Button.borderThickness 1.0
-                                                                                    Button.foreground (SolidColorBrush textWhite)
-                                                                                    Button.cornerRadius 3.0
-                                                                                    Button.padding (8.0, 4.0)
-                                                                                    Button.fontSize 10.0
-                                                                                    Button.onClick (fun _ -> dispatch (MoveRuleOrder (rule.Id, 1)))
-                                                                                ]
-                                                                                Button.create [
-                                                                                    Button.content "🗑"
-                                                                                    Button.isEnabled (model.Settings.Rules.Length > 1)
-                                                                                    Button.background (SolidColorBrush bgBefore)
-                                                                                    Button.borderBrush (SolidColorBrush borderBefore)
-                                                                                    Button.borderThickness 1.0
-                                                                                    Button.foreground (SolidColorBrush textBeforeLabel)
-                                                                                    Button.cornerRadius 3.0
-                                                                                    Button.padding (8.0, 4.0)
-                                                                                    Button.fontSize 11.0
-                                                                                    Button.onClick (fun _ -> dispatch (DeleteRule rule.Id))
-                                                                                ]
+                                    // ボディ (左右2ペイン Grid: "360, *")
+                                    Grid.create [
+                                        Grid.columnDefinitions "360, *"
+                                        Grid.children [
+                                            // ----------------------------------------------------
+                                            // 左ペイン: ルール一覧
+                                            // ----------------------------------------------------
+                                            Border.create [
+                                                Grid.column 0
+                                                Border.borderBrush (SolidColorBrush borderZinc800)
+                                                Border.borderThickness (0.0, 1.0, 1.0, 0.0)
+                                                Border.background (SolidColorBrush (Color.Parse("#131315")))
+                                                Border.child (
+                                                    DockPanel.create [
+                                                        DockPanel.children [
+                                                            // 左ペインヘッダー
+                                                            Border.create [
+                                                                DockPanel.dock Dock.Top
+                                                                Border.padding (12.0, 8.0)
+                                                                Border.borderBrush (SolidColorBrush borderZinc800)
+                                                                Border.borderThickness (0.0, 0.0, 0.0, 1.0)
+                                                                Border.background (SolidColorBrush bgSurface)
+                                                                Border.child (
+                                                                    DockPanel.create [
+                                                                        DockPanel.children [
+                                                                            TextBlock.create [
+                                                                                DockPanel.dock Dock.Right
+                                                                                TextBlock.text "▲▼で優先度変更"
+                                                                                TextBlock.foreground (SolidColorBrush textZinc500)
+                                                                                TextBlock.fontSize 10.0
+                                                                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                            ]
+                                                                            TextBlock.create [
+                                                                                TextBlock.text $"登録済みルール ({model.Settings.Rules.Length}件)"
+                                                                                TextBlock.foreground (SolidColorBrush textZinc400)
+                                                                                TextBlock.fontSize 11.0
+                                                                                TextBlock.fontWeight FontWeight.SemiBold
+                                                                                TextBlock.verticalAlignment VerticalAlignment.Center
                                                                             ]
                                                                         ]
+                                                                    ]
+                                                                )
+                                                            ]
 
-                                                                        // ルール情報 (左側)
-                                                                        StackPanel.create [
-                                                                            StackPanel.spacing 4.0
-                                                                            StackPanel.children [
-                                                                                StackPanel.create [
-                                                                                    StackPanel.orientation Orientation.Horizontal
-                                                                                    StackPanel.spacing 8.0
-                                                                                    StackPanel.children [
-                                                                                        if idx = 0 then
-                                                                                            Border.create [
-                                                                                                Border.background (SolidColorBrush (Color.Parse("#172554")))
-                                                                                                Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
-                                                                                                Border.borderThickness 1.0
-                                                                                                Border.cornerRadius 3.0
-                                                                                                Border.padding (6.0, 1.0)
-                                                                                                Border.child (
-                                                                                                    TextBlock.create [
-                                                                                                        TextBlock.text "★ 既定ルール"
-                                                                                                        TextBlock.fontSize 10.0
-                                                                                                        TextBlock.fontWeight FontWeight.Bold
-                                                                                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
-                                                                                                    ]
-                                                                                                )
-                                                                                            ]
-                                                                                        TextBlock.create [
-                                                                                            TextBlock.text rule.Name
-                                                                                            TextBlock.foreground (SolidColorBrush textWhite)
-                                                                                            TextBlock.fontWeight FontWeight.Bold
-                                                                                            TextBlock.fontSize 12.0
-                                                                                        ]
-                                                                                        if rule.EnableWebSearch then
-                                                                                            Border.create [
-                                                                                                Border.background (SolidColorBrush (Color.Parse("#172554")))
-                                                                                                Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
-                                                                                                Border.borderThickness 1.0
-                                                                                                Border.cornerRadius 3.0
-                                                                                                Border.padding (6.0, 1.0)
-                                                                                                Border.child (
-                                                                                                    TextBlock.create [
-                                                                                                        TextBlock.text "🌐 Web検索有効"
-                                                                                                        TextBlock.fontSize 10.0
-                                                                                                        TextBlock.fontWeight FontWeight.SemiBold
-                                                                                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#93c5fd")))
-                                                                                                    ]
-                                                                                                )
-                                                                                            ]
+                                                            // 左ペイン下部: 新規作成ボタン
+                                                            Border.create [
+                                                                DockPanel.dock Dock.Bottom
+                                                                Border.padding 12.0
+                                                                Border.borderBrush (SolidColorBrush borderZinc800)
+                                                                Border.borderThickness (0.0, 1.0, 0.0, 0.0)
+                                                                Border.background (SolidColorBrush bgSurface)
+                                                                Border.child (
+                                                                    Button.create [
+                                                                        Button.content (
+                                                                            StackPanel.create [
+                                                                                StackPanel.orientation Orientation.Horizontal
+                                                                                StackPanel.spacing 6.0
+                                                                                StackPanel.horizontalAlignment HorizontalAlignment.Center
+                                                                                StackPanel.children [
+                                                                                    TextBlock.create [ TextBlock.text "➕"; TextBlock.fontSize 11.0 ]
+                                                                                    TextBlock.create [
+                                                                                        TextBlock.text (if isEditing then "新規ルールを作成" else "新規ルールを作成中")
+                                                                                        TextBlock.fontWeight FontWeight.SemiBold
+                                                                                        TextBlock.fontSize 11.0
                                                                                     ]
                                                                                 ]
-                                                                                TextBlock.create [
-                                                                                    TextBlock.text $"パターン: {rule.Pattern}"
-                                                                                    TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
-                                                                                    TextBlock.fontFamily (FontFamily "Consolas, monospace")
-                                                                                    TextBlock.fontSize 11.0
+                                                                            ]
+                                                                        )
+                                                                        Button.horizontalAlignment HorizontalAlignment.Stretch
+                                                                        Button.horizontalContentAlignment HorizontalAlignment.Center
+                                                                        Button.background (SolidColorBrush (if isEditing then btnDark else accentBlue))
+                                                                        Button.borderBrush (SolidColorBrush (if isEditing then borderZinc700 else borderFluent))
+                                                                        Button.borderThickness 1.0
+                                                                        Button.foreground (SolidColorBrush textWhite)
+                                                                        Button.cornerRadius 6.0
+                                                                        Button.padding (0.0, 8.0)
+                                                                        Button.onClick (fun _ -> dispatch CancelEditRule)
+                                                                    ]
+                                                                )
+                                                            ]
+
+                                                            // 中央: ルール一覧 (ScrollViewer)
+                                                            ScrollViewer.create [
+                                                                ScrollViewer.content (
+                                                                    StackPanel.create [
+                                                                        StackPanel.spacing 8.0
+                                                                        StackPanel.margin 12.0
+                                                                        StackPanel.children [
+                                                                            for idx, rule in List.indexed model.Settings.Rules do
+                                                                                let isThisEditing =
+                                                                                    match model.EditingRule with
+                                                                                    | Some r -> r.Id = rule.Id
+                                                                                    | None -> false
+
+                                                                                Border.create [
+                                                                                    Border.background (SolidColorBrush (if isThisEditing then Color.Parse("#172554") else bgCard))
+                                                                                    Border.borderBrush (SolidColorBrush (if isThisEditing then accentBlue else borderZinc700))
+                                                                                    Border.borderThickness (if isThisEditing then 1.5 else 1.0)
+                                                                                    Border.cornerRadius 6.0
+                                                                                    Border.padding 10.0
+                                                                                    Border.child (
+                                                                                        DockPanel.create [
+                                                                                            DockPanel.children [
+                                                                                                // 右側ボタン群 (▲ / ▼ / ✏️ / 🗑)
+                                                                                                StackPanel.create [
+                                                                                                    DockPanel.dock Dock.Right
+                                                                                                    StackPanel.orientation Orientation.Horizontal
+                                                                                                    StackPanel.spacing 4.0
+                                                                                                    StackPanel.verticalAlignment VerticalAlignment.Top
+                                                                                                    StackPanel.children [
+                                                                                                        Button.create [
+                                                                                                            Button.content "▲"
+                                                                                                            Button.isEnabled (idx > 0)
+                                                                                                            Button.background (SolidColorBrush btnDark)
+                                                                                                            Button.borderBrush (SolidColorBrush borderZinc700)
+                                                                                                            Button.borderThickness 1.0
+                                                                                                            Button.foreground (SolidColorBrush textWhite)
+                                                                                                            Button.cornerRadius 3.0
+                                                                                                            Button.padding (6.0, 3.0)
+                                                                                                            Button.fontSize 10.0
+                                                                                                            Button.onClick (fun _ -> dispatch (MoveRuleOrder (rule.Id, -1)))
+                                                                                                        ]
+                                                                                                        Button.create [
+                                                                                                            Button.content "▼"
+                                                                                                            Button.isEnabled (idx < model.Settings.Rules.Length - 1)
+                                                                                                            Button.background (SolidColorBrush btnDark)
+                                                                                                            Button.borderBrush (SolidColorBrush borderZinc700)
+                                                                                                            Button.borderThickness 1.0
+                                                                                                            Button.foreground (SolidColorBrush textWhite)
+                                                                                                            Button.cornerRadius 3.0
+                                                                                                            Button.padding (6.0, 3.0)
+                                                                                                            Button.fontSize 10.0
+                                                                                                            Button.onClick (fun _ -> dispatch (MoveRuleOrder (rule.Id, 1)))
+                                                                                                        ]
+                                                                                                        Button.create [
+                                                                                                            Button.content "✏"
+                                                                                                            Button.fontFamily emojiFontFamily
+                                                                                                            Button.background (SolidColorBrush (if isThisEditing then Color.Parse("#d97706") else btnDark))
+                                                                                                            Button.borderBrush (SolidColorBrush (if isThisEditing then Color.Parse("#f59e0b") else borderZinc700))
+                                                                                                            Button.borderThickness 1.0
+                                                                                                            Button.foreground (SolidColorBrush textWhite)
+                                                                                                            Button.cornerRadius 3.0
+                                                                                                            Button.padding (6.0, 3.0)
+                                                                                                            Button.fontSize 10.0
+                                                                                                            Button.onClick (fun _ -> dispatch (StartEditRule rule.Id))
+                                                                                                        ]
+                                                                                                        Button.create [
+                                                                                                            Button.content "🗑"
+                                                                                                            Button.isEnabled (model.Settings.Rules.Length > 1)
+                                                                                                            Button.background (SolidColorBrush bgBefore)
+                                                                                                            Button.borderBrush (SolidColorBrush borderBefore)
+                                                                                                            Button.borderThickness 1.0
+                                                                                                            Button.foreground (SolidColorBrush textBeforeLabel)
+                                                                                                            Button.cornerRadius 3.0
+                                                                                                            Button.padding (6.0, 3.0)
+                                                                                                            Button.fontSize 10.0
+                                                                                                            Button.onClick (fun _ -> dispatch (RequestDeleteRule rule.Id))
+                                                                                                        ]
+                                                                                                    ]
+                                                                                                ]
+
+                                                                                                // 左側ルール情報
+                                                                                                StackPanel.create [
+                                                                                                    StackPanel.spacing 3.0
+                                                                                                    StackPanel.margin (0.0, 0.0, 8.0, 0.0)
+                                                                                                    StackPanel.children [
+                                                                                                        if idx = 0 || isThisEditing then
+                                                                                                            StackPanel.create [
+                                                                                                                StackPanel.orientation Orientation.Horizontal
+                                                                                                                StackPanel.spacing 6.0
+                                                                                                                StackPanel.children [
+                                                                                                                    if idx = 0 then
+                                                                                                                        Border.create [
+                                                                                                                            Border.background (SolidColorBrush (Color.Parse("#172554")))
+                                                                                                                            Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
+                                                                                                                            Border.borderThickness 1.0
+                                                                                                                            Border.cornerRadius 3.0
+                                                                                                                            Border.padding (4.0, 1.0)
+                                                                                                                            Border.child (
+                                                                                                                                TextBlock.create [
+                                                                                                                                    TextBlock.text "★既定"
+                                                                                                                                    TextBlock.fontSize 9.0
+                                                                                                                                    TextBlock.fontWeight FontWeight.Bold
+                                                                                                                                    TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                                                                                                ]
+                                                                                                                            )
+                                                                                                                        ]
+                                                                                                                    if isThisEditing then
+                                                                                                                        Border.create [
+                                                                                                                            Border.background (SolidColorBrush (Color.Parse("#451a03")))
+                                                                                                                            Border.borderBrush (SolidColorBrush (Color.Parse("#92400e")))
+                                                                                                                            Border.borderThickness 1.0
+                                                                                                                            Border.cornerRadius 3.0
+                                                                                                                            Border.padding (4.0, 1.0)
+                                                                                                                            Border.child (
+                                                                                                                                TextBlock.create [
+                                                                                                                                    TextBlock.text "✏ 編集中"
+                                                                                                                                    TextBlock.fontSize 9.0
+                                                                                                                                    TextBlock.fontWeight FontWeight.Bold
+                                                                                                                                    TextBlock.foreground (SolidColorBrush (Color.Parse("#fcd34d")))
+                                                                                                                                ]
+                                                                                                                            )
+                                                                                                                        ]
+                                                                                                                ]
+                                                                                                            ]
+                                                                                                        TextBlock.create [
+                                                                                                            TextBlock.text rule.Name
+                                                                                                            TextBlock.foreground (SolidColorBrush textWhite)
+                                                                                                            TextBlock.fontWeight FontWeight.Bold
+                                                                                                            TextBlock.fontSize 12.0
+                                                                                                            TextBlock.textTrimming TextTrimming.CharacterEllipsis
+                                                                                                            TextBlock.maxLines 1
+                                                                                                        ]
+                                                                                                        TextBlock.create [
+                                                                                                            TextBlock.text $"パターン: {rule.Pattern}"
+                                                                                                            TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                                                                            TextBlock.fontFamily monoFontFamily
+                                                                                                            TextBlock.fontSize 10.0
+                                                                                                        ]
+                                                                                                        DockPanel.create [
+                                                                                                            DockPanel.margin (0.0, 2.0, 0.0, 0.0)
+                                                                                                            DockPanel.children [
+                                                                                                                if rule.EnableWebSearch then
+                                                                                                                    Border.create [
+                                                                                                                        DockPanel.dock Dock.Left
+                                                                                                                        Border.background (SolidColorBrush (Color.Parse("#172554")))
+                                                                                                                        Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
+                                                                                                                        Border.borderThickness 1.0
+                                                                                                                        Border.cornerRadius 3.0
+                                                                                                                        Border.padding (4.0, 1.0)
+                                                                                                                        Border.margin (0.0, 0.0, 6.0, 0.0)
+                                                                                                                        Border.child (
+                                                                                                                            TextBlock.create [
+                                                                                                                                TextBlock.text "🌐 Web検索有効"
+                                                                                                                                TextBlock.fontSize 9.0
+                                                                                                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#93c5fd")))
+                                                                                                                            ]
+                                                                                                                        )
+                                                                                                                    ]
+                                                                                                                else
+                                                                                                                    TextBlock.create [
+                                                                                                                        DockPanel.dock Dock.Left
+                                                                                                                        TextBlock.text "検索無効"
+                                                                                                                        TextBlock.fontSize 9.0
+                                                                                                                        TextBlock.foreground (SolidColorBrush textZinc500)
+                                                                                                                        TextBlock.margin (0.0, 0.0, 6.0, 0.0)
+                                                                                                                        TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                                                                    ]
+                                                                                                                TextBlock.create [
+                                                                                                                    TextBlock.text rule.PromptInstruction
+                                                                                                                    TextBlock.foreground (SolidColorBrush textSub)
+                                                                                                                    TextBlock.fontSize 9.0
+                                                                                                                    TextBlock.textWrapping TextWrapping.NoWrap
+                                                                                                                    TextBlock.maxLines 1
+                                                                                                                ]
+                                                                                                            ]
+                                                                                                        ]
+                                                                                                    ]
+                                                                                                ]
+                                                                                            ]
+                                                                                        ]
+                                                                                    )
                                                                                 ]
-                                                                                TextBlock.create [
-                                                                                    TextBlock.text rule.PromptInstruction
-                                                                                    TextBlock.foreground (SolidColorBrush textSub)
-                                                                                    TextBlock.fontSize 10.0
-                                                                                    TextBlock.textWrapping TextWrapping.Wrap
+                                                                        ]
+                                                                    ]
+                                                                )
+                                                            ]
+                                                        ]
+                                                    ]
+                                                )
+                                            ]
+
+                                            // ----------------------------------------------------
+                                            // 右ペイン: ルール詳細・編集フォーム
+                                            // ----------------------------------------------------
+                                            Border.create [
+                                                Grid.column 1
+                                                Border.borderBrush (SolidColorBrush borderZinc800)
+                                                Border.borderThickness (0.0, 1.0, 0.0, 0.0)
+                                                Border.background (SolidColorBrush bgSurface)
+                                                Border.padding 20.0
+                                                Border.child (
+                                                    DockPanel.create [
+                                                        DockPanel.children [
+                                                            // 右ペインヘッダー
+                                                            Border.create [
+                                                                DockPanel.dock Dock.Top
+                                                                Border.padding (0.0, 0.0, 0.0, 12.0)
+                                                                Border.borderBrush (SolidColorBrush borderZinc800)
+                                                                Border.borderThickness (0.0, 0.0, 0.0, 1.0)
+                                                                Border.child (
+                                                                    DockPanel.create [
+                                                                        DockPanel.children [
+                                                                            if isEditing then
+                                                                                Button.create [
+                                                                                    DockPanel.dock Dock.Right
+                                                                                    Button.content "✕ 編集をキャンセル"
+                                                                                    Button.background (SolidColorBrush btnDark)
+                                                                                    Button.borderBrush (SolidColorBrush borderZinc700)
+                                                                                    Button.borderThickness 1.0
+                                                                                    Button.foreground (SolidColorBrush textSub)
+                                                                                    Button.fontSize 11.0
+                                                                                    Button.padding (10.0, 4.0)
+                                                                                    Button.cornerRadius 4.0
+                                                                                    Button.onClick (fun _ -> dispatch CancelEditRule)
+                                                                                ]
+                                                                            StackPanel.create [
+                                                                                StackPanel.orientation Orientation.Horizontal
+                                                                                StackPanel.spacing 8.0
+                                                                                StackPanel.verticalAlignment VerticalAlignment.Center
+                                                                                StackPanel.children [
+                                                                                    TextBlock.create [
+                                                                                        TextBlock.text (if isEditing then "✏️ ルールの編集" else "➕ 新規ルールの作成")
+                                                                                        TextBlock.foreground (SolidColorBrush textWhite)
+                                                                                        TextBlock.fontWeight FontWeight.Bold
+                                                                                        TextBlock.fontSize 14.0
+                                                                                    ]
+                                                                                    Border.create [
+                                                                                        Border.background (SolidColorBrush (if isEditing then Color.Parse("#451a03") else Color.Parse("#172554")))
+                                                                                        Border.borderBrush (SolidColorBrush (if isEditing then Color.Parse("#92400e") else Color.Parse("#1e40af")))
+                                                                                        Border.borderThickness 1.0
+                                                                                        Border.cornerRadius 3.0
+                                                                                        Border.padding (6.0, 2.0)
+                                                                                        Border.child (
+                                                                                            TextBlock.create [
+                                                                                                TextBlock.text (if isEditing then $"既存ルール更新モード: {curRule.Name}" else "新規追加モード (入力後に保存してください)")
+                                                                                                TextBlock.fontSize 10.0
+                                                                                                TextBlock.fontWeight FontWeight.SemiBold
+                                                                                                TextBlock.foreground (SolidColorBrush (if isEditing then Color.Parse("#fcd34d") else Color.Parse("#93c5fd")))
+                                                                                            ]
+                                                                                        )
+                                                                                    ]
                                                                                 ]
                                                                             ]
                                                                         ]
                                                                     ]
-                                                                ]
-                                                            )
-                                                        ]
+                                                                )
+                                                            ]
 
-                                                    // ➕ 新規命名規則の追加フォーム
-                                                    let curRule =
-                                                        model.EditingRule
-                                                        |> Option.defaultValue {
-                                                            Id = ""
-                                                            Name = ""
-                                                            Pattern = "*.mp4"
-                                                            PromptInstruction = ""
-                                                            Order = 0
-                                                            EnableWebSearch = true
-                                                        }
-
-                                                    Border.create [
-                                                        Border.background (SolidColorBrush (Color.Parse("#18181b")))
-                                                        Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
-                                                        Border.borderThickness 1.0
-                                                        Border.cornerRadius 6.0
-                                                        Border.padding 12.0
-                                                        Border.margin (0.0, 8.0, 0.0, 0.0)
-                                                        Border.child (
-                                                            StackPanel.create [
-                                                                StackPanel.spacing 8.0
-                                                                StackPanel.children [
-                                                                    TextBlock.create [
-                                                                        TextBlock.text "➕ 新規命名規則の追加"
-                                                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
-                                                                        TextBlock.fontWeight FontWeight.Bold
-                                                                        TextBlock.fontSize 12.0
+                                                            // 右ペインフッター: アクションボタン
+                                                            Border.create [
+                                                                DockPanel.dock Dock.Bottom
+                                                                Border.margin (0.0, 12.0, 0.0, 0.0)
+                                                                Border.padding (0.0, 12.0, 0.0, 0.0)
+                                                                Border.borderBrush (SolidColorBrush borderZinc800)
+                                                                Border.borderThickness (0.0, 1.0, 0.0, 0.0)
+                                                                Border.child (
+                                                                    DockPanel.create [
+                                                                        DockPanel.children [
+                                                                            TextBlock.create [
+                                                                                DockPanel.dock Dock.Left
+                                                                                TextBlock.text (if String.IsNullOrWhiteSpace curRule.Name then "ルール名を入力してください" else $"「{curRule.Name}」を保存します")
+                                                                                TextBlock.foreground (SolidColorBrush textSub)
+                                                                                TextBlock.fontSize 11.0
+                                                                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                            ]
+                                                                            StackPanel.create [
+                                                                                DockPanel.dock Dock.Right
+                                                                                StackPanel.orientation Orientation.Horizontal
+                                                                                StackPanel.spacing 8.0
+                                                                                StackPanel.children [
+                                                                                    if isEditing then
+                                                                                        Button.create [
+                                                                                            Button.content "キャンセル"
+                                                                                            Button.background (SolidColorBrush btnDark)
+                                                                                            Button.borderBrush (SolidColorBrush borderZinc700)
+                                                                                            Button.borderThickness 1.0
+                                                                                            Button.foreground (SolidColorBrush textSub)
+                                                                                            Button.fontSize 11.0
+                                                                                            Button.padding (12.0, 6.0)
+                                                                                            Button.cornerRadius 4.0
+                                                                                            Button.onClick (fun _ -> dispatch CancelEditRule)
+                                                                                        ]
+                                                                                    Button.create [
+                                                                                        Button.content (if isEditing then "💾 この内容で更新・保存" else "💾 この命名規則を追加する")
+                                                                                        Button.isEnabled (not (String.IsNullOrWhiteSpace curRule.Name))
+                                                                                        Button.background (SolidColorBrush accentBlue)
+                                                                                        Button.foreground (SolidColorBrush textWhite)
+                                                                                        Button.fontWeight FontWeight.Bold
+                                                                                        Button.fontSize 11.0
+                                                                                        Button.cornerRadius 4.0
+                                                                                        Button.padding (16.0, 6.0)
+                                                                                        Button.onClick (fun _ -> dispatch SaveEditingRule)
+                                                                                    ]
+                                                                                ]
+                                                                            ]
+                                                                        ]
                                                                     ]
+                                                                )
+                                                            ]
+
+                                                            // フォーム中央コンテンツ
+                                                            StackPanel.create [
+                                                                StackPanel.spacing 12.0
+                                                                StackPanel.margin (0.0, 12.0, 0.0, 0.0)
+                                                                StackPanel.children [
+                                                                    // ルール名 & 命名パターン (2列 Grid)
                                                                     Grid.create [
                                                                         Grid.columnDefinitions "*, *"
                                                                         Grid.children [
+                                                                            // ルール名
                                                                             StackPanel.create [
                                                                                 Grid.column 0
                                                                                 StackPanel.spacing 4.0
-                                                                                StackPanel.margin (0.0, 0.0, 6.0, 0.0)
+                                                                                StackPanel.margin (0.0, 0.0, 8.0, 0.0)
                                                                                 StackPanel.children [
-                                                                                    TextBlock.create [
-                                                                                        TextBlock.text "ルール名 (必須):"
-                                                                                        TextBlock.foreground (SolidColorBrush textSub)
-                                                                                        TextBlock.fontSize 11.0
-                                                                                        TextBlock.fontWeight FontWeight.SemiBold
+                                                                                    StackPanel.create [
+                                                                                        StackPanel.orientation Orientation.Horizontal
+                                                                                        StackPanel.spacing 4.0
+                                                                                        StackPanel.children [
+                                                                                            TextBlock.create [
+                                                                                                TextBlock.text "ルール名 (必須):"
+                                                                                                TextBlock.foreground (SolidColorBrush textSub)
+                                                                                                TextBlock.fontSize 11.0
+                                                                                                TextBlock.fontWeight FontWeight.SemiBold
+                                                                                            ]
+                                                                                            TextBlock.create [
+                                                                                                TextBlock.text "*"
+                                                                                                TextBlock.foreground (SolidColorBrush textBeforeLabel)
+                                                                                                TextBlock.fontSize 11.0
+                                                                                            ]
+                                                                                        ]
                                                                                     ]
                                                                                     TextBox.create [
                                                                                         TextBox.text curRule.Name
@@ -2101,52 +2397,103 @@ module Views =
                                                                                         TextBox.foreground (SolidColorBrush textWhite)
                                                                                         TextBox.borderBrush (SolidColorBrush borderZinc700)
                                                                                         TextBox.cornerRadius 4.0
-                                                                                        TextBox.padding (6.0, 2.0)
-                                                                                        TextBox.watermark "例: バラエティ用短縮"
+                                                                                        TextBox.padding (8.0, 4.0)
+                                                                                        TextBox.watermark "例: 品番_要約_出演者(推奨)"
                                                                                         TextBox.onTextChanged (fun t -> dispatch (UpdateEditingRuleName t))
                                                                                     ]
                                                                                 ]
                                                                             ]
+                                                                            // 命名パターン
                                                                             StackPanel.create [
                                                                                 Grid.column 1
                                                                                 StackPanel.spacing 4.0
-                                                                                StackPanel.margin (6.0, 0.0, 0.0, 0.0)
+                                                                                StackPanel.margin (8.0, 0.0, 0.0, 0.0)
                                                                                 StackPanel.children [
-                                                                                    TextBlock.create [
-                                                                                        TextBlock.text "対象パターン:"
-                                                                                        TextBlock.foreground (SolidColorBrush textSub)
-                                                                                        TextBlock.fontSize 11.0
-                                                                                        TextBlock.fontWeight FontWeight.SemiBold
+                                                                                    StackPanel.create [
+                                                                                        StackPanel.orientation Orientation.Horizontal
+                                                                                        StackPanel.spacing 6.0
+                                                                                        StackPanel.children [
+                                                                                            TextBlock.create [
+                                                                                                TextBlock.text "命名パターン (テンプレート):"
+                                                                                                TextBlock.foreground (SolidColorBrush textSub)
+                                                                                                TextBlock.fontSize 11.0
+                                                                                                TextBlock.fontWeight FontWeight.SemiBold
+                                                                                            ]
+                                                                                            TextBlock.create [
+                                                                                                TextBlock.text "※拡張子は不要"
+                                                                                                TextBlock.foreground (SolidColorBrush textZinc500)
+                                                                                                TextBlock.fontSize 10.0
+                                                                                            ]
+                                                                                        ]
                                                                                     ]
                                                                                     TextBox.create [
                                                                                         TextBox.text curRule.Pattern
                                                                                         TextBox.height 28.0
                                                                                         TextBox.fontSize 11.0
-                                                                                        TextBox.fontFamily (FontFamily "Consolas, monospace")
+                                                                                        TextBox.fontFamily monoFontFamily
                                                                                         TextBox.background (SolidColorBrush bgInput)
-                                                                                        TextBox.foreground (SolidColorBrush textWhite)
+                                                                                        TextBox.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
                                                                                         TextBox.borderBrush (SolidColorBrush borderZinc700)
                                                                                         TextBox.cornerRadius 4.0
-                                                                                        TextBox.padding (6.0, 2.0)
-                                                                                        TextBox.watermark "*.mp4;*.mkv"
+                                                                                        TextBox.padding (8.0, 4.0)
+                                                                                        TextBox.watermark "例: {Code}_{Summary}_{Actor}"
                                                                                         TextBox.onTextChanged (fun t -> dispatch (UpdateEditingRulePattern t))
                                                                                     ]
                                                                                 ]
                                                                             ]
                                                                         ]
                                                                     ]
+
+                                                                    // Web検索トグル
+                                                                    CheckBox.create [
+                                                                        CheckBox.content "🌐 DuckDuckGo Web検索 (ddgs) を有効にする (作品タイトルや出演者をWebから取得してプロンプトに注入します)"
+                                                                        CheckBox.isChecked curRule.EnableWebSearch
+                                                                        CheckBox.foreground (SolidColorBrush textWhite)
+                                                                        CheckBox.fontSize 11.0
+                                                                        CheckBox.verticalAlignment VerticalAlignment.Center
+                                                                        CheckBox.onIsCheckedChanged (fun e ->
+                                                                            match getCheckBoxValue e with
+                                                                            | Some isChecked when isChecked <> curRule.EnableWebSearch ->
+                                                                                dispatch (UpdateEditingRuleWebSearch isChecked)
+                                                                            | _ -> ()
+                                                                        )
+                                                                    ]
+
+                                                                    // プロンプト指示文 (AIへの詳細命名指示) - 広域テキストエリア
                                                                     StackPanel.create [
                                                                         StackPanel.spacing 4.0
                                                                         StackPanel.children [
-                                                                            TextBlock.create [
-                                                                                TextBlock.text "プロンプト指示文 (AIへの命名指示):"
-                                                                                TextBlock.foreground (SolidColorBrush textSub)
-                                                                                TextBlock.fontSize 11.0
-                                                                                TextBlock.fontWeight FontWeight.SemiBold
+                                                                            DockPanel.create [
+                                                                                DockPanel.children [
+                                                                                    TextBlock.create [
+                                                                                        DockPanel.dock Dock.Right
+                                                                                        TextBlock.text "※縦領域を広く活用して長文も確認・編集可能です"
+                                                                                        TextBlock.foreground (SolidColorBrush textZinc500)
+                                                                                        TextBlock.fontSize 10.0
+                                                                                        TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                                    ]
+                                                                                    StackPanel.create [
+                                                                                        StackPanel.orientation Orientation.Horizontal
+                                                                                        StackPanel.spacing 4.0
+                                                                                        StackPanel.children [
+                                                                                            TextBlock.create [
+                                                                                                TextBlock.text "プロンプト指示文 (AIへの詳細命名指示):"
+                                                                                                TextBlock.foreground (SolidColorBrush textSub)
+                                                                                                TextBlock.fontSize 11.0
+                                                                                                TextBlock.fontWeight FontWeight.SemiBold
+                                                                                            ]
+                                                                                            TextBlock.create [
+                                                                                                TextBlock.text "*"
+                                                                                                TextBlock.foreground (SolidColorBrush textBeforeLabel)
+                                                                                                TextBlock.fontSize 11.0
+                                                                                            ]
+                                                                                        ]
+                                                                                    ]
+                                                                                ]
                                                                             ]
                                                                             TextBox.create [
                                                                                 TextBox.text curRule.PromptInstruction
-                                                                                TextBox.height 48.0
+                                                                                TextBox.height 280.0
                                                                                 TextBox.fontSize 11.0
                                                                                 TextBox.acceptsReturn true
                                                                                 TextBox.textWrapping TextWrapping.Wrap
@@ -2154,48 +2501,19 @@ module Views =
                                                                                 TextBox.foreground (SolidColorBrush textWhite)
                                                                                 TextBox.borderBrush (SolidColorBrush borderZinc700)
                                                                                 TextBox.cornerRadius 4.0
-                                                                                TextBox.padding (6.0, 4.0)
-                                                                                TextBox.watermark "例: Web検索スニペットを参考に正式番組名を特定し、半角スペース区切りで短縮してください。"
+                                                                                TextBox.padding (8.0, 8.0)
+                                                                                TextBox.watermark "例: 既存のファイル名から品番、タイトルの要約、出演者を抽出しアンダースコア繋ぎで命名（短すぎても内容が把握しずらくなるので日本語で200文字前後となるように）してください。日本語タイトルや出演者が不明な場合は品番をWeb検索してそれぞれFANZAから日本語を取得してください。"
                                                                                 TextBox.onTextChanged (fun t -> dispatch (UpdateEditingRulePrompt t))
-                                                                            ]
-                                                                        ]
-                                                                    ]
-                                                                    DockPanel.create [
-                                                                        DockPanel.children [
-                                                                            Button.create [
-                                                                                DockPanel.dock Dock.Right
-                                                                                Button.content "➕ この命名規則を追加する"
-                                                                                Button.isEnabled (not (String.IsNullOrWhiteSpace(curRule.Name)))
-                                                                                Button.background (SolidColorBrush accentBlue)
-                                                                                Button.foreground (SolidColorBrush textWhite)
-                                                                                Button.fontWeight FontWeight.Bold
-                                                                                Button.fontSize 11.0
-                                                                                Button.cornerRadius 4.0
-                                                                                Button.padding (12.0, 6.0)
-                                                                                Button.onClick (fun _ -> dispatch SaveEditingRule)
-                                                                            ]
-                                                                            CheckBox.create [
-                                                                                CheckBox.content "🌐 DuckDuckGo Web検索 (ddgs) を有効にする"
-                                                                                CheckBox.isChecked curRule.EnableWebSearch
-                                                                                CheckBox.foreground (SolidColorBrush textWhite)
-                                                                                CheckBox.fontSize 11.0
-                                                                                CheckBox.verticalAlignment VerticalAlignment.Center
-                                                                                CheckBox.onIsCheckedChanged (fun e ->
-                                                                                    match getCheckBoxValue e with
-                                                                                    | Some isChecked when isChecked <> curRule.EnableWebSearch ->
-                                                                                        dispatch (UpdateEditingRuleWebSearch isChecked)
-                                                                                    | _ -> ()
-                                                                                )
                                                                             ]
                                                                         ]
                                                                     ]
                                                                 ]
                                                             ]
-                                                        )
+                                                        ]
                                                     ]
-                                                ]
+                                                )
                                             ]
-                                        )
+                                        ]
                                     ]
                                 ]
                             ]
@@ -2203,6 +2521,7 @@ module Views =
                     ]
                 )
             ]
+
 
     // ==========================================
     // メインビュー (Windows 11 Fluent Dark レイアウト)
