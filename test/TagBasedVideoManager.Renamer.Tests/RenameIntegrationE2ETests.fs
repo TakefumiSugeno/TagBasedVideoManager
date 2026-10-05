@@ -54,7 +54,7 @@ module RenameIntegrationE2ETests =
             // -----------------------------------------------------------------
             // 2. 走査 (FileScanner.scanLongPaths)
             // -----------------------------------------------------------------
-            let scanResult = FileScanner.scanLongPaths tempDir 240
+            let scanResult = FileScanner.scanLongPaths tempDir 240 false
             match scanResult with
             | Error err -> failwith $"走査エラー: {err}"
             | Ok scannedFiles ->
@@ -125,7 +125,7 @@ module RenameIntegrationE2ETests =
                     // -----------------------------------------------------------------
                     // 5. リネーム後の再走査で対象件数が 0 件になることを検証
                     // -----------------------------------------------------------------
-                    let reScanResult = FileScanner.scanLongPaths tempDir 240
+                    let reScanResult = FileScanner.scanLongPaths tempDir 240 false
                     match reScanResult with
                     | Error err -> failwith $"再走査エラー: {err}"
                     | Ok reScannedFiles ->
@@ -149,7 +149,7 @@ module RenameIntegrationE2ETests =
                         File.ReadAllText(longPath2) |> should equal "video-content-2"
 
                         // 再度走査すると、元通り2件の長パスファイルが抽出されること
-                        let restoredScanResult = FileScanner.scanLongPaths tempDir 240
+                        let restoredScanResult = FileScanner.scanLongPaths tempDir 240 false
                         match restoredScanResult with
                         | Error err -> failwith $"復元後走査エラー: {err}"
                         | Ok restoredScanned ->
@@ -277,6 +277,7 @@ module RenameIntegrationE2ETests =
         let baseModel : Model = {
             Settings = { settings with TargetDirectory = "D:\\Videos" }
             CurrentThreshold = 240
+            FilterNonJapaneseOnly = false
             SelectedRuleId = "rule-date-action"
             IsScanning = false
             IsRequestingAi = false
@@ -459,6 +460,10 @@ module RenameIntegrationE2ETests =
         renderAndCaptureWithCustomSize multiWidthModel "E2E_09f_Width_500.png" 500.0 650.0
         renderAndCaptureWithCustomSize multiWidthModel "E2E_09g_Width_450.png" 450.0 650.0
 
+        // 10. 日本語除外フィルタON状態の画面キャプチャ
+        let filterNonJapaneseModel = { baseModel with FilterNonJapaneseOnly = true }
+        renderAndCapture filterNonJapaneseModel "E2E_10_Filter_Non_Japanese_Enabled.png"
+
 
 
     [<Fact>]
@@ -481,7 +486,7 @@ module RenameIntegrationE2ETests =
             let model1 = { baseModel with Settings = initialSettings }
 
             // 3. 走査実行 (FileScanner.scanLongPaths)
-            let scanResult = FileScanner.scanLongPaths tempDir 240
+            let scanResult = FileScanner.scanLongPaths tempDir 240 false
             match scanResult with
             | Error err -> failwith $"走査失敗: {err}"
             | Ok candidates ->
@@ -865,3 +870,75 @@ module RenameIntegrationE2ETests =
         renameButton |> should not' (equal None)
         let (_, isRenameEnabled) = renameButton.Value
         isRenameEnabled |> should equal false
+
+    [<Fact>]
+    let ``UI: FilterNonJapaneseOnly checkbox exists and reflects model state`` () =
+        let settings = Settings.defaultSettings ()
+        let modelWithFilter : Model = {
+            Settings = settings
+            CurrentThreshold = 240
+            FilterNonJapaneseOnly = true
+            SelectedRuleId = ""
+            IsScanning = false
+            IsRequestingAi = false
+            IsRenaming = false
+            IsDockerBusy = false
+            ErrorMessage = None
+            Candidates = []
+            UndoStack = []
+            Docker = {
+                State = Running
+                IsPortAccessible = true
+                ContainerId = None
+                LastChecked = DateTime.UtcNow
+            }
+            Layout = Vertical
+            SortCriterion = PathLengthDesc
+            IsRuleManagerOpen = false
+            EditingRule = None
+            ConfirmDialog = None
+            AiCancellationCts = None
+        }
+
+        let w = new Avalonia.FuncUI.Hosts.HostWindow()
+        w.Width <- 1100.0
+        w.Height <- 720.0
+        Elmish.Program.mkProgram (fun () -> modelWithFilter, Elmish.Cmd.none) State.update Views.view
+        |> Avalonia.FuncUI.Elmish.Program.withHost w
+        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+        w.Show()
+        w.UpdateLayout()
+
+        let rec collectControls (control: Avalonia.Controls.Control) : Avalonia.Controls.Control list =
+            let current = [ control ]
+            let children =
+                match control with
+                | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectControls |> Seq.toList
+                | :? Avalonia.Controls.ContentControl as cc ->
+                    match cc.Content with
+                    | :? Avalonia.Controls.Control as c -> collectControls c
+                    | _ -> []
+                | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
+                    collectControls d.Child
+                | _ -> []
+            current @ children
+
+        let allControls = collectControls w
+        w.Close()
+
+        let checkBoxes =
+            allControls
+            |> List.choose (fun c ->
+                match c with
+                | :? Avalonia.Controls.CheckBox as cb ->
+                    let contentStr = if cb.Content <> null then cb.Content.ToString() else ""
+                    let isChecked = cb.IsChecked.HasValue && cb.IsChecked.Value
+                    Some (contentStr, isChecked)
+                | _ -> None
+            )
+
+        let targetCb = checkBoxes |> List.tryFind (fun (content, _) -> content.Contains("ファイル名に日本語を含まないもののみ抽出"))
+        targetCb |> should not' (equal None)
+        let (_, isChecked) = targetCb.Value
+        isChecked |> should equal true
+
