@@ -106,6 +106,12 @@ module State =
         LastChecked = DateTime.UtcNow
     }
 
+    /// 画面表示用ソート済Proposalsの順序にScanCandidatesを整列する純粋関数
+    let alignCandidatesWithProposals (candidates: ScanCandidate list) (proposals: RenameProposal list) : ScanCandidate list =
+        let candidateMap = candidates |> List.map (fun c -> c.FullPath, c) |> Map.ofList
+        proposals
+        |> List.choose (fun p -> Map.tryFind p.OriginalFullPath candidateMap)
+
     let private createAsyncPipelineCmd
         (apiKey: string)
         (modelName: string)
@@ -282,6 +288,8 @@ module State =
                     |> List.map Proposal.createInitial
                     |> FileScanner.sortCandidates model.SortCriterion
 
+                let sortedCandidates = alignCandidatesWithProposals candidates initialProposals
+
                 match model.Settings.ApiKey with
                 | Some key when not (String.IsNullOrWhiteSpace(key)) ->
                     let cleanKey = key.Trim().Trim('"', '\'')
@@ -307,7 +315,7 @@ module State =
                                 cleanKey
                                 model.Settings.SelectedModel
                                 selectedRule
-                                candidates
+                                sortedCandidates
                                 newCts.Token
 
                         {

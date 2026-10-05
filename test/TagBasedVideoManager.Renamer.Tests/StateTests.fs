@@ -493,3 +493,39 @@ module StateTests =
         updatedModel.IsScanning |> should equal true
         updatedModel.AiCancellationCts |> should equal None
 
+    [<Fact>]
+    let ``alignCandidatesWithProposals は画面表示用ソート済Proposalsの順序にScanCandidatesを整列する`` () =
+        let cShort: ScanCandidate = {
+            FullPath = "C:\\a.mp4"
+            FileName = "a.mp4"
+            DirectoryPath = "C:\\"
+            PathLength = 8
+            FileSizeBytes = 100L
+            LastWriteTime = DateTime.UtcNow
+        }
+        let cLong: ScanCandidate = {
+            FullPath = "C:\\very_long_path_sample_file_12345.mp4"
+            FileName = "very_long_path_sample_file_12345.mp4"
+            DirectoryPath = "C:\\"
+            PathLength = 40
+            FileSizeBytes = 100L
+            LastWriteTime = DateTime.UtcNow
+        }
+        let cMid: ScanCandidate = {
+            FullPath = "C:\\middle_length_path.mp4"
+            FileName = "middle_length_path.mp4"
+            DirectoryPath = "C:\\"
+            PathLength = 25
+            FileSizeBytes = 100L
+            LastWriteTime = DateTime.UtcNow
+        }
+        // 生の走査順（Short -> Long -> Mid）
+        let rawCandidates = [ cShort; cLong; cMid ]
+        let initialProposals =
+            rawCandidates
+            |> List.map Proposal.createInitial
+            |> FileScanner.sortCandidates PathLengthDesc // 降順: Long -> Mid -> Short
+
+        let sorted = State.alignCandidatesWithProposals rawCandidates initialProposals
+        sorted |> List.map (fun c -> c.FullPath) |> should equal [ cLong.FullPath; cMid.FullPath; cShort.FullPath ]
+
