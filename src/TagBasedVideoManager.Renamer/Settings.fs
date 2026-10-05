@@ -2,8 +2,10 @@ namespace TagBasedVideoManager.Renamer
 
 open System
 open System.IO
+open System.Text.Encodings.Web
 open System.Text.Json
 open System.Text.Json.Serialization
+open System.Text.Unicode
 open TagBasedVideoManager.Renamer
 
 module Settings =
@@ -29,8 +31,10 @@ module Settings =
 
     let private jsonOptions =
         let options = JsonSerializerOptions(WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase)
+        options.Encoder <- JavaScriptEncoder.Create(UnicodeRanges.All)
         options.Converters.Add(JsonStringEnumConverter())
         options
+
 
     /// 既定の設定値を生成
     let defaultSettings () : RenamerSettings =
