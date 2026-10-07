@@ -419,23 +419,11 @@ module Views =
                                             TextBlock.fontWeight FontWeight.SemiBold
                                             TextBlock.verticalAlignment VerticalAlignment.Center
                                         ]
-                                        let standardModels = [
-                                            "meta-llama/llama-3.3-70b-instruct:free"
-                                            "google/gemini-2.0-flash-exp:free"
-                                            "mistralai/mistral-small-24b-instruct-2501:free"
-                                            "nvidia/nemotron-3-ultra-550b-a55b:free"
-                                        ]
                                         let availableModels =
-                                            if not (String.IsNullOrWhiteSpace(model.Settings.SelectedModel))
-                                               && not (standardModels |> List.exists (fun m -> String.Equals(m, model.Settings.SelectedModel, StringComparison.OrdinalIgnoreCase))) then
-                                                standardModels @ [ model.Settings.SelectedModel ]
-                                            else
-                                                standardModels
+                                            if String.IsNullOrWhiteSpace(model.Settings.SelectedModel) then []
+                                            else [ model.Settings.SelectedModel ]
 
-                                        let selectedIdx =
-                                            availableModels
-                                            |> List.tryFindIndex (fun m -> String.Equals(m, model.Settings.SelectedModel, StringComparison.OrdinalIgnoreCase))
-                                            |> Option.defaultValue 0
+                                        let selectedIdx = 0
 
                                         ComboBox.create [
                                             ComboBox.dataItems availableModels
@@ -1579,6 +1567,7 @@ module Views =
                                 else
                                     StackPanel.create [
                                         StackPanel.spacing 4.0
+                                        StackPanel.margin (0.0, 0.0, 0.0, 36.0)
                                         StackPanel.children [
                                             for idx, c in List.indexed model.Candidates do
                                                 match model.Layout with

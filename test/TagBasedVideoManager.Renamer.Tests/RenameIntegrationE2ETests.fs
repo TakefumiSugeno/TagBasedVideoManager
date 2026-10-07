@@ -1032,4 +1032,136 @@ module RenameIntegrationE2ETests =
         let promptBoxes = textBoxes |> List.filter (fun tb -> tb.Height >= 280.0 && tb.AcceptsReturn)
         promptBoxes.Length |> should be (greaterThanOrEqualTo 1)
 
+    [<Fact>]
+    let ``UI: AIモデルComboBoxはハードコード一覧を排除し設定値SelectedModelのみを単一項目として提供する`` () =
+        ensureAppInitialized ()
+        let baseModel, _ = State.init ()
+        let testModel = {
+            baseModel with
+                Settings = {
+                    baseModel.Settings with
+                        SelectedModel = "nvidia/nemotron-3-super-120b-a12b:free"
+                }
+        }
+
+        let w = new Avalonia.FuncUI.Hosts.HostWindow()
+        w.Width <- 1100.0
+        w.Height <- 720.0
+        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+        |> Avalonia.FuncUI.Elmish.Program.withHost w
+        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+        w.Show()
+        w.UpdateLayout()
+
+        let rec collectComboBoxes (control: Avalonia.Controls.Control) : Avalonia.Controls.ComboBox list =
+            let current =
+                match control with
+                | :? Avalonia.Controls.ComboBox as cb -> [ cb ]
+                | _ -> []
+            let children =
+                match control with
+                | :? Avalonia.Controls.Panel as panel ->
+                    panel.Children |> Seq.collect collectComboBoxes |> Seq.toList
+                | :? Avalonia.Controls.ContentControl as cc ->
+                    match cc.Content with
+                    | :? Avalonia.Controls.Control as c -> collectComboBoxes c
+                    | _ -> []
+                | :? Avalonia.Controls.Decorator as dec when dec.Child <> null ->
+                    collectComboBoxes dec.Child
+                | _ -> []
+            current @ children
+
+        let allComboBoxes = collectComboBoxes w
+        w.Close()
+
+        let modelComboBoxOpt =
+            allComboBoxes
+            |> List.tryFind (fun cb ->
+                cb.ItemsSource <> null &&
+                (cb.ItemsSource |> Seq.cast<obj> |> Seq.exists (fun item -> string item = "nvidia/nemotron-3-super-120b-a12b:free"))
+            )
+
+        modelComboBoxOpt |> should not' (equal None)
+        let modelCb = modelComboBoxOpt.Value
+        let items = modelCb.ItemsSource |> Seq.cast<obj> |> Seq.map string |> Seq.toList
+
+        items |> should equal [ "nvidia/nemotron-3-super-120b-a12b:free" ]
+        items |> List.exists (fun m -> m.Contains("llama-3.3")) |> should equal false
+        items |> List.exists (fun m -> m.Contains("gemini-2.0")) |> should equal false
+        items |> List.exists (fun m -> m.Contains("mistral-small")) |> should equal false
+        items |> List.exists (fun m -> m.Contains("nemotron-3-ultra")) |> should equal false
+
+    [<Fact>]
+    let ``UI: 対比リスト最下部スクロール時に末尾カード全体とAIコメント枠が完全表示される`` () =
+        ensureAppInitialized ()
+        let baseModel, _ = State.init ()
+        let candidate i = {
+            OriginalFullPath = $"D:\\Videos\\path_{i}_" + String('a', 230) + ".mp4"
+            OriginalFileName = $"file_{i}_" + String('a', 230) + ".mp4"
+            DirectoryPath = "D:\\Videos"
+            OriginalLength = 250
+            ProposedFileName = $"short_{i}.mp4"
+            ProposedLength = 30
+            AiComment = Some $"AI Comment for item {i}: 命名規則に基づき適切に短縮しました。"
+            IsAiProposed = true
+            IsAiProcessing = false
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+        }
+        let testModel = {
+            baseModel with
+                Candidates = [ for i in 1 .. 4 -> candidate i ]
+        }
+
+        let w = new Avalonia.FuncUI.Hosts.HostWindow()
+        w.Width <- 1100.0
+        w.Height <- 720.0
+        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+        |> Avalonia.FuncUI.Elmish.Program.withHost w
+        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+        w.Show()
+        w.UpdateLayout()
+
+        let rec findScrollViewer (control: Avalonia.Controls.Control) : Avalonia.Controls.ScrollViewer option =
+            match control with
+            | :? Avalonia.Controls.ScrollViewer as sv -> Some sv
+            | :? Avalonia.Controls.Panel as p ->
+                p.Children |> Seq.tryPick (fun c -> findScrollViewer c)
+            | :? Avalonia.Controls.ContentControl as cc ->
+                match cc.Content with
+                | :? Avalonia.Controls.Control as c -> findScrollViewer c
+                | _ -> None
+            | :? Avalonia.Controls.Decorator as dec when dec.Child <> null ->
+                findScrollViewer dec.Child
+            | _ -> None
+
+        let svOpt = findScrollViewer w
+        svOpt |> should not' (equal None)
+        let sv = svOpt.Value
+
+        sv.ScrollToEnd()
+        w.UpdateLayout()
+
+        let pixelSize = Avalonia.PixelSize(1100, 720)
+        let dpi = Avalonia.Vector(96.0, 96.0)
+        let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
+        rtb.Render(w)
+
+        let rec findRepoRoot (dir: DirectoryInfo) =
+            if dir = null then AppContext.BaseDirectory
+            elif File.Exists(Path.Combine(dir.FullName, "AGENTS.md")) then dir.FullName
+            elif dir.Parent = null then AppContext.BaseDirectory
+            else findRepoRoot dir.Parent
+        let repoRoot = findRepoRoot (DirectoryInfo(AppContext.BaseDirectory))
+        let outputDir = Path.Combine(repoRoot, "test", "TestResults")
+        if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
+        let outputPath = Path.Combine(outputDir, "E2E_11_Scrolled_To_Bottom_Full_Clearance.png")
+        rtb.Save(outputPath)
+        w.Close()
+
+        File.Exists(outputPath) |> should equal true
+        FileInfo(outputPath).Length |> should be (greaterThan 1000L)
+
+
+
 

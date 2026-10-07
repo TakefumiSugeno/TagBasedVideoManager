@@ -80,4 +80,5 @@ test/**/thumbnails/
 
 # Renamer local settings (contains API key)
 companion-settings.json
+**/appsettings.Development.json
 
