@@ -1091,5 +1091,77 @@ module RenameIntegrationE2ETests =
         items |> List.exists (fun m -> m.Contains("mistral-small")) |> should equal false
         items |> List.exists (fun m -> m.Contains("nemotron-3-ultra")) |> should equal false
 
+    [<Fact>]
+    let ``UI: 対比リスト最下部スクロール時に末尾カード全体とAIコメント枠が完全表示される`` () =
+        ensureAppInitialized ()
+        let baseModel, _ = State.init ()
+        let candidate i = {
+            OriginalFullPath = $"D:\\Videos\\path_{i}_" + String('a', 230) + ".mp4"
+            OriginalFileName = $"file_{i}_" + String('a', 230) + ".mp4"
+            DirectoryPath = "D:\\Videos"
+            OriginalLength = 250
+            ProposedFileName = $"short_{i}.mp4"
+            ProposedLength = 30
+            AiComment = Some $"AI Comment for item {i}: 命名規則に基づき適切に短縮しました。"
+            IsAiProposed = true
+            IsAiProcessing = false
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+        }
+        let testModel = {
+            baseModel with
+                Candidates = [ for i in 1 .. 4 -> candidate i ]
+        }
+
+        let w = new Avalonia.FuncUI.Hosts.HostWindow()
+        w.Width <- 1100.0
+        w.Height <- 720.0
+        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+        |> Avalonia.FuncUI.Elmish.Program.withHost w
+        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+        w.Show()
+        w.UpdateLayout()
+
+        let rec findScrollViewer (control: Avalonia.Controls.Control) : Avalonia.Controls.ScrollViewer option =
+            match control with
+            | :? Avalonia.Controls.ScrollViewer as sv -> Some sv
+            | :? Avalonia.Controls.Panel as p ->
+                p.Children |> Seq.tryPick (fun c -> findScrollViewer c)
+            | :? Avalonia.Controls.ContentControl as cc ->
+                match cc.Content with
+                | :? Avalonia.Controls.Control as c -> findScrollViewer c
+                | _ -> None
+            | :? Avalonia.Controls.Decorator as dec when dec.Child <> null ->
+                findScrollViewer dec.Child
+            | _ -> None
+
+        let svOpt = findScrollViewer w
+        svOpt |> should not' (equal None)
+        let sv = svOpt.Value
+
+        sv.ScrollToEnd()
+        w.UpdateLayout()
+
+        let pixelSize = Avalonia.PixelSize(1100, 720)
+        let dpi = Avalonia.Vector(96.0, 96.0)
+        let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
+        rtb.Render(w)
+
+        let rec findRepoRoot (dir: DirectoryInfo) =
+            if dir = null then AppContext.BaseDirectory
+            elif File.Exists(Path.Combine(dir.FullName, "AGENTS.md")) then dir.FullName
+            elif dir.Parent = null then AppContext.BaseDirectory
+            else findRepoRoot dir.Parent
+        let repoRoot = findRepoRoot (DirectoryInfo(AppContext.BaseDirectory))
+        let outputDir = Path.Combine(repoRoot, "test", "TestResults")
+        if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
+        let outputPath = Path.Combine(outputDir, "E2E_11_Scrolled_To_Bottom_Full_Clearance.png")
+        rtb.Save(outputPath)
+        w.Close()
+
+        File.Exists(outputPath) |> should equal true
+        FileInfo(outputPath).Length |> should be (greaterThan 1000L)
+
+
 
 
