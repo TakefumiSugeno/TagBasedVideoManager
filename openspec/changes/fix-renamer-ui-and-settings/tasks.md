@@ -8,7 +8,7 @@
 ## 2. AIモデルのハードコーディング撤廃（案A）
 
 - [x] 2.1 AIモデル選択に関する仕様妥当性検証テストを作成/更新し、`standardModels` のハードコード一覧が排除され、設定値（`SelectedModel`）のみが選択肢として提供される期待値をコード化する（Test First / Red）
-- [ ] 2.2 `Views.fs` の `standardModels` ハードコード一覧（llama-3.3, gemini-2.0, mistral-small, nemotron-3-ultra）を削除し、`model.Settings.SelectedModel` のみを提供するよう修正してテストを通過させる（Green & Refactor）
+- [x] 2.2 `Views.fs` の `standardModels` ハードコード一覧（llama-3.3, gemini-2.0, mistral-small, nemotron-3-ultra）を削除し、`model.Settings.SelectedModel` のみを提供するよう修正してテストを通過させる（Green & Refactor）
 
 ## 3. リスト最下部スクロール余白の確保とビジュアル検証
 
