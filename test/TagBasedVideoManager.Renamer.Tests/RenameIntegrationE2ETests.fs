@@ -1032,4 +1032,64 @@ module RenameIntegrationE2ETests =
         let promptBoxes = textBoxes |> List.filter (fun tb -> tb.Height >= 280.0 && tb.AcceptsReturn)
         promptBoxes.Length |> should be (greaterThanOrEqualTo 1)
 
+    [<Fact>]
+    let ``UI: AIモデルComboBoxはハードコード一覧を排除し設定値SelectedModelのみを単一項目として提供する`` () =
+        ensureAppInitialized ()
+        let baseModel, _ = State.init ()
+        let testModel = {
+            baseModel with
+                Settings = {
+                    baseModel.Settings with
+                        SelectedModel = "nvidia/nemotron-3-super-120b-a12b:free"
+                }
+        }
+
+        let w = new Avalonia.FuncUI.Hosts.HostWindow()
+        w.Width <- 1100.0
+        w.Height <- 720.0
+        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+        |> Avalonia.FuncUI.Elmish.Program.withHost w
+        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+        w.Show()
+        w.UpdateLayout()
+
+        let rec collectComboBoxes (control: Avalonia.Controls.Control) : Avalonia.Controls.ComboBox list =
+            let current =
+                match control with
+                | :? Avalonia.Controls.ComboBox as cb -> [ cb ]
+                | _ -> []
+            let children =
+                match control with
+                | :? Avalonia.Controls.Panel as panel ->
+                    panel.Children |> Seq.collect collectComboBoxes |> Seq.toList
+                | :? Avalonia.Controls.ContentControl as cc ->
+                    match cc.Content with
+                    | :? Avalonia.Controls.Control as c -> collectComboBoxes c
+                    | _ -> []
+                | :? Avalonia.Controls.Decorator as dec when dec.Child <> null ->
+                    collectComboBoxes dec.Child
+                | _ -> []
+            current @ children
+
+        let allComboBoxes = collectComboBoxes w
+        w.Close()
+
+        let modelComboBoxOpt =
+            allComboBoxes
+            |> List.tryFind (fun cb ->
+                cb.ItemsSource <> null &&
+                (cb.ItemsSource |> Seq.cast<obj> |> Seq.exists (fun item -> string item = "nvidia/nemotron-3-super-120b-a12b:free"))
+            )
+
+        modelComboBoxOpt |> should not' (equal None)
+        let modelCb = modelComboBoxOpt.Value
+        let items = modelCb.ItemsSource |> Seq.cast<obj> |> Seq.map string |> Seq.toList
+
+        items |> should equal [ "nvidia/nemotron-3-super-120b-a12b:free" ]
+        items |> List.exists (fun m -> m.Contains("llama-3.3")) |> should equal false
+        items |> List.exists (fun m -> m.Contains("gemini-2.0")) |> should equal false
+        items |> List.exists (fun m -> m.Contains("mistral-small")) |> should equal false
+        items |> List.exists (fun m -> m.Contains("nemotron-3-ultra")) |> should equal false
+
+
 
