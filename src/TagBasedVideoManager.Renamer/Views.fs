@@ -1567,6 +1567,7 @@ module Views =
                                 else
                                     StackPanel.create [
                                         StackPanel.spacing 4.0
+                                        StackPanel.margin (0.0, 0.0, 0.0, 36.0)
                                         StackPanel.children [
                                             for idx, c in List.indexed model.Candidates do
                                                 match model.Layout with
