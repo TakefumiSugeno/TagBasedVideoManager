@@ -2,7 +2,7 @@
 
 ## 1. 設定ファイル管理とGit除外
 
-- [ ] 1.1 `.gitignore` に `**/appsettings.Development.json` を追記し、`git rm --cached src/TagBasedVideoManager.Renamer/appsettings.Development.json` でGitインデックス追跡を解除して、`git status` で追跡対象外となっていることを確認する
+- [x] 1.1 `.gitignore` に `**/appsettings.Development.json` を追記し、`git rm --cached src/TagBasedVideoManager.Renamer/appsettings.Development.json` でGitインデックス追跡を解除して、`git status` で追跡対象外となっていることを確認する
 - [ ] 1.2 設定ファイル読み込みの単体テスト（`SettingsTests.fs` 等）を実行し、`appsettings.Development.json` がない環境でもベース設定（`appsettings.json`）から正常に値が読み込まれる回帰テストを確認する
 
 ## 2. AIモデルのハードコーディング撤廃（案A）
