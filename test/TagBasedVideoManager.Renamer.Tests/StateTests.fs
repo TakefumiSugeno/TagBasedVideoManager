@@ -494,6 +494,124 @@ module StateTests =
         updatedModel.AiCancellationCts |> should equal None
 
     [<Fact>]
+    let ``alignCandidatesWithProposals は画面表示用ソート済Proposalsの順序にScanCandidatesを整列する`` () =
+        let cShort: ScanCandidate = {
+            FullPath = "C:\\a.mp4"
+            FileName = "a.mp4"
+            DirectoryPath = "C:\\"
+            PathLength = 8
+            FileSizeBytes = 100L
+            LastWriteTime = DateTime.UtcNow
+        }
+        let cLong: ScanCandidate = {
+            FullPath = "C:\\very_long_path_sample_file_12345.mp4"
+            FileName = "very_long_path_sample_file_12345.mp4"
+            DirectoryPath = "C:\\"
+            PathLength = 40
+            FileSizeBytes = 100L
+            LastWriteTime = DateTime.UtcNow
+        }
+        let cMid: ScanCandidate = {
+            FullPath = "C:\\middle_length_path.mp4"
+            FileName = "middle_length_path.mp4"
+            DirectoryPath = "C:\\"
+            PathLength = 25
+            FileSizeBytes = 100L
+            LastWriteTime = DateTime.UtcNow
+        }
+        // 生の走査順（Short -> Long -> Mid）
+        let rawCandidates = [ cShort; cLong; cMid ]
+        let initialProposals =
+            rawCandidates
+            |> List.map Proposal.createInitial
+            |> FileScanner.sortCandidates PathLengthDesc // 降順: Long -> Mid -> Short
+
+        let sorted = State.alignCandidatesWithProposals rawCandidates initialProposals
+        sorted |> List.map (fun c -> c.FullPath) |> should equal [ cLong.FullPath; cMid.FullPath; cShort.FullPath ]
+
+    [<Fact>]
+    let ``StartEditRule は指定IDの既存ルールを EditingRule にロードする`` () =
+        let initialModel, _ = State.init ()
+        let rule1 = initialModel.Settings.Rules.[0]
+        let modelWithDialog = { initialModel with IsRuleManagerOpen = true; EditingRule = None }
+
+        let updatedModel, _ = State.update (StartEditRule rule1.Id) modelWithDialog
+        updatedModel.EditingRule |> should equal (Some rule1)
+
+    [<Fact>]
+    let ``CancelEditRule は編集中ルールを破棄し新規作成用テンプレートにリセットする`` () =
+        let initialModel, _ = State.init ()
+        let rule1 = initialModel.Settings.Rules.[0]
+        let modelEditing = { initialModel with IsRuleManagerOpen = true; EditingRule = Some rule1 }
+
+        let updatedModel, _ = State.update CancelEditRule modelEditing
+        match updatedModel.EditingRule with
+        | Some newRule ->
+            newRule.Id |> should not' (equal rule1.Id)
+            newRule.Name |> should equal ""
+        | None -> failwith "EditingRule should be Some template"
+
+    [<Fact>]
+    let ``SaveEditingRule は既存ルールの編集時に同一位置・順序で上書き更新する`` () =
+        let initialModel, _ = State.init ()
+        let rule0 = initialModel.Settings.Rules.[0]
+        let rule1 = initialModel.Settings.Rules.[1]
+        let modifiedRule0 = { rule0 with Name = "更新されたルール名"; PromptInstruction = "新プロンプト指示" }
+        let modelEditing = { initialModel with IsRuleManagerOpen = true; EditingRule = Some modifiedRule0 }
+
+        let updatedModel, _ = State.update SaveEditingRule modelEditing
+        updatedModel.Settings.Rules.Length |> should equal initialModel.Settings.Rules.Length
+        let firstRule = updatedModel.Settings.Rules.[0]
+        firstRule.Id |> should equal rule0.Id
+        firstRule.Name |> should equal "更新されたルール名"
+        firstRule.PromptInstruction |> should equal "新プロンプト指示"
+        firstRule.Order |> should equal 0
+        // 2番目のルールは影響を受けない
+        updatedModel.Settings.Rules.[1].Id |> should equal rule1.Id
+
+    [<Fact>]
+    let ``SaveEditingRule は新規ルール追加時に末尾に追加しOrderを正しく付与する`` () =
+        let initialModel, _ = State.init ()
+        let initialCount = initialModel.Settings.Rules.Length
+        let newRuleTemplate: NamingRule = {
+            Id = Guid.NewGuid().ToString("N")
+            Name = "新規追加ルール"
+            Pattern = "{Title}"
+            PromptInstruction = "新規指示"
+            Order = initialCount
+            EnableWebSearch = false
+        }
+        let modelAdding = { initialModel with IsRuleManagerOpen = true; EditingRule = Some newRuleTemplate }
+
+        let updatedModel, _ = State.update SaveEditingRule modelAdding
+        updatedModel.Settings.Rules.Length |> should equal (initialCount + 1)
+        let added = updatedModel.Settings.Rules |> List.last
+        added.Id |> should equal newRuleTemplate.Id
+        added.Name |> should equal "新規追加ルール"
+        added.Order |> should equal initialCount
+
+    [<Fact>]
+    let ``RequestDeleteRule は確認ダイアログを生成しConfirm時にDeleteRuleが実行される`` () =
+        let initialModel, _ = State.init ()
+        let ruleToDelete = initialModel.Settings.Rules.[1] // 2番目のルール
+        let initialCount = initialModel.Settings.Rules.Length
+
+        // 1. 削除要求
+        let modelWithConfirm, _ = State.update (RequestDeleteRule ruleToDelete.Id) initialModel
+        match modelWithConfirm.ConfirmDialog with
+        | Some dialog ->
+            dialog.Title |> should contain "削除"
+            dialog.Message |> should contain ruleToDelete.Name
+            dialog.OnConfirm |> should equal (DeleteRule ruleToDelete.Id)
+
+            // 2. 確定実行
+            let finalModel, _ = State.update dialog.OnConfirm modelWithConfirm
+            finalModel.ConfirmDialog |> should equal None
+            finalModel.Settings.Rules.Length |> should equal (initialCount - 1)
+            finalModel.Settings.Rules |> List.exists (fun r -> r.Id = ruleToDelete.Id) |> should equal false
+        | None -> failwith "ConfirmDialog should be Some"
+
+    [<Fact>]
     let ``init は初期状態で FilterNonJapaneseOnly が false である`` () =
         let model, _ = State.init ()
         model.FilterNonJapaneseOnly |> should equal false
@@ -506,4 +624,5 @@ module StateTests =
 
         let modelFalse, _ = State.update (ToggleFilterNonJapaneseOnly false) modelTrue
         modelFalse.FilterNonJapaneseOnly |> should equal false
+
 

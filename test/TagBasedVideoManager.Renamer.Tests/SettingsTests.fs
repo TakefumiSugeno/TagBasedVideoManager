@@ -587,3 +587,26 @@ module SettingsTests =
             Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", origDotnet)
             Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", origAspnet)
 
+    [<Fact>]
+    let ``save は日本語を含む設定をUnicodeエスケープせずUTF-8文字列のままJSON出力する`` () =
+        let filePath = createTempSettingsPath ()
+        try
+            let settings = Settings.defaultSettings ()
+            let saveResult = Settings.save filePath settings
+            match saveResult with
+            | Error err -> failwith $"Save failed: {err}"
+            | Ok () -> ()
+
+            let jsonContent = File.ReadAllText(filePath)
+            // 日本語のルール名やプロンプト指示文がそのまま含まれていること
+            jsonContent |> should contain "日付_撮影地_行動 (推奨)"
+            jsonContent |> should contain "短縮 (タイトルのみ)"
+            // Unicode エスケープシーケンス (\uXXXX) に変換されていないこと
+            jsonContent |> should not' (contain @"\u65e5\u4ed8")
+            jsonContent |> should not' (contain @"\u77ed\u7e2e")
+        finally
+            if File.Exists(filePath) then File.Delete(filePath)
+            let dir = Path.GetDirectoryName(filePath)
+            if Directory.Exists(dir) then Directory.Delete(dir, true)
+
+

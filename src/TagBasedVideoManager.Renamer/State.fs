@@ -85,12 +85,15 @@ and Msg =
     | OpenRuleManager
     | CloseRuleManager
     | StartAddRule
+    | StartEditRule of ruleId: string
+    | CancelEditRule
     | UpdateEditingRuleName of string
     | UpdateEditingRulePattern of string
     | UpdateEditingRulePrompt of string
     | UpdateEditingRuleWebSearch of bool
     | SaveEditingRule
     | SaveRule of NamingRule
+    | RequestDeleteRule of ruleId: string
     | DeleteRule of ruleId: string
     | MoveRuleOrder of ruleId: string * direction: int // -1: up, +1: down
     | DismissError
@@ -107,6 +110,12 @@ module State =
         ContainerId = None
         LastChecked = DateTime.UtcNow
     }
+
+    /// 画面表示用ソート済Proposalsの順序にScanCandidatesを整列する純粋関数
+    let alignCandidatesWithProposals (candidates: ScanCandidate list) (proposals: RenameProposal list) : ScanCandidate list =
+        let candidateMap = candidates |> List.map (fun c -> c.FullPath, c) |> Map.ofList
+        proposals
+        |> List.choose (fun p -> Map.tryFind p.OriginalFullPath candidateMap)
 
     let private createAsyncPipelineCmd
         (apiKey: string)
@@ -289,6 +298,8 @@ module State =
                     |> List.map Proposal.createInitial
                     |> FileScanner.sortCandidates model.SortCriterion
 
+                let sortedCandidates = alignCandidatesWithProposals candidates initialProposals
+
                 match model.Settings.ApiKey with
                 | Some key when not (String.IsNullOrWhiteSpace(key)) ->
                     let cleanKey = key.Trim().Trim('"', '\'')
@@ -314,7 +325,7 @@ module State =
                                 cleanKey
                                 model.Settings.SelectedModel
                                 selectedRule
-                                candidates
+                                sortedCandidates
                                 newCts.Token
 
                         {
@@ -609,7 +620,7 @@ module State =
             let templateRule = {
                 Id = Guid.NewGuid().ToString("N")
                 Name = ""
-                Pattern = "*.mp4"
+                Pattern = "{Code}_{Summary}_{Actor}"
                 PromptInstruction = ""
                 Order = model.Settings.Rules.Length
                 EnableWebSearch = true
@@ -623,7 +634,24 @@ module State =
             let templateRule = {
                 Id = Guid.NewGuid().ToString("N")
                 Name = ""
-                Pattern = "*.mp4"
+                Pattern = "{Code}_{Summary}_{Actor}"
+                PromptInstruction = ""
+                Order = model.Settings.Rules.Length
+                EnableWebSearch = true
+            }
+            { model with EditingRule = Some templateRule }, Cmd.none
+
+        | StartEditRule ruleId ->
+            let targetOpt = model.Settings.Rules |> List.tryFind (fun r -> r.Id = ruleId)
+            match targetOpt with
+            | Some r -> { model with EditingRule = Some r }, Cmd.none
+            | None -> model, Cmd.none
+
+        | CancelEditRule ->
+            let templateRule = {
+                Id = Guid.NewGuid().ToString("N")
+                Name = ""
+                Pattern = "{Code}_{Summary}_{Actor}"
                 PromptInstruction = ""
                 Order = model.Settings.Rules.Length
                 EnableWebSearch = true
@@ -657,27 +685,48 @@ module State =
         | SaveEditingRule ->
             match model.EditingRule with
             | Some rule when not (String.IsNullOrWhiteSpace(rule.Name)) ->
-                let newRule = {
-                    rule with
-                        Name = rule.Name.Trim()
-                        Pattern = if String.IsNullOrWhiteSpace(rule.Pattern) then "*.*" else rule.Pattern.Trim()
-                        PromptInstruction = if String.IsNullOrWhiteSpace(rule.PromptInstruction) then "簡潔に短縮してください。" else rule.PromptInstruction.Trim()
-                        Order = model.Settings.Rules.Length
-                }
-                let updatedRules = model.Settings.Rules @ [ newRule ]
+                let trimmedName = rule.Name.Trim()
+                let trimmedPattern = if String.IsNullOrWhiteSpace(rule.Pattern) then "{Title}" else rule.Pattern.Trim()
+                let trimmedPrompt = if String.IsNullOrWhiteSpace(rule.PromptInstruction) then "簡潔に短縮してください。" else rule.PromptInstruction.Trim()
+                let isExisting = model.Settings.Rules |> List.exists (fun r -> r.Id = rule.Id)
+
+                let updatedRules =
+                    if isExisting then
+                        model.Settings.Rules
+                        |> List.map (fun r ->
+                            if r.Id = rule.Id then
+                                {
+                                    rule with
+                                        Name = trimmedName
+                                        Pattern = trimmedPattern
+                                        PromptInstruction = trimmedPrompt
+                                        Order = r.Order
+                                }
+                            else r
+                        )
+                    else
+                        let newRule = {
+                            rule with
+                                Name = trimmedName
+                                Pattern = trimmedPattern
+                                PromptInstruction = trimmedPrompt
+                                Order = model.Settings.Rules.Length
+                        }
+                        model.Settings.Rules @ [ newRule ]
+
                 let newSettings = { model.Settings with Rules = updatedRules }
                 Settings.save defaultSettingsPath newSettings |> ignore
                 let nextTemplate = {
                     Id = Guid.NewGuid().ToString("N")
                     Name = ""
-                    Pattern = "*.mp4"
+                    Pattern = "{Code}_{Summary}_{Actor}"
                     PromptInstruction = ""
                     Order = updatedRules.Length
                     EnableWebSearch = true
                 }
                 { model with
                     Settings = newSettings
-                    SelectedRuleId = newRule.Id
+                    SelectedRuleId = rule.Id
                     EditingRule = Some nextTemplate
                 }, Cmd.none
             | _ ->
@@ -695,6 +744,23 @@ module State =
             Settings.save defaultSettingsPath newSettings |> ignore
             { model with Settings = newSettings }, Cmd.none
 
+        | RequestDeleteRule ruleId ->
+            if model.Settings.Rules.Length <= 1 then
+                { model with ErrorMessage = Some "最後の1件の命名規則は削除できません。" }, Cmd.none
+            else
+                let targetOpt = model.Settings.Rules |> List.tryFind (fun r -> r.Id = ruleId)
+                match targetOpt with
+                | Some targetRule ->
+                    let dialog: DialogConfig = {
+                        Title = "🗑 命名規則の削除"
+                        Message = $"命名規則「{targetRule.Name}」を削除しますか？\nこの操作は取り消せません。"
+                        ConfirmText = "削除する"
+                        CancelText = "キャンセル"
+                        OnConfirm = DeleteRule ruleId
+                    }
+                    { model with ConfirmDialog = Some dialog }, Cmd.none
+                | None -> model, Cmd.none
+
         | DeleteRule ruleId ->
             let filteredRules =
                 model.Settings.Rules
@@ -702,7 +768,19 @@ module State =
                 |> List.mapi (fun idx r -> { r with Order = idx })
             let newSettings = { model.Settings with Rules = filteredRules }
             Settings.save defaultSettingsPath newSettings |> ignore
-            { model with Settings = newSettings }, Cmd.none
+            let updatedEditing =
+                match model.EditingRule with
+                | Some r when r.Id = ruleId ->
+                    Some {
+                        Id = Guid.NewGuid().ToString("N")
+                        Name = ""
+                        Pattern = "{Code}_{Summary}_{Actor}"
+                        PromptInstruction = ""
+                        Order = filteredRules.Length
+                        EnableWebSearch = true
+                    }
+                | other -> other
+            { model with Settings = newSettings; ConfirmDialog = None; EditingRule = updatedEditing }, Cmd.none
 
         | MoveRuleOrder (ruleId, direction) ->
             let rules = model.Settings.Rules
