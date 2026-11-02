@@ -65,9 +65,6 @@ nunit-*.xml
 *.userosscache
 *.sln.docstates
  
-# Temporary development documents
-doc/work/
-
 # Local database and media files
 *.db
 test/**/videos/

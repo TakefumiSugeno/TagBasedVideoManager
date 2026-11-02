@@ -17,8 +17,8 @@ TagBasedVideoManager は、タグベースの動画管理システムです。�
   - TRX テストレポートファイル (`TestRun_yyyy-MM-dd_HH_mm_ss_net10.0.trx`)
   - HTML カバレッジレポート (`CoverageReport/index.html`)
   - E2E テスト失敗時の画面キャプチャ画像 (`.png`)
-- `doc/`
-  - 過去の開発資産（仕様書・設計書・タスク履歴）、調査メモ、外部リファレンス、画像、補足資料等の配置ディレクトリ（※今後のシステム仕様・タスクはすべて `openspec/` で管理）
+- `assets/`
+  - 静的アセット（README等で参照されるスクリーンショット画像等）の配置ディレクトリ
 - `openspec/`
   - OpenSpecフレームワークのルートディレクトリ
 - `openspec/config.yaml`
