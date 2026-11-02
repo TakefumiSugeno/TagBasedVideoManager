@@ -82,3 +82,6 @@ test/**/thumbnails/
 companion-settings.json
 **/appsettings.Development.json
 
+
+# Test evidence & coverage (openspec-kit)
+test/TestResults/
