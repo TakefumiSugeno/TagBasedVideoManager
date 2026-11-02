@@ -1,14 +1,8 @@
 # AGENTS
 
-## プロジェクト基本方針（OpenSpec ネイティブ）
+## プロジェクト概要
 
-本プロジェクトは **OpenSpec** による仕様駆動開発 (Spec-Driven Development) を採用しています。
-
-- **Single Source of Truth**: システム仕様の唯一の真実（正本）は `openspec/specs/` です。OpenSpec 管理外に個別の仕様書を新規作成・二重管理しません（※既存の `doc/` 配下は過去の開発資産・リファレンスとして扱います）。
-- **仕様駆動ワークフロー**: すべての機能追加・仕様変更・大規模リファクタリングは、OpenSpec の 3 フェーズ（Propose → Apply → Archive）に則って進めます。
-- **サブエージェントレビュー必須**: 各フェーズで専門の役割（User / SE / PG / QA Agent）によるレビューを実施し、品質と整合性を担保します。
-
----
+TagBasedVideoManager は、タグベースの動画管理システムです。バックエンドに F# (.NET 10) + Giraffe、フロントエンドに Alpine.js + Tailwind CSS、デスクトップアプリに Avalonia.FuncUI を採用しています。
 
 ## 構成
 
@@ -18,25 +12,29 @@
   - フロントエンド静的ファイル（`index.html`, `app.js`, `app.css` 等）の配置ディレクトリ
 - `test/`
   - テストコードのルートディレクトリ（xUnit + FsUnit, Playwright E2E プロジェクト）
-- `test/TestResults/` および `test-results/`
-  - **テスト実行エビデンスおよびカバレッジレポートの出力ディレクトリ**（※Git管理対象外）
+- `test/TestResults/`
+  - テスト実行エビデンスおよびカバレッジレポートの出力ディレクトリ（※Git管理対象外）
   - TRX テストレポートファイル (`TestRun_yyyy-MM-dd_HH_mm_ss_net10.0.trx`)
   - HTML カバレッジレポート (`CoverageReport/index.html`)
   - E2E テスト失敗時の画面キャプチャ画像 (`.png`)
 - `doc/`
   - 過去の開発資産（仕様書・設計書・タスク履歴）、調査メモ、外部リファレンス、画像、補足資料等の配置ディレクトリ（※今後のシステム仕様・タスクはすべて `openspec/` で管理）
 - `openspec/`
-  - **OpenSpecフレームワークのルートディレクトリ**
+  - OpenSpecフレームワークのルートディレクトリ
 - `openspec/config.yaml`
   - OpenSpec設定（スキーマ: `spec-driven`、運用ルール・レビュー定義）
 - `openspec/specs/`
-  - **メイン仕様書・デルタ仕様書の配置ディレクトリ**（システムの恒久的な仕様書）
+  - メイン仕様書・デルタ仕様書の配置ディレクトリ（システムの恒久的な仕様書）
 - `openspec/changes/`
-  - **変更管理（提案・タスク・設計・レビュー記録）の配置ディレクトリ**
+  - 変更管理（提案・タスク・設計・レビュー記録）の配置ディレクトリ
 - `openspec/changes/archive/`
   - 完了した変更のアーカイブ
 - `openspec/templates/`
-  - **OpenSpecレビュー・チェックリスト用テンプレート**
+  - OpenSpecレビュー・チェックリスト用テンプレート
+- `openspec/agents/`
+  - サブエージェント6ロールのシステムプロンプト定義
+- `openspec/scripts/`
+  - フェーズゲート検証スクリプト（`verify-gate.ps1`, `verify-gate.sh`）
 
 ## 利用可能なMCPサーバ
 
@@ -51,39 +49,9 @@
 
 ---
 
-## 開発運用ルール
+## プロジェクト固有ルール
 
-### テストエビデンス・カバレッジレポート構成管理
-
-本プロジェクトは **TDD (Test-Driven Development)** を前提とし、テストの実行結果およびカバレッジを測定・確認しながら開発を進めます。
-
-#### 1. 出力先ディレクトリ構成
-
-| 種別                   | 出力先パス                                                            | 想定ファイル / 形式                                                       | Git管理                       |
-| ---------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------- |
-| **テストエビデンス**   | `test/TestResults/` または `test-results/evidence/`                   | TRXレポート (`.trx`), 実行ログ (`.log`), E2E失敗時画面キャプチャ (`.png`) | **不要**（`.gitignore` 対象） |
-| **カバレッジレポート** | `test/TestResults/**/CoverageReport/` または `test-results/coverage/` | HTML レポート (`index.html` 等), Cobertura (`coverage.cobertura.xml`)     | **不要**（`.gitignore` 対象） |
-
-- テスト実行結果は TRX 形式でファイル出力します:
-  - 出力先例: `test/TestResults/TestRun_yyyy-MM-dd_HH_mm_ss/`
-  - ファイル名例: `TestRun_yyyy-MM-dd_HH_mm_ss_net10.0.trx`（同フォルダ内に `CoverageReport` ディレクトリとしてHTMLカバレッジレポートを出力）
-- E2Eテスト時、NGケースは画面キャプチャも自動取得します。
-
-#### 2. エビデンスとカバレッジの取り扱い方針
-
-- **Git管理不要**: テストエビデンスやカバレッジレポートは自動生成されるバイナリ/大容量ファイルを含むため、Git 管理には含めない（`.gitignore` に登録済み）。
-- **レビューでの確認**: Apply フェーズの QA Agent レビューや Archive フェーズの総括レビューでは、ローカルに出力されたテスト結果・カバレッジレポートを参照・検証して合否判定を行う。レビュー記録（`reviews.md`）には、レポートファイルの本文ではなく「カバレッジ率・全テスト通過のサマリ結果」をテキストで記録する。
-
-#### 3. E2EテストおよびGUIビジュアル検証の厳格運用ルール
-
-- **名ばかりのE2Eテストの禁止**: 単なるバックエンドの関数結合テストを「E2Eテスト」と称してUI・プレゼンテーション層の検証を省略することを厳禁とする。
-- **GUI/デスクトップアプリの実画面レンダリング検証義務**:
-  - Avalonia等のGUIアプリにおいては、実ウィンドウ（`HostWindow` 等）をインスタンス化してビジュアルツリーを展開し、`RenderTargetBitmap` による実画面レンダリングおよび画像キャプチャ（PNG）の出力・ファイルサイズ・生成検証を行う E2E テストを必須とする。
-  - テスト実行エビデンスとして各画面状態（初期状態、実行結果、ダイアログ等）のキャプチャを `test/TestResults/` に出力し、視認性・レイアウト崩れ・テキストコントラストを目視／アサーション検証する。
-- **「ゼロ設定・初回起動」ユーザージャーニーのテスト義務**:
-  - モックデータを用いた正常系だけでなく、「APIキー未設定」「未ログイン」「初回起動（対象0件）」のデフォルト初期状態から、ユーザーが走査・編集・リネーム・Undo できるまでの現実的なユーザージャーニーを必ずテストシナリオに含める。
-
-### 自動フォーマット実行コマンド（ファイル種別ごと）
+### 自動フォーマット
 
 | ファイル種別                   | 対象拡張子                       | 使用ツール        | 実行コマンド                                            |
 | ------------------------------ | -------------------------------- | ----------------- | ------------------------------------------------------- |
@@ -94,234 +62,7 @@
 | **F# / .NET ソースコード**     | `src/**/*.fs`, `test/**/*.fs`    | dotnet format     | `dotnet format whitespace` / `dotnet format`            |
 | **F# ソースコード (Fantomas)** | `src/**/*.fs`, `test/**/*.fs`    | Fantomas (導入時) | `dotnet fantomas "src/**/*.fs" "test/**/*.fs"`          |
 
-### Git操作ルール（ブランチ戦略・Commit / Push / PR タイミング）
-
-OpenSpecのアーティファクト（`openspec/` 配下）もGit管理対象とする。
-
-#### 1. ブランチ戦略と作成タイミング（Explore → Propose 移行フロー）
-
-本プロジェクトでは、すべての機能開発・仕様変更・バグ修正をトピックブランチで実施し、Pull Request を経由して `develop` へ統合します。
-
-##### ブランチ作成タイミングと安全シーケンス（チェックアウト前確認・stash退避）
-
-要件の探索・アイデア検討（Explore フェーズ）が完了し、OpenSpec の変更提案（Propose フェーズ）へ移行するタイミング（`openspec new change "<change-name>"` 実行直前）において、AIエージェントおよび開発者は**必ず以下の安全シーケンスを順に実行**しなければならない:
-
-1. **作業ツリーの確認とバックアップ（stash退避）**:
-   - `git status --porcelain` で未コミットの変更・新規ファイルが存在しないか確認する。
-   - もし変更が存在する場合は、勝手に破棄・上書きせず、stash で退避・バックアップする:
-     ```bash
-     git stash push -u -m "wip: backup before switch to <change-name>"
-     ```
-2. **develop ブランチの最新化**:
-   ```bash
-   git checkout develop
-   git pull origin develop
-   ```
-3. **Feature ブランチの作成・チェックアウト**:
-   ```bash
-   git checkout -b feature/<change-name>
-   ```
-4. **ブランチ確認**:
-   - `git branch --show-current` で対象の Feature ブランチにいることを確認してから、`openspec new change "<change-name>"` およびアーティファクト作成に着手する。
-
-##### ブランチ命名規約
-
-- 新機能・通常変更: `feature/<change-name>` （例: `feature/ai-file-rename`）
-- バグ修正・不具合対応: `fix/<change-name>` （例: `fix/appsettings-merge-path`）
-- リファクタリング・運用改善: `refactor/<change-name>` または `chore/<change-name>`
-
----
-
-#### 2. Commit タイミング（ローカルリポジトリへの記録）
-
-以下のタイミングで **必ず commit** する:
-
-1. **Propose 合意後** (Phase 1 完了時)
-   - `openspec/changes/<name>/` 配下の全アーティファクト（`proposal.md`, `specs/`, `design.md`, `tasks.md`, `reviews.md`）
-2. **Apply 中のタスク完了時** (Phase 2 中)
-   - 実装成果物（ソースコード、テストコード）
-   - `openspec/changes/<name>/tasks.md` の進捗更新
-   - `openspec/changes/<name>/reviews.md` 等のレビュー記録
-3. **Archive 完了後** (Phase 3 完了時)
-   - `openspec sync specs` で更新されたメイン仕様（`openspec/specs/`）
-   - アーカイブされた変更（`openspec/changes/archive/`）
-   - README や関連ドキュメント等の更新
-
-**Commit メッセージ規約**:
-
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
-
-- type: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `review`, `spec`
-- scope: 変更名 (例: `install-openspec`, `streaming`) または `spec`, `design`, `impl` 等
-- subject: 50文字以内で簡潔に（日本語可）
-
----
-
-#### 3. Push および Pull Request (PR) 運用ルール
-
-##### Push タイミング
-
-1. **日次または作業区切りのタイミング**（1日1回以上推奨）
-2. **Archive 完了・ユーザー最終合意後** (Phase 3 完了時)
-   - 成果物が完成し、ユーザー確認済みの状態で push:
-     ```bash
-     git push -u origin feature/<change-name>
-     ```
-
-##### AI による GitHub CLI (`gh`) を用いた PR 作成（Spec駆動）
-
-Archive 完了コミットを push した後、**AIエージェントが GitHub CLI (`gh pr create`) を実行して Pull Request を自動作成**する。PRのタイトルと本文は OpenSpec の仕様・レビュー成果物を正本として構成する。
-
-- **PR作成コマンド**:
-  ```bash
-  gh pr create --base develop --head feature/<change-name> --title "<type>(<scope>): <subject>" --body-file "<一時ファイルまたはPR本文>"
-  ```
-- **PR 本文構造（Spec駆動テンプレート）**:
-  ```markdown
-  ## 概要 (What & Why)
-
-  <!-- proposal.md から目的・課題・ビジネス価値を明記 -->
-
-  ## 仕様変更・追加要件 (Spec Delta)
-
-  <!-- specs/<capability>/spec.md から ADDED / MODIFIED 要件一覧を明記 -->
-
-  ## 設計・実装内容 (Design & Tasks)
-
-  <!-- design.md / tasks.md から主要設計方針・変更コンポーネントを明記 -->
-
-  ## テスト結果・品質エビデンス (Verification & Evidence)
-
-  <!-- reviews.md の Archive レビューから全テスト件数、100%Pass、カバレッジ結果を明記 -->
-
-  - 単体/結合テスト: 〇件 Pass (失敗0件, スキップ0件)
-  - テストエビデンス: `test/TestResults/` 配下に TRX レポートおよび HTML カバレッジ出力済み
-
-  ## 申し送り事項・残課題 (Handover)
-
-  <!-- handover.md の内容（将来の改善候補・注意事項）を明記（ない場合は「特になし」） -->
-  ```
-
-##### マージ戦略（Merge Commit 運用）
-
-- **マージ方式**: **Merge Commit** を採用する（Squash merge や Rebase merge は禁止）。
-  - 各タスク単位のコミット履歴、TDD の Red-Green-Refactor 履歴、およびサブエージェントレビュー履歴の完全性を `develop` へ保持するため。
-- **マージ実行**:
-  - ユーザー確認・合意後、GitHub CLI または Web UI より Merge Commit でマージする:
-    ```bash
-    gh pr merge <PR番号またはブランチ名> --merge --delete-branch
-    ```
-- **マージ後のローカルクリーンアップ**:
-  - マージ完了後は、ローカルの `develop` を最新化し、作業完了した Feature ブランチを削除してリポジトリを整理する:
-    ```bash
-    git checkout develop
-    git pull origin develop
-    git branch -d feature/<change-name>
-    ```
-
----
-
-#### 4. 禁止事項
-
-- **`develop` および `main` ブランチへの直接コミット・直接 push は禁止**（必ずトピックブランチから PR を作成し、Merge commit で統合する）
-- **ユーザー合意なしでの push および PR マージは禁止**
-- **未フォーマット・未テスト状態での commit は禁止**
-- **テストエビデンス（`test/TestResults/`, `test-results/`）やカバレッジレポートの commit は禁止（Git管理対象外）**
-- **作業中の一時的な変更（WIP）を commit する場合は、メッセージに `wip:` プレフィックスを付与し、後で整理すること**
-
----
-
-### OpenSpec CLI コマンド リファレンス
-
-```bash
-# 変更の作成・一覧
-openspec new change "<name>"           # 新規変更作成
-openspec list --json                   # 変更一覧取得
-openspec status --change "<name>" --json  # 進捗確認
-
-# アーティファクト操作
-openspec instructions <artifact> --change "<name>" --json  # 作成指示取得
-openspec validate --change "<name>"    # 検証
-
-# 実装・完了
-openspec instructions apply --change "<name>" --json  # 実装指示取得
-openspec sync specs --change "<name>"  # スペック同期
-openspec archive --change "<name>"     # アーカイブ
-
-# コンテキスト・設定
-openspec context --json                # プロジェクトルート確認
-openspec schemas --json                # 利用可能スキーマ一覧
-```
-
----
-
-### サブエージェントレビュープロセス
-
-OpenSpecの3フェーズ（Propose → Apply → Archive）それぞれで、定義された役割のサブエージェントによるレビューを**必須**とする。レビュー記録は `openspec/changes/<name>/reviews.md` にテンプレート準拠で蓄積する。
-
-#### 1. Propose Phase Review（必須）
-
-- **トリガー**: `openspec new change` 完了、`proposal.md` 作成後、Propose合意前
-- **レビュアー**:
-  - **User Agent**: 要件妥当性・ビジネス価値・UX・受け入れ基準
-  - **SE Agent**: 技術的実現性・アーキテクチャ整合・影響範囲・非機能要件
-- **観点チェックリスト** (`checklist_propose.md` 使用):
-  - **Gitブランチ**: 最新の `develop` ブランチから切り出された適切なトピックブランチ（`feature/<name>` 等）上で作業されているか
-  - What/Why が明確かつ500語以内か
-  - Non-goals（やらないこと）が明記されているか
-  - 既存仕様（`openspec/specs/`）との矛盾・影響範囲が整理されているか
-  - タスク分解粒度が「2時間以内」目安で妥当か
-  - 見積もり・スコープに過不足がないか
-- **合否**: 全役割LGTMで次フェーズへ。指摘がある場合は `proposal.md` 更新して再レビュー
-- **成果物**: `reviews.md` に記録追記
-
-#### 2. Apply Phase Review（各タスク必須）
-
-- **トリガー**: `tasks.md` のチェックボックス `[x]` 更新前（タスク完了宣言前）
-- **レビュアー・観点**:
-  - **実装タスク** → **PG Agent**（`checklist_apply_impl.md`）
-    - 設計書（`design.md`）との整合性
-    - コード品質：可読性・命名・関数分割・DRY
-    - 境界値・異常系・エラー処理の網羅（`Result` 型 / ROP）
-    - リファクタの妥当性（テスト変更なし）
-    - 自動フォーマット実行済みか
-  - **テストタスク** → **QA Agent**（`checklist_apply_test.md`）
-    - 仕様妥当性検証テスト：仕様書の期待値をコード化できているか
-    - 回帰テスト：既存機能を壊さない観点で網羅できているか
-    - 境界値・異常系・エッジケースのテストケース
-    - E2E/結合テスト：受け入れシナリオから導出できているか (Playwright)
-    - カバレッジ基準達成・エビデンス出力済みか（出力先: `test/TestResults/`）
-- **フロー**:
-  1. 実装者がタスク完了宣言（PR/コミット前）
-  2. 該当役割エージェントがレビュー実施、指摘を `reviews.md` に記録
-  3. 指摘への対応方針（採用/保留/却下＋理由）を明記
-  4. 実装者が対応コミット
-  5. 再レビュー → 全指摘クローズ（LGTM）でタスク完了 `[x]`
-- **保留指摘の扱い**: 当該タスクでは完了扱いとし、内容を「申し送り事項」として `reviews.md` および Archive時の別ファイル（`handover.md`）に記録
-- **成果物**: `reviews.md` 記録更新、`tasks.md` チェックボックス更新
-
-#### 3. Archive Phase Review（必須）
-
-- **トリガー**: `openspec archive` 実行前
-- **レビュアー**: 全役割（User Agent / SE Agent / PG Agent / QA Agent）
-- **観点チェックリスト** (`checklist_archive.md` 使用):
-  - デルタ仕様がメイン仕様（`openspec/specs/`）へ正しく反映されているか（`openspec sync specs` 実行済み）
-  - 全テスト通過・カバレッジ基準達成のエビデンスがあるか（`test/TestResults/` 配下で確認）
-  - README や関連ドキュメントが同期更新済みか
-  - 既知の課題・技術的負債・保留指摘が `handover.md` に整理記録されているか
-  - 変更サマリ（何が変わったか、テスト結果、レビュー指摘対応状況）が記録されているか
-- **合否**: ユーザー最終合意で Archive 実行
-- **成果物**: 総括レビュー記録を `reviews.md` に追記、`handover.md` 作成
-
----
-
-## 実装ガイドライン（本プロジェクト固有規約）
+### 実装ガイドライン（本プロジェクト固有規約）
 
 - **F# Idioms & Architecture**:
   - `Result` 型（鉄道指向プログラミング / Railway Oriented Programming）によるエラーハンドリングを徹底し、イミュータブルな設計を優先する。
@@ -358,8 +99,6 @@ OpenSpecの3フェーズ（Propose → Apply → Archive）それぞれで、定
 - **プロジェクト・依存関係管理**:
   - `.fsproj` などの設定ファイルはAIが手動で構築するのではなく、`dotnet` CLI（SDK）を活用して作成・更新する。
 
----
-
 ## 参考情報
 
 - [.NET を使用して最小限の MCP クライアントを作成する](https://learn.microsoft.com/ja-jp/dotnet/ai/quickstarts/build-mcp-client)
@@ -367,3 +106,178 @@ OpenSpecの3フェーズ（Propose → Apply → Archive）それぞれで、定
 - [Giraffe Documentation](https://giraffe.wiki/)
 - [Dapper - Tutorial](https://github.com/DapperLib/Dapper)
 - [Railway Oriented Programming (F# for Fun and Profit)](https://fsharpforfunandprofit.com/rop/)
+
+---
+
+<!-- openspec-kit:begin (install.ps1 により管理。手動編集は再同期で上書きされます) -->
+
+## OpenSpec 運用ルール（openspec-kit）
+
+本プロジェクトは **OpenSpec** による仕様駆動開発 (SDD) × テスト駆動開発 (TDD) を採用しています。
+
+- **Single Source of Truth**: システム仕様の正本は `openspec/specs/`。OpenSpec 管理外に仕様書・タスクを新規作成・二重管理しない。
+- **フェーズゲート駆動ワークフロー**: すべての変更は **Explore → [Gate 0] → Propose → [Gate 1] → Apply → [Gate 2] → Archive ([Gate 3])** のゲートを通過して進める。
+- **サブエージェント6ロール分業（TDD 3権分立）**: テスト作成者（`qa-tester`）・実装者（`pg-implementer`）・批判的レビュアー（`user/se/pg/qa-reviewer`）のコンテキストを分離し、「甘いテスト」「テスト改ざん」「追認レビュー」を構造的に防ぐ。
+- 設定: `openspec/config.yaml`、エージェント定義: `openspec/agents/`、テンプレート: `openspec/templates/`、ワークフロー: `.agents/workflows/sdd-*.md`、ゲート検証: `openspec/scripts/verify-gate.ps1`
+
+### ディレクトリ構成
+
+| パス                               | 内容                                                                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `openspec/config.yaml`             | OpenSpec 設定（スキーマ・規模レベル・6ロール定義・TDD/カバレッジ基準・運用ルール）                    |
+| `openspec/specs/`                  | メイン仕様（システムの恒久的な仕様）                                                                  |
+| `openspec/changes/<name>/`         | 変更単位の成果物（proposal / specs / design / test_plan / tasks / mockup / reviews / handover）       |
+| `openspec/changes/archive/`        | 完了した変更のアーカイブ                                                                              |
+| `openspec/agents/`                 | サブエージェント6ロールのシステムプロンプト定義（`qa-tester`, `pg-implementer`, `*-reviewer`）        |
+| `openspec/templates/`              | テスト計画・レビュー記録・チェックリスト・handover・PR 本文テンプレート                               |
+| `openspec/scripts/verify-gate.ps1` | フェーズゲート（Gate 0〜3 / DoD）の機械的検証スクリプト                                               |
+| `.agents/workflows/sdd-*.md`       | ゲート・サブエージェント分業を組み込んだ実行ワークフロー（`sdd-propose`, `sdd-apply`, `sdd-archive`） |
+| `test/TestResults/`                | テストエビデンス・カバレッジレポート出力先（Git 管理外）                                              |
+
+### 適用規模レベル（L1 / L2 / L3）と変更ディレクトリの成果物
+
+変更開始時に規模レベル（`L1` / `L2` / `L3`）を決定し、`.openspec.yaml`（`level: L2` 等）と `proposal.md` に明記する。
+
+| 成果物 / 運用                       | L1（軽微: typo・設定・局所修正）   | L2（通常: 機能追加・仕様変更・通常バグ）           | L3（大規模: アーキテクチャ・破壊的変更・DB変更） |
+| ----------------------------------- | ---------------------------------- | -------------------------------------------------- | ------------------------------------------------ |
+| `proposal.md` / `tasks.md`          | 必須                               | 必須                                               | 必須（移行計画・ロールバック手順含む）           |
+| `specs/**/spec.md` / `design.md`    | 仕様不変なら `skip_specs: true` 可 | 必須                                               | 必須                                             |
+| `test_plan.md`（テストケース定義）  | 任意（`tasks.md` 内に記載可）      | **必須**（境界値・C2表・結合/E2E定義）             | **必須**                                         |
+| `mockup.html`（単一ファイルHTML）   | 不要                               | UI/UX変更時は**必須**                              | UI/UX変更時は**必須**                            |
+| Propose レビュー                    | `se-reviewer` のみ可               | `user-reviewer` + `se-reviewer`                    | `user-reviewer` + `se-reviewer`                  |
+| Apply 時の実装・テスト分業          | メイン兼任可 ＋ PG/QA レビュー     | **`qa-tester` → `pg-implementer` → PG/QAレビュー** | L2 ＋ 設計変更時は `se-reviewer` 必須            |
+| Archive 総括レビュー・`handover.md` | 必須                               | 必須                                               | 必須                                             |
+
+---
+
+### サブエージェント6ロール分業と批判的レビュープロセス
+
+同一エージェントがテストと実装の両方を担当すると「実装に合わせた甘いテスト」や「テストの期待値改ざん」が起きるため、以下の6ロール（定義: `openspec/agents/*.md`）を別コンテキストのサブエージェントとして起動する。各レビュアーの担当プロトコルは、成果物7種 × 4アプローチ（Adversarial QA・悪魔の代弁者・ブラインド突合・特化ペルソナ）の検討から最適配置されている。
+
+| ロール             | 定義ファイル                        | 担当フェーズ      | 責務・ガードレール                                                                                                                            |
+| ------------------ | ----------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **QA Tester**      | `openspec/agents/qa-tester.md`      | Propose / Apply   | `specs/` と `test_plan.md` から先行失敗テスト（Red）および結合/E2Eテストを実装。**プロダクションコード編集禁止**                              |
+| **PG Implementer** | `openspec/agents/pg-implementer.md` | Apply             | Red テストを通すプロダクションコード実装（Green）と Refactor。**既存テストの無断改ざん・skip化・TODO放置禁止**                                |
+| **User Reviewer**  | `openspec/agents/user-reviewer.md`  | Propose / Archive | ブラインド仕様比較（異常系・境界先出し突合）・せっかち初心者視点でのZero-State/Error-State体験・Why欠落告発（`checklist_propose/archive.md`） |
+| **SE Reviewer**    | `openspec/agents/se-reviewer.md`    | 全フェーズ        | 外部依存ハング・通信瞬断時の故障シミュレーション（連鎖崩壊検証）・状態不整合・隠された負債告発（`checklist_propose/apply_impl/archive.md`）   |
+| **PG Reviewer**    | `openspec/agents/pg-reviewer.md`    | Apply / Archive   | コード潔癖症視点で暗黙の仮定（思い込み）・例外握りつぶし告発・30%削減リファクタ提案（`checklist_apply_impl/archive.md`）                      |
+| **QA Reviewer**    | `openspec/agents/qa-reviewer.md`    | Apply / Archive   | 敵対的QAとして破壊テスト作成・実行（Adversarial QA）・トートロジー（実装式コピペ）・甘いアサーション告発（`checklist_apply_test/archive.md`） |
+
+#### レビュー・エスカレーション規律
+
+1. **独立コンテキスト**: 実装者自身のバイアスを排除するため、必ずサブエージェント（別会話コンテキスト）に対象成果物・`git diff`・チェックリストのパスを渡して実行する。
+2. **挑戦的設問回答と破壊テスト実行**: 各成果物の挑戦的設問への具体的回答・根拠、および実装コードを例外終了させる破壊テスト実行ログ（Adversarial QA）を `openspec/changes/<name>/reviews.md` に追記する。フォーマット・静的解析・テスト合否・カバレッジ数値等の機械的検証は `verify-gate.ps1` に委譲し LLM レビューから除外する。
+3. **最大3サイクルとエスカレーション**: `Critical` / `Major` 指摘（破壊テストによるバグ検出含む）が 0 件（`LGTM: true`）になるまで修正・再レビューを繰り返す。**最大 3 サイクル**で解消しない場合は、AI の独断で妥協せずユーザーへエスカレーションする。
+4. **保留指摘の引き継ぎ**: `Minor` / `Suggestion` で保留とした指摘は `reviews.md` に記録し、Archive 時に `handover.md` へ全件転記する。
+
+---
+
+### テスト網羅性基準（C0 / C1 / C2・結合・E2E）とテスト設計
+
+L2 / L3 の変更では、コードを書く前に `openspec/templates/test_plan.md` から `openspec/changes/<name>/test_plan.md` を作成し、テストケースを定義する。
+
+#### 1. カバレッジ基準とテストレベル別の網羅方針
+
+| テストレベル                 | 網羅指標                                                                                   | 目標基準（デフォルト）                                                                  | 必須設計技法・検証内容                                                                                                                                                                                                                                                                                                                                                |
+| :--------------------------- | :----------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **単体テスト (Unit)**        | **C0（命令網羅 / Line）**<br>**C1（分岐網羅 / Branch）**<br>**C2（条件網羅 / Condition）** | 全体 **80%+** / 差分 **90%+**<br>全体 **80%+** / 差分 **85%+**<br>対象複合条件 **100%** | ・**同値分割・境界値分析**: 数値（`min-1`, `min`, `max`, `max+1`, `0`, 負数）、文字列（空, 空白, 1文字, 上限±1, 特殊文字）、配列（`[]`, 1件, 複数, 上限±1）、日時（境界時刻, TZ, うるう日）<br>・**デシジョンテーブル**: 複合条件（`A && B \|\| C`）の真偽組み合わせ<br>・**モック最小化**: 外部I/Oのみモック可。対象ロジックのモック化やトートロジーアサーション禁止 |
+| **結合テスト (Integration)** | **IF契約網羅**<br>**状態遷移網羅（0/1-switch）**                                           | 全外部/DB境界 **100%**<br>全状態遷移 **100%**                                           | ・正常往復＋シリアライズ境界＋トランザクションロールバック<br>・**異常系注入（Fault Injection）**: 4xx/5xx応答、Timeout、切断、DB制約違反<br>・**状態遷移**: 有効遷移（0-switch）＋無効遷移の拒否（1-switch）・二重実行時の冪等性                                                                                                                                     |
+| **E2Eテスト (End-to-End)**   | **仕様 Scenario 網羅率**<br>**主要ジャーニー網羅**                                         | `specs/` 全 Scenario **100%**                                                           | ・① **Happy Path**（主要正常導線）<br>・② **Zero-State / 初回起動 Path**（データ0件・APIキー未設定・未ログイン）<br>・③ **Negative / Recovery Path**（エラー表示→修正→再試行成功）<br>・**実画面レンダリング検証**: 実ブラウザ/実ウィンドウで描画し PNG キャプチャを出力（名ばかりE2Eの禁止）                                                                         |
+
+#### 2. 不具合修正（`fix/<change-name>`）時の専用 TDD プロトコル
+
+1. **根本原因（Root Cause）の特定**: 現象の対症療法ではなく、なぜ発生したかを `proposal.md` と `design.md` に明記する。
+2. **再現テスト（Red）の先行作成**: 修正前のコードで確実に失敗する回帰テストを `qa-tester` で最初に作成する。
+3. **最小修正（Green）と横展開チェック**: `pg-implementer` で修正後、同種のバグが他モジュールに存在しないか検索・確認する。
+
+---
+
+### 完了基準（Definition of Done）と機械的フェーズゲート
+
+ドキュメントのルール記述だけに頼らず、各フェーズの終わりに **`openspec/scripts/verify-gate.ps1`** を実行し、機械的チェックを PASS させることを必須とする。
+
+| ゲート     | 実行タイミング                         | 検証コマンド                                                                                                 | 完了基準（DoD / ゲート通過条件）                                                                                                                                                                   |
+| :--------- | :------------------------------------- | :----------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Gate 0** | `openspec new change` 直前             | `pwsh ./openspec/scripts/verify-gate.ps1 -Gate pre-propose`                                                  | ・未コミット変更の退避済み<br>・最新 `develop` から切った `feature/*` / `fix/*` 等のブランチ上にいること                                                                                           |
+| **Gate 1** | Propose 合意・commit 前                | `openspec validate "<name>"`<br>`pwsh ./openspec/scripts/verify-gate.ps1 -Gate propose -ChangeName "<name>"` | ・規模レベルに応じた必須ファイル（`proposal`, `specs`, `design`, `test_plan`, `tasks`, `mockup`）が揃っていること<br>・`reviews.md` に未判定項目がなく、Propose レビューが `LGTM: true` であること |
+| **Gate 2** | Apply 各タスクの `[x]` 更新・commit 前 | `pwsh ./openspec/scripts/verify-gate.ps1 -Gate apply -ChangeName "<name>"`                                   | ・フォーマット差分0、静的解析エラー0、全テストPass、C0/C1/C2基準達成<br>・テストの `skip` 放置が 0 件であること<br>・`reviews.md` の最新タスクレビューが `LGTM: true` であること                   |
+| **Gate 3** | `openspec archive` 実行前              | `pwsh ./openspec/scripts/verify-gate.ps1 -Gate archive -ChangeName "<name>"`                                 | ・`tasks.md` の未完了タスク（`- [ ]`）が 0 件であること<br>・`handover.md` が記入済みであること<br>・全4ロール総括レビュー `LGTM: true` かつ DoD（テスト100%Pass、skip放置0件）を達成していること  |
+
+---
+
+### 自動フォーマット
+
+ファイル更新時・コミット前・テスト実行前に、ファイル種別に応じたフォーマッタを実行する。
+ファイル種別ごとのコマンドは、本ファイルの **openspec-kit 管理区間外**（「プロジェクト固有ルール」の「自動フォーマット」表）に記載する。
+
+---
+
+### Git 操作ルール
+
+OpenSpec の成果物（`openspec/` 配下）も Git 管理対象とする。
+
+#### 1. ブランチ作成（Explore → Propose 移行時の安全シーケンス / Gate 0）
+
+1. **作業ツリー確認と退避**: `git status --porcelain` で未コミット変更を確認し、存在する場合は `git stash push -u -m "wip: backup before switch to <change-name>"` で退避する。
+2. **ベースブランチの最新化とマージ済みブランチ削除・新トピックブランチ作成**:
+   ```bash
+   git checkout develop
+   git pull origin develop
+   git fetch --prune
+   # マージ済みローカルブランチを一括削除（develop, main, master 等は除外保護）
+   # PowerShell: git branch --merged develop | Where-Object { $_.Trim() -notmatch '^(develop|main|master|\*)' } | ForEach-Object { git branch -d $_.Trim() }
+   # Bash: git branch --merged develop | grep -vE "^(\*|develop|main|master)$" | xargs -r git branch -d
+   git checkout -b feature/<change-name>   # fix/<change-name>, refactor/<change-name>, chore/<change-name>
+   ```
+3. **Gate 0 検証**: `pwsh ./openspec/scripts/verify-gate.ps1 -Gate pre-propose`
+
+#### 2. Commit タイミング（各ゲート通過後）
+
+1. **Propose 合意後（Gate 1 通過後）**: `openspec/changes/<name>/` 配下の全計画成果物（`proposal`, `specs`, `design`, `test_plan`, `tasks`, `mockup`, `reviews`）
+2. **Apply 中の各タスク完了時（Gate 2 通過後）**: 実装・テストコード、`tasks.md` の進捗、`reviews.md` のレビュー記録
+3. **Archive 完了後（Gate 3 通過後）**: 更新されたメイン仕様（`openspec/specs/`）、アーカイブされた変更、README 等の関連ドキュメント
+
+**Commit メッセージ規約**（Conventional Commits: `<type>(<scope>): <subject>`、type は `feat|fix|docs|refactor|test|chore|review|spec`、scope は change 名）。
+
+#### 3. Push / Pull Request / Merge
+
+- **Push**: トピックブランチへの push は Archive 完了時の自走タスクとして自動実行する
+- **PR 作成**: `openspec/templates/pr_body.md` に従い `gh pr create --base develop --head <branch> --title "<type>(<scope>): <subject>" --body-file <PR本文ファイル>` を自動実行する（ローカルブランチはトピックブランチのままでセッション完了とし、人間レビューは PR 上で実施）
+- **マージ**: 人間によるレビュー承認後、**Merge commit**（`gh pr merge <PR番号> --merge --delete-branch`）で統合する（Squash / Rebase merge は禁止）。
+
+#### 4. 禁止事項（ハードガードレール）
+
+- `develop` および `main` への直接コミット・直接 push
+- `verify-gate.ps1` を実行・通過せずに行うフェーズ移行・`[x]` 更新・Archive 実行
+- 既存テストの期待値改ざん・アサーション削除・`skip` 化による見せかけの Green 化
+- **ユーザー承認なしでの PR マージ（ベースブランチへの統合）**
+- テストエビデンス（`test/TestResults/`）・カバレッジレポート・秘密情報（`.env` 等）の commit
+
+---
+
+### OpenSpec CLI & ゲートコマンド リファレンス
+
+```bash
+# 変更の作成・一覧・進捗
+openspec new change "<name>"                              # 新規変更作成（Gate 0 通過後）
+openspec list --json                                      # 進行中の変更一覧
+openspec list --specs                                     # メイン仕様（capability）一覧
+openspec status --change "<name>" --json                  # 成果物の進捗確認
+
+# 成果物の作成指示・検証
+openspec instructions <artifact> --change "<name>" --json # 作成指示（context / rules / template）
+openspec instructions apply --change "<name>" --json      # 実装指示（operations.apply.guidance を含む）
+openspec validate "<name>"                                # 変更の検証
+
+# フェーズゲート検証（openspec-kit: PowerShell 版 / Bash 版）
+pwsh ./openspec/scripts/verify-gate.ps1 -Gate pre-propose
+pwsh ./openspec/scripts/verify-gate.ps1 -Gate propose -ChangeName "<name>"
+pwsh ./openspec/scripts/verify-gate.ps1 -Gate apply   -ChangeName "<name>"
+pwsh ./openspec/scripts/verify-gate.ps1 -Gate archive -ChangeName "<name>"
+# Bash 環境の場合: ./openspec/scripts/verify-gate.sh --gate <pre-propose|propose|apply|archive> --change-name "<name>"
+
+# 完了
+openspec archive "<name>"                                 # アーカイブ（Gate 3 通過後）
+```
+
+<!-- openspec-kit:end -->
