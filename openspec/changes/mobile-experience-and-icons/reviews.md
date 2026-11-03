@@ -100,9 +100,60 @@
 
 ---
 
-## 3. 判定
+## 3. 判定 (Propose)
 
 - **LGTM**: true
 - **条件付きLGTM**: なし
 - **保留指摘（申し送り）**: なし（全課題解消済み）
 - **次のアクション**: Gate 1（propose）検証スクリプトの実行およびコミット
+
+---
+
+# レビュー記録: mobile-experience-and-icons / apply
+
+- **日時**: 2026-11-04
+- **フェーズ**: apply
+- **タスク**: Task 1.1 〜 5.2 全実装および E2E テスト検証
+- **レビュアー**: qa-reviewer / pg-reviewer
+- **使用プロトコル**: checklist_apply_impl.md / checklist_apply_test.md
+- **対象成果物**: `src/TagBasedVideoManager/wwwroot/{favicon.*, apple-touch-icon.png, icon-*.png, manifest.webmanifest, app.css, app.js, index.html}`, `test/TagBasedVideoManager.Tests/E2E/MobileE2ETests.fs`
+
+---
+
+## 1. 挑戦的設問への回答
+
+### 設問1: 既存デスクトップ環境への影響およびリグレッションはないか？
+
+- **確認内容・回答**: メイン画面・サイドバー・ツールバー・動画一覧・各種モーダルの既存デスクトップ機能が一切損なわれていないことを確認。DOM 配置順序の最適化（デスクトップ専用ブロック先行）、placeholder の分離、一意のアクセシブル名付与により、デスクトップ想定の既存 E2E テストおよび単体・結合テスト全 70 件が 100% PASS することを確認した。
+- **確認根拠**: `test/TagBasedVideoManager.Tests/E2E/E2ETests.fs`, `test/TagBasedVideoManager.Tests/Integration/*`, TRX レポート `TestRun_2026-11-04_02_08_08_net10.0.trx`
+
+### 設問2: モバイル特有の UX（全画面没入・連続視聴・タッチ領域・タグ階層）は忠実に再現されているか？
+
+- **確認内容・回答**: `mockup.html` のデザインを完全に忠実再現。`100dvh`・safe-area-inset、常設キーワード検索、クイックタグピルバー、2列グリッド ⇄ スリムリストのワンタップ切り替え、ボトムシート型タグ階層ブラウザ、6色プリセットパレット付き新規タグ作成モーダル、全画面没入型プレイヤー（「次の動画」「前の動画」連続視聴）が全て実装され、390x844 の実解像度で動作することを確認した。
+- **確認根拠**: `test/TagBasedVideoManager.Tests/E2E/MobileE2ETests.fs`（5 シナリオ全 PASS）、スクリーンショット 6 枚 (`test/TestResults/mobile_*.png`)
+
+---
+
+## 2. Adversarial QA（破壊テスト・異常系検証）
+
+- **対象関数/モジュール**: `app.js` (`sidebarOpen` 初期化・`toggleMobileViewMode`・`playVideo`・`playNextVideo`・`playPrevVideo`)
+- **破壊テストコード名**: `MobileE2ETests.fs` (`E2E Mobile: 2列グリッドとスリムリストのレイアウト切り替えおよびお気に入り操作が正常に動作する`)
+- **実行コマンド**: `dotnet run --project test/TagBasedVideoManager.Tests/TagBasedVideoManager.Tests.fsproj -- --filter-class "TagBasedVideoManager.Tests.MobileE2ETests"`
+- **実行判定**: バグ検出後に修正・堅牢性確認（Green）
+- **実行ログ要約**:
+  モバイル幅で画面を開いた際にデスクトップ初期値 `sidebarOpen: true` によりオーバーレイが最前面に残りクリックをインターセプトする不具合を発見。`app.js` の初期値および `init()` にて `window.innerWidth < 768` 時の自動閉鎖防御コードを追加し、完全解消を確認。全 5 テスト Green。
+
+---
+
+## 3. 指摘事項
+
+- なし（理由: 全課題解消・テスト ALL GREEN 確認済み）
+
+---
+
+## 4. 判定 (Apply)
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: Gate 2 (apply) 検証スクリプト実行および Archive への移行案内

@@ -1,1195 +1,1787 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja" class="h-full">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>Mobile UI Mockup (Complete) - TagBasedVideoManager</title>
     <!-- Tailwind CSS (CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        slate: {
-                            950: '#030712',
-                            850: '#111827',
-                            750: '#1f293d',
-                        }
-                    }
-                }
-            }
-        }
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              slate: {
+                950: "#030712",
+                850: "#111827",
+                750: "#1f293d",
+              },
+            },
+          },
+        },
+      };
     </script>
     <!-- Alpine.js (CDN) -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Google Fonts: Outfit -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
-        body {
-            font-family: 'Outfit', 'Noto Sans JP', sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-        .touch-target {
-            min-width: 44px;
-            min-height: 44px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
+      body {
+        font-family: "Outfit", "Noto Sans JP", sans-serif;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      .touch-target {
+        min-width: 44px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
     </style>
-</head>
-<body class="h-full bg-slate-950 text-slate-100 flex justify-center items-center p-0 md:p-4 select-none" x-data="mobileMockupApp()" x-init="init()">
-
+  </head>
+  <body
+    class="h-full bg-slate-950 text-slate-100 flex justify-center items-center p-0 md:p-4 select-none"
+    x-data="mobileMockupApp()"
+    x-init="init()"
+  >
     <!-- モバイル外枠コンテナ（PCではスマホ枠、実端末では全画面） -->
-    <div class="w-full h-full md:max-w-[430px] md:h-[880px] bg-slate-950 md:rounded-[44px] md:border-4 md:border-slate-800 md:shadow-2xl md:shadow-indigo-500/10 flex flex-col overflow-hidden relative">
-
-        <!-- 1. メインヘッダー -->
-        <header class="flex-shrink-0 bg-slate-900/95 backdrop-blur-md border-b border-slate-800/80 px-3.5 py-2.5 flex items-center justify-between z-20 pt-safe">
-            <div class="flex items-center space-x-2">
-                <!-- ブランドロゴ -->
-                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
-                    <i data-lucide="play" class="w-4 h-4 text-white fill-white/30"></i>
-                </div>
-                <div>
-                    <h1 class="text-sm font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-indigo-200 to-violet-300">
-                        TagVideoManager
-                    </h1>
-                    <span class="text-[9px] text-indigo-400 font-mono" x-text="`${filteredVideos.length} 件`"></span>
-                </div>
-            </div>
-
-            <!-- 右側アクションボタン（44pxタッチターゲット確保） -->
-            <div class="flex items-center space-x-0.5">
-                <!-- ディレクトリ同期ボタン -->
-                <button 
-                    @click="triggerSync()" 
-                    class="touch-target text-slate-400 hover:text-indigo-400 active:scale-95 transition-all"
-                    :title="isScanning ? '同期中...' : 'ディレクトリ同期'"
-                >
-                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="isScanning ? 'animate-spin text-indigo-400' : ''"></i>
-                </button>
-
-                <!-- 表示・ソート設定シート呼び出しボタン -->
-                <button 
-                    @click="toolbarSheetOpen = true" 
-                    class="touch-target text-slate-400 hover:text-indigo-400 active:scale-95 transition-all relative"
-                    title="表示・ソート設定"
-                >
-                    <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
-                    <span class="absolute top-2.5 right-2.5 w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
-                </button>
-
-                <!-- 表示切り替えトグル（2列グリッド ⇄ スリムリスト：機能は欠落せずレイアウトのみ切替） -->
-                <button 
-                    @click="toggleViewMode()" 
-                    class="touch-target text-slate-400 hover:text-indigo-400 active:scale-95 transition-all"
-                    :title="viewMode === 'grid' ? 'スリムリスト表示へ切替' : '2列グリッド表示へ切替'"
-                >
-                    <template x-if="viewMode === 'grid'">
-                        <i data-lucide="list" class="w-4 h-4 text-indigo-400"></i>
-                    </template>
-                    <template x-if="viewMode === 'compact'">
-                        <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-400"></i>
-                    </template>
-                </button>
-
-                <!-- お気に入り絞り込みトグル -->
-                <button 
-                    @click="toggleFavoriteFilter()" 
-                    class="touch-target transition-all active:scale-95"
-                    :class="favoriteOnly ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'"
-                    title="お気に入りのみ表示"
-                >
-                    <i data-lucide="star" class="w-4 h-4" :class="favoriteOnly ? 'fill-current' : ''"></i>
-                </button>
-
-                <!-- ドロワーメニュー [≡] -->
-                <button 
-                    @click="drawerOpen = true" 
-                    class="touch-target text-slate-400 hover:text-slate-200 active:scale-95 transition-all"
-                    title="メニュー"
-                >
-                    <i data-lucide="menu" class="w-5 h-5"></i>
-                </button>
-            </div>
-        </header>
-
-        <!-- 2. 常設キーワード検索バー（フリーワード & DSL検索） -->
-        <div class="flex-shrink-0 bg-slate-900/70 border-b border-slate-850 px-3 py-2 z-15">
-            <div class="relative flex items-center">
-                <i data-lucide="search" class="w-4 h-4 text-slate-500 absolute left-3"></i>
-                <input 
-                    type="text" 
-                    x-model="searchQuery" 
-                    placeholder="キーワードまたは tag:旅行 キャンプ..." 
-                    class="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-indigo-500 rounded-xl pl-9 pr-9 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none transition-all"
-                >
-                <button 
-                    x-show="searchQuery" 
-                    @click="searchQuery = ''" 
-                    class="absolute right-2.5 text-slate-500 hover:text-slate-300 p-1"
-                    title="クリア"
-                >
-                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                </button>
-            </div>
+    <div
+      class="w-full h-full md:max-w-[430px] md:h-[880px] bg-slate-950 md:rounded-[44px] md:border-4 md:border-slate-800 md:shadow-2xl md:shadow-indigo-500/10 flex flex-col overflow-hidden relative"
+    >
+      <!-- 1. メインヘッダー -->
+      <header
+        class="flex-shrink-0 bg-slate-900/95 backdrop-blur-md border-b border-slate-800/80 px-3.5 py-2.5 flex items-center justify-between z-20 pt-safe"
+      >
+        <div class="flex items-center space-x-2">
+          <!-- ブランドロゴ -->
+          <div
+            class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-500/20"
+          >
+            <i data-lucide="play" class="w-4 h-4 text-white fill-white/30"></i>
+          </div>
+          <div>
+            <h1
+              class="text-sm font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-indigo-200 to-violet-300"
+            >
+              TagVideoManager
+            </h1>
+            <span
+              class="text-[9px] text-indigo-400 font-mono"
+              x-text="`${filteredVideos.length} 件`"
+            ></span>
+          </div>
         </div>
 
-        <!-- 3. クイックタグピルバー & タグブラウザ導線 -->
-        <div class="flex-shrink-0 bg-slate-900/40 border-b border-slate-850 px-3 py-2 overflow-x-auto no-scrollbar flex items-center space-x-1.5 z-10">
-            <!-- 全タグ階層ブラウザ起動ボタン -->
-            <button 
-                @click="tagBrowserOpen = true" 
-                class="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 flex items-center space-x-1 shrink-0 active:scale-95 transition-all shadow-sm"
-                title="タグ階層ツリー & 検索を開く"
-            >
-                <i data-lucide="tag" class="w-3 h-3 text-indigo-400"></i>
-                <span>全タグ</span>
-                <span class="text-[10px] font-mono text-indigo-300/80" x-text="`(${tagList.length})`"></span>
-            </button>
+        <!-- 右側アクションボタン（44pxタッチターゲット確保） -->
+        <div class="flex items-center space-x-0.5">
+          <!-- ディレクトリ同期ボタン -->
+          <button
+            @click="triggerSync()"
+            class="touch-target text-slate-400 hover:text-indigo-400 active:scale-95 transition-all"
+            :title="isScanning ? '同期中...' : 'ディレクトリ同期'"
+          >
+            <i
+              data-lucide="refresh-cw"
+              class="w-4 h-4"
+              :class="isScanning ? 'animate-spin text-indigo-400' : ''"
+            ></i>
+          </button>
 
-            <!-- すべてボタン -->
-            <button 
-                @click="clearTagFilter()" 
-                class="px-2.5 py-1 rounded-full text-xs font-medium transition-all shrink-0 border"
-                :class="!searchQuery.includes('tag:') ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm' : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200'"
-            >
-                すべて
-            </button>
+          <!-- 表示・ソート設定シート呼び出しボタン -->
+          <button
+            @click="toolbarSheetOpen = true"
+            class="touch-target text-slate-400 hover:text-indigo-400 active:scale-95 transition-all relative"
+            title="表示・ソート設定"
+          >
+            <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+            <span
+              class="absolute top-2.5 right-2.5 w-1.5 h-1.5 bg-indigo-500 rounded-full"
+            ></span>
+          </button>
 
-            <!-- 主要タグピル一覧 -->
-            <template x-for="tag in tagList" :key="tag.id">
-                <button 
-                    @click="filterByTag(tag.name)" 
-                    class="px-2.5 py-1 rounded-full text-xs font-medium transition-all shrink-0 border flex items-center space-x-1"
-                    :class="searchQuery.includes(`tag:${tag.name}`) ? 'border-indigo-500 text-white shadow-sm' : 'border-slate-800 text-slate-400 hover:text-slate-200 bg-slate-900/60'"
-                    :style="searchQuery.includes(`tag:${tag.name}`) ? { backgroundColor: `${tag.color}40`, borderColor: tag.color, color: '#fff' } : {}"
-                >
-                    <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: tag.color }"></span>
-                    <span x-text="tag.name"></span>
-                </button>
+          <!-- 表示切り替えトグル（2列グリッド ⇄ スリムリスト：機能は欠落せずレイアウトのみ切替） -->
+          <button
+            @click="toggleViewMode()"
+            class="touch-target text-slate-400 hover:text-indigo-400 active:scale-95 transition-all"
+            :title="viewMode === 'grid' ? 'スリムリスト表示へ切替' : '2列グリッド表示へ切替'"
+          >
+            <template x-if="viewMode === 'grid'">
+              <i data-lucide="list" class="w-4 h-4 text-indigo-400"></i>
             </template>
+            <template x-if="viewMode === 'compact'">
+              <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-400"></i>
+            </template>
+          </button>
 
-            <!-- 新規タグ作成ボタン -->
-            <button 
-                @click="openCreateTagModal()" 
-                class="px-2 py-1 rounded-full text-xs font-medium text-slate-400 hover:text-indigo-300 border border-dashed border-slate-750 hover:border-indigo-500/50 flex items-center space-x-0.5 shrink-0 transition-colors"
-                title="新しいタグを作成"
+          <!-- お気に入り絞り込みトグル -->
+          <button
+            @click="toggleFavoriteFilter()"
+            class="touch-target transition-all active:scale-95"
+            :class="favoriteOnly ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'"
+            title="お気に入りのみ表示"
+          >
+            <i
+              data-lucide="star"
+              class="w-4 h-4"
+              :class="favoriteOnly ? 'fill-current' : ''"
+            ></i>
+          </button>
+
+          <!-- ドロワーメニュー [≡] -->
+          <button
+            @click="drawerOpen = true"
+            class="touch-target text-slate-400 hover:text-slate-200 active:scale-95 transition-all"
+            title="メニュー"
+          >
+            <i data-lucide="menu" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- 2. 常設キーワード検索バー（フリーワード & DSL検索） -->
+      <div
+        class="flex-shrink-0 bg-slate-900/70 border-b border-slate-850 px-3 py-2 z-15"
+      >
+        <div class="relative flex items-center">
+          <i
+            data-lucide="search"
+            class="w-4 h-4 text-slate-500 absolute left-3"
+          ></i>
+          <input
+            type="text"
+            x-model="searchQuery"
+            placeholder="キーワードまたは tag:旅行 キャンプ..."
+            class="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-indigo-500 rounded-xl pl-9 pr-9 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none transition-all"
+          />
+          <button
+            x-show="searchQuery"
+            @click="searchQuery = ''"
+            class="absolute right-2.5 text-slate-500 hover:text-slate-300 p-1"
+            title="クリア"
+          >
+            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 3. クイックタグピルバー & タグブラウザ導線 -->
+      <div
+        class="flex-shrink-0 bg-slate-900/40 border-b border-slate-850 px-3 py-2 overflow-x-auto no-scrollbar flex items-center space-x-1.5 z-10"
+      >
+        <!-- 全タグ階層ブラウザ起動ボタン -->
+        <button
+          @click="tagBrowserOpen = true"
+          class="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 flex items-center space-x-1 shrink-0 active:scale-95 transition-all shadow-sm"
+          title="タグ階層ツリー & 検索を開く"
+        >
+          <i data-lucide="tag" class="w-3 h-3 text-indigo-400"></i>
+          <span>全タグ</span>
+          <span
+            class="text-[10px] font-mono text-indigo-300/80"
+            x-text="`(${tagList.length})`"
+          ></span>
+        </button>
+
+        <!-- すべてボタン -->
+        <button
+          @click="clearTagFilter()"
+          class="px-2.5 py-1 rounded-full text-xs font-medium transition-all shrink-0 border"
+          :class="!searchQuery.includes('tag:') ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm' : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200'"
+        >
+          すべて
+        </button>
+
+        <!-- 主要タグピル一覧 -->
+        <template x-for="tag in tagList" :key="tag.id">
+          <button
+            @click="filterByTag(tag.name)"
+            class="px-2.5 py-1 rounded-full text-xs font-medium transition-all shrink-0 border flex items-center space-x-1"
+            :class="searchQuery.includes(`tag:${tag.name}`) ? 'border-indigo-500 text-white shadow-sm' : 'border-slate-800 text-slate-400 hover:text-slate-200 bg-slate-900/60'"
+            :style="searchQuery.includes(`tag:${tag.name}`) ? { backgroundColor: `${tag.color}40`, borderColor: tag.color, color: '#fff' } : {}"
+          >
+            <span
+              class="w-1.5 h-1.5 rounded-full"
+              :style="{ backgroundColor: tag.color }"
+            ></span>
+            <span x-text="tag.name"></span>
+          </button>
+        </template>
+
+        <!-- 新規タグ作成ボタン -->
+        <button
+          @click="openCreateTagModal()"
+          class="px-2 py-1 rounded-full text-xs font-medium text-slate-400 hover:text-indigo-300 border border-dashed border-slate-750 hover:border-indigo-500/50 flex items-center space-x-0.5 shrink-0 transition-colors"
+          title="新しいタグを作成"
+        >
+          <i data-lucide="plus" class="w-3 h-3"></i>
+          <span>作成</span>
+        </button>
+      </div>
+
+      <!-- 4. メイン動画表示領域（スクロール可能） -->
+      <main class="flex-1 overflow-y-auto p-3 space-y-3 pb-24">
+        <!-- 【モード3: 2列グリッド型 (ギャラリー風)】 -->
+        <div x-show="viewMode === 'grid'" class="grid grid-cols-2 gap-2.5">
+          <template x-for="(video, idx) in pagedVideos" :key="video.id">
+            <div
+              class="bg-slate-900/50 border border-slate-800/80 hover:border-indigo-500/40 rounded-2xl overflow-hidden shadow-lg flex flex-col active:scale-[0.98] transition-all relative"
+              :class="selectedVideoIds.includes(video.id) ? 'border-indigo-500 bg-indigo-950/20' : ''"
+              @click="openPlayer(idx)"
             >
-                <i data-lucide="plus" class="w-3 h-3"></i>
-                <span>作成</span>
-            </button>
-        </div>
-
-        <!-- 4. メイン動画表示領域（スクロール可能） -->
-        <main class="flex-1 overflow-y-auto p-3 space-y-3 pb-24">
-
-            <!-- 【モード3: 2列グリッド型 (ギャラリー風)】 -->
-            <div x-show="viewMode === 'grid'" class="grid grid-cols-2 gap-2.5">
-                <template x-for="(video, idx) in pagedVideos" :key="video.id">
-                    <div 
-                        class="bg-slate-900/50 border border-slate-800/80 hover:border-indigo-500/40 rounded-2xl overflow-hidden shadow-lg flex flex-col active:scale-[0.98] transition-all relative"
-                        :class="selectedVideoIds.includes(video.id) ? 'border-indigo-500 bg-indigo-950/20' : ''"
-                        @click="openPlayer(idx)"
-                    >
-                        <!-- サムネイル（表示設定 showThumbnails 連動） -->
-                        <div x-show="showThumbnails" class="relative aspect-video bg-slate-950 overflow-hidden">
-                            <img :src="video.thumbnail" class="w-full h-full object-cover">
-                            <!-- 再生時間バッジ -->
-                            <span class="absolute bottom-1.5 right-1.5 bg-slate-950/80 backdrop-blur-sm border border-slate-800 px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-300" x-text="video.duration"></span>
-                            <!-- 再生オーバーレイマーク -->
-                            <div class="absolute inset-0 flex items-center justify-center bg-black/20">
-                                <div class="w-7 h-7 rounded-full bg-indigo-600/80 flex items-center justify-center text-white shadow">
-                                    <i data-lucide="play" class="w-3.5 h-3.5 fill-current ml-0.5"></i>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- サムネイル非表示時のプレースホルダー -->
-                        <div x-show="!showThumbnails" class="h-10 bg-slate-900/80 flex items-center px-3 border-b border-slate-800/60">
-                            <i data-lucide="film" class="w-4 h-4 text-slate-500 mr-2"></i>
-                            <span class="text-[10px] font-mono text-slate-400" x-text="video.duration"></span>
-                        </div>
-
-                        <!-- メタデータ部 -->
-                        <div class="p-2.5 flex-1 flex flex-col justify-between space-y-2">
-                            <div>
-                                <div class="flex items-start justify-between min-w-0">
-                                    <!-- 複数選択チェックボックス -->
-                                    <input 
-                                        type="checkbox" 
-                                        :value="video.id" 
-                                        x-model="selectedVideoIds" 
-                                        @click.stop 
-                                        class="mt-0.5 mr-1.5 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0 w-3.5 h-3.5 shrink-0"
-                                    >
-                                    <h3 class="text-xs font-medium text-slate-200 line-clamp-2 leading-snug flex-1" x-text="video.title"></h3>
-                                    <!-- お気に入りボタン -->
-                                    <button 
-                                        @click.stop="toggleFav(video.id)" 
-                                        class="w-7 h-7 flex items-center justify-center shrink-0 text-slate-500 active:scale-125 transition-transform"
-                                        :class="video.isFav ? 'text-amber-400' : 'hover:text-slate-300'"
-                                        title="お気に入り"
-                                    >
-                                        <i data-lucide="star" class="w-3.5 h-3.5" :class="video.isFav ? 'fill-current' : ''"></i>
-                                    </button>
-                                </div>
-                                <div class="flex items-center justify-between text-[10px] text-slate-500 mt-1">
-                                    <span x-text="video.size"></span>
-                                    <!-- 再生回数 & リセット -->
-                                    <div class="flex items-center space-x-1 bg-slate-800/60 px-1.5 py-0.5 rounded text-[9px]">
-                                        <span x-text="`${video.views}回`"></span>
-                                        <button @click.stop="resetViews(video.id)" class="text-slate-500 hover:text-red-400" title="再生回数をリセット">
-                                            <i data-lucide="rotate-ccw" class="w-2.5 h-2.5"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- タグバッジ & タグ追加ボタン -->
-                            <div class="flex flex-wrap gap-1 items-center">
-                                <template x-for="tname in video.tags" :key="tname">
-                                    <span 
-                                        @click.stop="filterByTag(tname)"
-                                        class="text-[9px] px-1.5 py-0.2 rounded cursor-pointer transition-colors" 
-                                        :class="searchQuery.includes(`tag:${tname}`) ? 'bg-indigo-600 text-white border border-indigo-400' : 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 hover:bg-indigo-500/20'"
-                                        x-text="tname"
-                                    ></span>
-                                </template>
-                                <button 
-                                    @click.stop="openAddTagModal(video)" 
-                                    class="text-[9px] px-1 py-0.2 rounded text-slate-500 hover:text-indigo-300 bg-slate-950 border border-slate-800 flex items-center space-x-0.5"
-                                    title="タグを追加"
-                                >
-                                    <i data-lucide="plus" class="w-2.5 h-2.5"></i>
-                                    <span>タグ</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </template>
-            </div>
-
-            <!-- 【モード4: スリムリスト型 (高密度エクスプローラー風)】 -->
-            <div x-show="viewMode === 'compact'" class="divide-y divide-slate-850 bg-slate-900/30 rounded-2xl border border-slate-800/80 overflow-hidden" style="display: none;">
-                <template x-for="(video, idx) in pagedVideos" :key="video.id">
-                    <div 
-                        class="p-2.5 flex items-center justify-between hover:bg-slate-850/40 active:bg-slate-850/70 transition-colors"
-                        :class="selectedVideoIds.includes(video.id) ? 'bg-indigo-950/20' : ''"
-                        @click="openPlayer(idx)"
-                    >
-                        <div class="flex items-center space-x-2.5 min-w-0 flex-1">
-                            <!-- 複数選択チェックボックス -->
-                            <input 
-                                type="checkbox" 
-                                :value="video.id" 
-                                x-model="selectedVideoIds" 
-                                @click.stop 
-                                class="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0 w-3.5 h-3.5 shrink-0"
-                            >
-
-                            <!-- 極小サムネイル（showThumbnails 連動） -->
-                            <div x-show="showThumbnails" class="relative w-12 aspect-video rounded-lg overflow-hidden shrink-0 bg-slate-950">
-                                <img :src="video.thumbnail" class="w-full h-full object-cover">
-                                <span class="absolute bottom-0 right-0 bg-black/80 text-[7px] font-mono px-0.5 text-slate-300" x-text="video.duration"></span>
-                            </div>
-
-                            <!-- サムネイル非表示時の再生アイコン -->
-                            <div x-show="!showThumbnails" class="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center shrink-0 text-slate-400">
-                                <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
-                            </div>
-
-                            <!-- タイトル & メタデータ一行表示 -->
-                            <div class="min-w-0 flex-1">
-                                <h3 class="text-xs font-medium text-slate-200 truncate" x-text="video.title"></h3>
-                                <div class="flex items-center space-x-1.5 text-[10px] text-slate-500 mt-0.5 truncate">
-                                    <span x-text="video.duration"></span>
-                                    <span>•</span>
-                                    <span x-text="video.size"></span>
-                                    <span>•</span>
-                                    <span x-text="`${video.views}回`"></span>
-                                    <span>•</span>
-                                    <span class="text-indigo-400 truncate" x-text="video.tags.join(', ')"></span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 右側アクション（タグ付与とお気に入り） -->
-                        <div class="flex items-center space-x-1 shrink-0 ml-1">
-                            <button 
-                                @click.stop="openAddTagModal(video)" 
-                                class="p-1.5 text-slate-500 hover:text-indigo-300 transition-colors"
-                                title="タグ管理"
-                            >
-                                <i data-lucide="tag" class="w-3.5 h-3.5"></i>
-                            </button>
-                            <button 
-                                @click.stop="toggleFav(video.id)" 
-                                class="touch-target text-slate-500"
-                                :class="video.isFav ? 'text-amber-400' : 'hover:text-slate-300'"
-                                title="お気に入り"
-                            >
-                                <i data-lucide="star" class="w-4 h-4" :class="video.isFav ? 'fill-current' : ''"></i>
-                            </button>
-                        </div>
-                    </div>
-                </template>
-            </div>
-
-            <!-- ページング / 追加読み込みコントロール（既存機能連動） -->
-            <div x-show="filteredVideos.length > 0" class="pt-2">
-                <!-- ページングモード時 -->
-                <template x-if="displayMode === 'paging'">
-                    <div class="flex items-center justify-between bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800 text-xs text-slate-400">
-                        <button 
-                            @click="currentPage = Math.max(1, currentPage - 1)" 
-                            :disabled="currentPage <= 1"
-                            class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-200 disabled:opacity-30 disabled:pointer-events-none"
-                        >
-                            前へ
-                        </button>
-                        <span class="text-[11px] font-mono" x-text="`${currentPage} / ${totalPages} ページ`"></span>
-                        <button 
-                            @click="currentPage = Math.min(totalPages, currentPage + 1)" 
-                            :disabled="currentPage >= totalPages"
-                            class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-200 disabled:opacity-30 disabled:pointer-events-none"
-                        >
-                            次へ
-                        </button>
-                    </div>
-                </template>
-
-                <!-- 順次追加読み込みモード時 -->
-                <template x-if="displayMode === 'incremental' && hasMore">
-                    <div class="flex flex-col items-center space-y-1">
-                        <button 
-                            @click="loadMore()" 
-                            class="w-full py-2.5 rounded-2xl bg-slate-900/80 border border-slate-700 text-xs font-semibold text-indigo-300 hover:bg-slate-800 active:scale-[0.99] transition-all"
-                        >
-                            もっと表示（残り <span x-text="filteredVideos.length - incrementalCount"></span> 件）
-                        </button>
-                    </div>
-                </template>
-            </div>
-
-            <!-- Zero-State（0件時） -->
-            <div x-show="filteredVideos.length === 0" class="py-16 flex flex-col items-center justify-center text-slate-500 space-y-2">
-                <i data-lucide="inbox" class="w-10 h-10 text-slate-600"></i>
-                <p class="text-xs">該当する動画がありません</p>
-                <button @click="clearAllFilters()" class="text-xs text-indigo-400 underline">条件をリセット</button>
-            </div>
-
-        </main>
-
-        <!-- 5. 複数選択時の一括操作バー（最下部固定・safe-area考慮） -->
-        <div 
-            x-show="selectedVideoIds.length > 0"
-            x-transition:enter="transition ease-out duration-200"
-            x-transition:enter-start="opacity-0 translate-y-6"
-            x-transition:enter-end="opacity-100 translate-y-0"
-            x-transition:leave="transition ease-in duration-150"
-            x-transition:leave-start="opacity-100 translate-y-0"
-            x-transition:leave-end="opacity-0 translate-y-6"
-            class="fixed bottom-3 inset-x-3 z-30 bg-slate-900/95 backdrop-blur-md border border-indigo-500/40 rounded-2xl shadow-2xl p-3 flex items-center justify-between"
-            style="display: none;"
-        >
-            <span class="text-xs font-bold text-indigo-400" x-text="`${selectedVideoIds.length} 件選択中`"></span>
-            <div class="flex items-center space-x-1.5">
-                <button @click="openBatchTagModal('add')" class="px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white text-[11px] font-semibold">
-                    +タグ
-                </button>
-                <button @click="openBatchTagModal('remove')" class="px-2.5 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-[11px] font-semibold">
-                    -タグ
-                </button>
-                <button @click="batchFav(true)" class="p-1.5 rounded-xl bg-amber-500/20 text-amber-400 text-xs">
-                    <i data-lucide="star" class="w-4 h-4 fill-current"></i>
-                </button>
-                <button @click="selectedVideoIds = []" class="p-1.5 text-slate-400 hover:text-white">
-                    <i data-lucide="x" class="w-4 h-4"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- =================== 各種子画面（モーダル / シート） =================== -->
-
-        <!-- 子画面 1: 全画面没入型プレイヤー（モーダル） -->
-        <div 
-            x-show="player.show" 
-            x-transition:enter="transition ease-out duration-200"
-            x-transition:enter-start="opacity-0 translate-y-4"
-            x-transition:enter-end="opacity-100 translate-y-0"
-            x-transition:leave="transition ease-in duration-150"
-            x-transition:leave-start="opacity-100 translate-y-0"
-            x-transition:leave-end="opacity-0 translate-y-4"
-            class="fixed inset-0 z-50 bg-black flex flex-col justify-between"
-            style="display: none;"
-        >
-            <div class="p-3 bg-gradient-to-b from-black/90 to-transparent flex items-center justify-between z-10 pt-safe">
-                <div class="flex items-center space-x-2 min-w-0 flex-1 pr-2">
-                    <button @click="player.show = false" class="touch-target text-slate-300 hover:text-white" title="閉じる">
-                        <i data-lucide="chevron-down" class="w-6 h-6"></i>
-                    </button>
-                    <h3 class="text-xs font-semibold text-slate-200 truncate" x-text="currentVideo?.title"></h3>
-                </div>
-                <div class="flex items-center space-x-1 shrink-0">
-                    <button @click="toggleFav(currentVideo?.id)" class="touch-target" :class="currentVideo?.isFav ? 'text-amber-400' : 'text-slate-400'">
-                        <i data-lucide="star" class="w-5 h-5" :class="currentVideo?.isFav ? 'fill-current' : ''"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- 動画表示部 -->
-            <div class="flex-1 flex items-center justify-center bg-black relative">
-                <img :src="currentVideo?.thumbnail" class="w-full aspect-video object-contain">
-                <!-- 疑似シークバー -->
-                <div class="absolute bottom-2 inset-x-4 flex items-center space-x-2">
-                    <div class="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
-                        <div class="w-1/3 h-full bg-indigo-500"></div>
-                    </div>
-                    <span class="text-[9px] font-mono text-slate-400" x-text="currentVideo?.duration"></span>
-                </div>
-            </div>
-
-            <!-- プレイヤー下部コントロール（連続視聴） -->
-            <div class="p-4 bg-gradient-to-t from-black/95 to-transparent space-y-3 pb-safe">
-                <div class="flex items-center justify-around max-w-xs mx-auto">
-                    <button 
-                        @click="playPrev()" 
-                        :disabled="player.currentIndex <= 0" 
-                        class="touch-target rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 disabled:opacity-30 disabled:pointer-events-none"
-                    >
-                        <i data-lucide="skip-back" class="w-5 h-5"></i>
-                    </button>
-                    <button class="w-14 h-14 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform">
-                        <i data-lucide="play" class="w-6 h-6 fill-current ml-0.5"></i>
-                    </button>
-                    <button 
-                        @click="playNext()" 
-                        :disabled="player.currentIndex >= filteredVideos.length - 1" 
-                        class="touch-target rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 disabled:opacity-30 disabled:pointer-events-none"
-                    >
-                        <i data-lucide="skip-forward" class="w-5 h-5"></i>
-                    </button>
-                </div>
-                <div class="text-center text-[10px] text-slate-500">
-                    <span x-text="`${player.currentIndex + 1} / ${filteredVideos.length}`"></span> 動画
-                </div>
-            </div>
-        </div>
-
-        <!-- 子画面 2: タグ階層ブラウザ & 検索シート（ボトムスライド） -->
-        <div x-show="tagBrowserOpen" @click="tagBrowserOpen = false" class="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" style="display: none;"></div>
-        <div 
-            x-show="tagBrowserOpen" 
-            x-transition:enter="transition ease-out duration-200"
-            x-transition:enter-start="translate-y-full"
-            x-transition:enter-end="translate-y-0"
-            x-transition:leave="transition ease-in duration-150"
-            x-transition:leave-start="translate-y-0"
-            x-transition:leave-end="translate-y-full"
-            class="fixed inset-x-0 bottom-0 max-h-[80vh] bg-slate-900 border-t border-slate-800 rounded-t-3xl z-50 flex flex-col shadow-2xl pb-safe"
-            style="display: none;"
-        >
-            <div class="p-4 border-b border-slate-800 flex items-center justify-between">
-                <div class="flex items-center space-x-2">
-                    <i data-lucide="tag" class="w-4 h-4 text-indigo-400"></i>
-                    <h2 class="text-sm font-bold text-slate-200">タグ階層 & 検索</h2>
-                </div>
-                <button @click="tagBrowserOpen = false" class="text-slate-400 hover:text-white p-1">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-
-            <!-- タグ検索入力 & 新規作成ボタン -->
-            <div class="p-3 border-b border-slate-850 flex items-center space-x-2">
-                <div class="relative flex-1">
-                    <input 
-                        type="text" 
-                        x-model="tagSearchQuery" 
-                        placeholder="タグ名で検索..." 
-                        class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500"
-                    >
-                </div>
-                <button 
-                    @click="openCreateTagModal(); tagBrowserOpen = false;" 
-                    class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center space-x-1 shrink-0 shadow"
+              <!-- サムネイル（表示設定 showThumbnails 連動） -->
+              <div
+                x-show="showThumbnails"
+                class="relative aspect-video bg-slate-950 overflow-hidden"
+              >
+                <img
+                  :src="video.thumbnail"
+                  class="w-full h-full object-cover"
+                />
+                <!-- 再生時間バッジ -->
+                <span
+                  class="absolute bottom-1.5 right-1.5 bg-slate-950/80 backdrop-blur-sm border border-slate-800 px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-300"
+                  x-text="video.duration"
+                ></span>
+                <!-- 再生オーバーレイマーク -->
+                <div
+                  class="absolute inset-0 flex items-center justify-center bg-black/20"
                 >
-                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-                    <span>新規タグ</span>
-                </button>
-            </div>
+                  <div
+                    class="w-7 h-7 rounded-full bg-indigo-600/80 flex items-center justify-center text-white shadow"
+                  >
+                    <i
+                      data-lucide="play"
+                      class="w-3.5 h-3.5 fill-current ml-0.5"
+                    ></i>
+                  </div>
+                </div>
+              </div>
 
-            <!-- タグ階層ツリーリスト -->
-            <div class="p-3 overflow-y-auto space-y-1.5 flex-1 max-h-80">
-                <template x-for="tag in filteredTagTree" :key="tag.id">
-                    <div 
-                        class="p-2 rounded-xl flex items-center justify-between hover:bg-slate-800/50 transition-colors"
-                        :style="{ paddingLeft: `${tag.level * 16 + 8}px` }"
+              <!-- サムネイル非表示時のプレースホルダー -->
+              <div
+                x-show="!showThumbnails"
+                class="h-10 bg-slate-900/80 flex items-center px-3 border-b border-slate-800/60"
+              >
+                <i data-lucide="film" class="w-4 h-4 text-slate-500 mr-2"></i>
+                <span
+                  class="text-[10px] font-mono text-slate-400"
+                  x-text="video.duration"
+                ></span>
+              </div>
+
+              <!-- メタデータ部 -->
+              <div class="p-2.5 flex-1 flex flex-col justify-between space-y-2">
+                <div>
+                  <div class="flex items-start justify-between min-w-0">
+                    <!-- 複数選択チェックボックス -->
+                    <input
+                      type="checkbox"
+                      :value="video.id"
+                      x-model="selectedVideoIds"
+                      @click.stop
+                      class="mt-0.5 mr-1.5 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0 w-3.5 h-3.5 shrink-0"
+                    />
+                    <h3
+                      class="text-xs font-medium text-slate-200 line-clamp-2 leading-snug flex-1"
+                      x-text="video.title"
+                    ></h3>
+                    <!-- お気に入りボタン -->
+                    <button
+                      @click.stop="toggleFav(video.id)"
+                      class="w-7 h-7 flex items-center justify-center shrink-0 text-slate-500 active:scale-125 transition-transform"
+                      :class="video.isFav ? 'text-amber-400' : 'hover:text-slate-300'"
+                      title="お気に入り"
                     >
-                        <div 
-                            @click="filterByTag(tag.name); tagBrowserOpen = false;" 
-                            class="flex items-center space-x-2 flex-1 cursor-pointer"
-                        >
-                            <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: tag.color }"></span>
-                            <span class="text-xs font-medium text-slate-200" x-text="tag.name"></span>
-                            <span class="text-[10px] text-slate-500" x-text="`(${tag.count}件)`"></span>
-                        </div>
-                        <div class="flex items-center space-x-1">
-                            <button @click="openEditTagModal(tag); tagBrowserOpen = false;" class="p-1 text-slate-500 hover:text-indigo-400">
-                                <i data-lucide="edit-3" class="w-3 h-3"></i>
-                            </button>
-                        </div>
+                      <i
+                        data-lucide="star"
+                        class="w-3.5 h-3.5"
+                        :class="video.isFav ? 'fill-current' : ''"
+                      ></i>
+                    </button>
+                  </div>
+                  <div
+                    class="flex items-center justify-between text-[10px] text-slate-500 mt-1"
+                  >
+                    <span x-text="video.size"></span>
+                    <!-- 再生回数 & リセット -->
+                    <div
+                      class="flex items-center space-x-1 bg-slate-800/60 px-1.5 py-0.5 rounded text-[9px]"
+                    >
+                      <span x-text="`${video.views}回`"></span>
+                      <button
+                        @click.stop="resetViews(video.id)"
+                        class="text-slate-500 hover:text-red-400"
+                        title="再生回数をリセット"
+                      >
+                        <i data-lucide="rotate-ccw" class="w-2.5 h-2.5"></i>
+                      </button>
                     </div>
-                </template>
+                  </div>
+                </div>
+
+                <!-- タグバッジ & タグ追加ボタン -->
+                <div class="flex flex-wrap gap-1 items-center">
+                  <template x-for="tname in video.tags" :key="tname">
+                    <span
+                      @click.stop="filterByTag(tname)"
+                      class="text-[9px] px-1.5 py-0.2 rounded cursor-pointer transition-colors"
+                      :class="searchQuery.includes(`tag:${tname}`) ? 'bg-indigo-600 text-white border border-indigo-400' : 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 hover:bg-indigo-500/20'"
+                      x-text="tname"
+                    ></span>
+                  </template>
+                  <button
+                    @click.stop="openAddTagModal(video)"
+                    class="text-[9px] px-1 py-0.2 rounded text-slate-500 hover:text-indigo-300 bg-slate-950 border border-slate-800 flex items-center space-x-0.5"
+                    title="タグを追加"
+                  >
+                    <i data-lucide="plus" class="w-2.5 h-2.5"></i>
+                    <span>タグ</span>
+                  </button>
+                </div>
+              </div>
             </div>
+          </template>
         </div>
 
-        <!-- 子画面 3: 表示・ソート設定シート (`toolbarSheet`) -->
-        <div x-show="toolbarSheetOpen" @click="toolbarSheetOpen = false" class="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" style="display: none;"></div>
-        <div 
-            x-show="toolbarSheetOpen" 
-            x-transition:enter="transition ease-out duration-200"
-            x-transition:enter-start="translate-y-full"
-            x-transition:enter-end="translate-y-0"
-            x-transition:leave="transition ease-in duration-150"
-            x-transition:leave-start="translate-y-0"
-            x-transition:leave-end="translate-y-full"
-            class="fixed inset-x-0 bottom-0 bg-slate-900 border-t border-slate-800 rounded-t-3xl z-50 p-5 flex flex-col space-y-4 shadow-2xl pb-safe"
-            style="display: none;"
+        <!-- 【モード4: スリムリスト型 (高密度エクスプローラー風)】 -->
+        <div
+          x-show="viewMode === 'compact'"
+          class="divide-y divide-slate-850 bg-slate-900/30 rounded-2xl border border-slate-800/80 overflow-hidden"
+          style="display: none"
         >
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h2 class="text-sm font-bold text-slate-200 flex items-center space-x-2">
-                    <i data-lucide="sliders-horizontal" class="w-4 h-4 text-indigo-400"></i>
-                    <span>表示・ソート設定</span>
-                </h2>
-                <button @click="toolbarSheetOpen = false" class="text-slate-400 hover:text-white p-1">
-                    <i data-lucide="x" class="w-5 h-5"></i>
+          <template x-for="(video, idx) in pagedVideos" :key="video.id">
+            <div
+              class="p-2.5 flex items-center justify-between hover:bg-slate-850/40 active:bg-slate-850/70 transition-colors"
+              :class="selectedVideoIds.includes(video.id) ? 'bg-indigo-950/20' : ''"
+              @click="openPlayer(idx)"
+            >
+              <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+                <!-- 複数選択チェックボックス -->
+                <input
+                  type="checkbox"
+                  :value="video.id"
+                  x-model="selectedVideoIds"
+                  @click.stop
+                  class="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0 w-3.5 h-3.5 shrink-0"
+                />
+
+                <!-- 極小サムネイル（showThumbnails 連動） -->
+                <div
+                  x-show="showThumbnails"
+                  class="relative w-12 aspect-video rounded-lg overflow-hidden shrink-0 bg-slate-950"
+                >
+                  <img
+                    :src="video.thumbnail"
+                    class="w-full h-full object-cover"
+                  />
+                  <span
+                    class="absolute bottom-0 right-0 bg-black/80 text-[7px] font-mono px-0.5 text-slate-300"
+                    x-text="video.duration"
+                  ></span>
+                </div>
+
+                <!-- サムネイル非表示時の再生アイコン -->
+                <div
+                  x-show="!showThumbnails"
+                  class="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center shrink-0 text-slate-400"
+                >
+                  <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
+                </div>
+
+                <!-- タイトル & メタデータ一行表示 -->
+                <div class="min-w-0 flex-1">
+                  <h3
+                    class="text-xs font-medium text-slate-200 truncate"
+                    x-text="video.title"
+                  ></h3>
+                  <div
+                    class="flex items-center space-x-1.5 text-[10px] text-slate-500 mt-0.5 truncate"
+                  >
+                    <span x-text="video.duration"></span>
+                    <span>•</span>
+                    <span x-text="video.size"></span>
+                    <span>•</span>
+                    <span x-text="`${video.views}回`"></span>
+                    <span>•</span>
+                    <span
+                      class="text-indigo-400 truncate"
+                      x-text="video.tags.join(', ')"
+                    ></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 右側アクション（タグ付与とお気に入り） -->
+              <div class="flex items-center space-x-1 shrink-0 ml-1">
+                <button
+                  @click.stop="openAddTagModal(video)"
+                  class="p-1.5 text-slate-500 hover:text-indigo-300 transition-colors"
+                  title="タグ管理"
+                >
+                  <i data-lucide="tag" class="w-3.5 h-3.5"></i>
                 </button>
+                <button
+                  @click.stop="toggleFav(video.id)"
+                  class="touch-target text-slate-500"
+                  :class="video.isFav ? 'text-amber-400' : 'hover:text-slate-300'"
+                  title="お気に入り"
+                >
+                  <i
+                    data-lucide="star"
+                    class="w-4 h-4"
+                    :class="video.isFav ? 'fill-current' : ''"
+                  ></i>
+                </button>
+              </div>
             </div>
+          </template>
+        </div>
 
-            <!-- 並び替え基準 & 昇順降順 -->
-            <div class="space-y-1.5">
-                <label class="text-[11px] font-semibold text-slate-400">並び替え基準</label>
-                <div class="flex items-center space-x-2">
-                    <select x-model="sortBy" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none">
-                        <option value="createdAt">登録日時</option>
-                        <option value="title">ファイル名</option>
-                        <option value="views">再生回数</option>
-                        <option value="duration">再生時間</option>
-                    </select>
-                    <button 
-                        @click="sortOrder = (sortOrder === 'desc' ? 'asc' : 'desc')" 
-                        class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-indigo-400 flex items-center space-x-1"
-                    >
-                        <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>
-                        <span x-text="sortOrder === 'desc' ? '降順' : '昇順'"></span>
-                    </button>
-                </div>
+        <!-- ページング / 追加読み込みコントロール（既存機能連動） -->
+        <div x-show="filteredVideos.length > 0" class="pt-2">
+          <!-- ページングモード時 -->
+          <template x-if="displayMode === 'paging'">
+            <div
+              class="flex items-center justify-between bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800 text-xs text-slate-400"
+            >
+              <button
+                @click="currentPage = Math.max(1, currentPage - 1)"
+                :disabled="currentPage <= 1"
+                class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-200 disabled:opacity-30 disabled:pointer-events-none"
+              >
+                前へ
+              </button>
+              <span
+                class="text-[11px] font-mono"
+                x-text="`${currentPage} / ${totalPages} ページ`"
+              ></span>
+              <button
+                @click="currentPage = Math.min(totalPages, currentPage + 1)"
+                :disabled="currentPage >= totalPages"
+                class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-200 disabled:opacity-30 disabled:pointer-events-none"
+              >
+                次へ
+              </button>
             </div>
+          </template>
 
-            <!-- サムネイル表示トグル -->
-            <div class="flex items-center justify-between py-1">
-                <span class="text-xs text-slate-300">サムネイル画像を表示</span>
-                <input type="checkbox" x-model="showThumbnails" class="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0 w-4 h-4">
+          <!-- 順次追加読み込みモード時 -->
+          <template x-if="displayMode === 'incremental' && hasMore">
+            <div class="flex flex-col items-center space-y-1">
+              <button
+                @click="loadMore()"
+                class="w-full py-2.5 rounded-2xl bg-slate-900/80 border border-slate-700 text-xs font-semibold text-indigo-300 hover:bg-slate-800 active:scale-[0.99] transition-all"
+              >
+                もっと表示（残り
+                <span x-text="filteredVideos.length - incrementalCount"></span>
+                件）
+              </button>
             </div>
+          </template>
+        </div>
 
-            <!-- ページング / 順次追加モード -->
-            <div class="space-y-1.5">
-                <label class="text-[11px] font-semibold text-slate-400">読み込みモード</label>
-                <div class="grid grid-cols-2 gap-2">
-                    <button 
-                        @click="displayMode = 'paging'" 
-                        class="py-2 rounded-xl text-xs font-semibold border transition-all"
-                        :class="displayMode === 'paging' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-950 text-slate-400 border-slate-800'"
-                    >
-                        ページング表示
-                    </button>
-                    <button 
-                        @click="displayMode = 'incremental'" 
-                        class="py-2 rounded-xl text-xs font-semibold border transition-all"
-                        :class="displayMode === 'incremental' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-950 text-slate-400 border-slate-800'"
-                    >
-                        順次追加読み込み
-                    </button>
-                </div>
-            </div>
+        <!-- Zero-State（0件時） -->
+        <div
+          x-show="filteredVideos.length === 0"
+          class="py-16 flex flex-col items-center justify-center text-slate-500 space-y-2"
+        >
+          <i data-lucide="inbox" class="w-10 h-10 text-slate-600"></i>
+          <p class="text-xs">該当する動画がありません</p>
+          <button
+            @click="clearAllFilters()"
+            class="text-xs text-indigo-400 underline"
+          >
+            条件をリセット
+          </button>
+        </div>
+      </main>
 
-            <button @click="toolbarSheetOpen = false" class="w-full py-2.5 rounded-xl bg-slate-800 text-xs font-semibold text-slate-200 hover:bg-slate-750">
-                完了
+      <!-- 5. 複数選択時の一括操作バー（最下部固定・safe-area考慮） -->
+      <div
+        x-show="selectedVideoIds.length > 0"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0 translate-y-6"
+        x-transition:enter-end="opacity-100 translate-y-0"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100 translate-y-0"
+        x-transition:leave-end="opacity-0 translate-y-6"
+        class="fixed bottom-3 inset-x-3 z-30 bg-slate-900/95 backdrop-blur-md border border-indigo-500/40 rounded-2xl shadow-2xl p-3 flex items-center justify-between"
+        style="display: none"
+      >
+        <span
+          class="text-xs font-bold text-indigo-400"
+          x-text="`${selectedVideoIds.length} 件選択中`"
+        ></span>
+        <div class="flex items-center space-x-1.5">
+          <button
+            @click="openBatchTagModal('add')"
+            class="px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white text-[11px] font-semibold"
+          >
+            +タグ
+          </button>
+          <button
+            @click="openBatchTagModal('remove')"
+            class="px-2.5 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-[11px] font-semibold"
+          >
+            -タグ
+          </button>
+          <button
+            @click="batchFav(true)"
+            class="p-1.5 rounded-xl bg-amber-500/20 text-amber-400 text-xs"
+          >
+            <i data-lucide="star" class="w-4 h-4 fill-current"></i>
+          </button>
+          <button
+            @click="selectedVideoIds = []"
+            class="p-1.5 text-slate-400 hover:text-white"
+          >
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- =================== 各種子画面（モーダル / シート） =================== -->
+
+      <!-- 子画面 1: 全画面没入型プレイヤー（モーダル） -->
+      <div
+        x-show="player.show"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0 translate-y-4"
+        x-transition:enter-end="opacity-100 translate-y-0"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100 translate-y-0"
+        x-transition:leave-end="opacity-0 translate-y-4"
+        class="fixed inset-0 z-50 bg-black flex flex-col justify-between"
+        style="display: none"
+      >
+        <div
+          class="p-3 bg-gradient-to-b from-black/90 to-transparent flex items-center justify-between z-10 pt-safe"
+        >
+          <div class="flex items-center space-x-2 min-w-0 flex-1 pr-2">
+            <button
+              @click="player.show = false"
+              class="touch-target text-slate-300 hover:text-white"
+              title="閉じる"
+            >
+              <i data-lucide="chevron-down" class="w-6 h-6"></i>
             </button>
+            <h3
+              class="text-xs font-semibold text-slate-200 truncate"
+              x-text="currentVideo?.title"
+            ></h3>
+          </div>
+          <div class="flex items-center space-x-1 shrink-0">
+            <button
+              @click="toggleFav(currentVideo?.id)"
+              class="touch-target"
+              :class="currentVideo?.isFav ? 'text-amber-400' : 'text-slate-400'"
+            >
+              <i
+                data-lucide="star"
+                class="w-5 h-5"
+                :class="currentVideo?.isFav ? 'fill-current' : ''"
+              ></i>
+            </button>
+          </div>
         </div>
 
-        <!-- 子画面 4: タグ新規作成・編集モーダル (`tagModal`) -->
-        <div x-show="tagModal.show" @click.self="tagModal.show = false" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style="display: none;">
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
-                <h3 class="text-sm font-bold text-slate-200" x-text="tagModal.isEdit ? 'タグの編集' : '新規タグ作成'"></h3>
-                <div class="space-y-3 text-xs">
-                    <div>
-                        <label class="text-slate-400 block mb-1">タグ名</label>
-                        <input type="text" x-model="tagModal.name" placeholder="例: キャンプ" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-indigo-500">
-                    </div>
-                    <div>
-                        <label class="text-slate-400 block mb-1">カラー</label>
-                        <div class="flex items-center space-x-2">
-                            <template x-for="c in colorOptions" :key="c">
-                                <button 
-                                    @click="tagModal.color = c" 
-                                    class="w-6 h-6 rounded-full border-2 transition-transform"
-                                    :style="{ backgroundColor: c }"
-                                    :class="tagModal.color === c ? 'scale-125 border-white' : 'border-transparent'"
-                                ></button>
-                            </template>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="text-slate-400 block mb-1">親タグ（階層）</label>
-                        <select x-model="tagModal.parentId" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
-                            <option value="">なし（ルートタグ）</option>
-                            <template x-for="t in tagList" :key="t.id">
-                                <option :value="t.id" x-text="t.name"></option>
-                            </template>
-                        </select>
-                    </div>
-                </div>
-                <div class="flex justify-end space-x-2 pt-2">
-                    <button @click="tagModal.show = false" class="px-4 py-2 text-xs text-slate-400">キャンセル</button>
-                    <button @click="saveTag()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold shadow">保存する</button>
-                </div>
+        <!-- 動画表示部 -->
+        <div class="flex-1 flex items-center justify-center bg-black relative">
+          <img
+            :src="currentVideo?.thumbnail"
+            class="w-full aspect-video object-contain"
+          />
+          <!-- 疑似シークバー -->
+          <div class="absolute bottom-2 inset-x-4 flex items-center space-x-2">
+            <div class="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+              <div class="w-1/3 h-full bg-indigo-500"></div>
             </div>
+            <span
+              class="text-[9px] font-mono text-slate-400"
+              x-text="currentVideo?.duration"
+            ></span>
+          </div>
         </div>
 
-        <!-- 子画面 5: 動画へのタグ付与モーダル (`addTagModal`) -->
-        <div x-show="addTagModal.show" @click.self="addTagModal.show = false" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style="display: none;">
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
-                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <h3 class="text-xs font-bold text-slate-200 truncate pr-2" x-text="`タグ設定: ${addTagModal.targetVideo?.title}`"></h3>
-                    <button @click="addTagModal.show = false" class="text-slate-400"><i data-lucide="x" class="w-4 h-4"></i></button>
-                </div>
-                <div class="space-y-1.5 max-h-48 overflow-y-auto">
-                    <template x-for="tag in tagList" :key="tag.name">
-                        <label class="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800/80 cursor-pointer">
-                            <span class="text-xs text-slate-200" x-text="tag.name"></span>
-                            <input 
-                                type="checkbox" 
-                                :checked="addTagModal.targetVideo?.tags.includes(tag.name)" 
-                                @change="toggleVideoTag(addTagModal.targetVideo, tag.name)"
-                                class="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0 w-4 h-4"
-                            >
-                        </label>
-                    </template>
-                </div>
-                <div class="flex justify-between items-center pt-2">
-                    <button @click="openCreateTagModal(); addTagModal.show = false;" class="text-xs text-indigo-400 underline">+ 新規タグ作成</button>
-                    <button @click="addTagModal.show = false" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold">完了</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 子画面 6: 一括タグ操作モーダル (`batchTagModal`) -->
-        <div x-show="batchTagModal.show" @click.self="batchTagModal.show = false" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style="display: none;">
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
-                <h3 class="text-xs font-bold text-slate-200" x-text="batchTagModal.mode === 'add' ? `${selectedVideoIds.length} 件にタグ追加` : `${selectedVideoIds.length} 件からタグ削除`"></h3>
-                <select x-model="batchTagModal.selectedTagName" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none">
-                    <template x-for="t in tagList" :key="t.name">
-                        <option :value="t.name" x-text="t.name"></option>
-                    </template>
-                </select>
-                <div class="flex justify-end space-x-2">
-                    <button @click="batchTagModal.show = false" class="px-3 py-1.5 text-xs text-slate-400">キャンセル</button>
-                    <button @click="executeBatchTag()" class="px-3 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-xl">適用</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 子画面 7: 統計・おすすめ動画モーダル (`analyticsModal`) -->
-        <div x-show="analyticsModalOpen" @click.self="analyticsModalOpen = false" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style="display: none;">
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
-                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <h3 class="text-sm font-bold text-slate-200 flex items-center space-x-2">
-                        <i data-lucide="bar-chart-2" class="w-4 h-4 text-violet-400"></i>
-                        <span>統計・おすすめ動画</span>
-                    </h3>
-                    <button @click="analyticsModalOpen = false" class="text-slate-400"><i data-lucide="x" class="w-4 h-4"></i></button>
-                </div>
-                <div class="space-y-3 overflow-y-auto flex-1 text-xs">
-                    <p class="font-semibold text-slate-400">🔥 再生回数トップ</p>
-                    <div class="space-y-2">
-                        <template x-for="v in topVideos" :key="v.id">
-                            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-850">
-                                <span class="truncate pr-2 font-medium" x-text="v.title"></span>
-                                <span class="text-indigo-400 font-mono shrink-0" x-text="`${v.views}回`"></span>
-                            </div>
-                        </template>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 子画面 8: 一括インポート・エクスポートモーダル (`bulkModal`) -->
-        <div x-show="bulkModalOpen" @click.self="bulkModalOpen = false" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style="display: none;">
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
-                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <h3 class="text-sm font-bold text-slate-200 flex items-center space-x-2">
-                        <i data-lucide="file-up" class="w-4 h-4 text-indigo-400"></i>
-                        <span>一括インポート・エクスポート</span>
-                    </h3>
-                    <button @click="bulkModalOpen = false" class="text-slate-400"><i data-lucide="x" class="w-4 h-4"></i></button>
-                </div>
-                <div class="space-y-2 text-xs">
-                    <p class="text-slate-400">設定データ（TSV形式）のバックアップおよび一括投入が行えます。</p>
-                    <textarea placeholder="TSVデータを貼り付け..." class="w-full h-24 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 text-xs font-mono"></textarea>
-                </div>
-                <div class="flex justify-end space-x-2">
-                    <button @click="bulkModalOpen = false" class="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-xl text-xs">閉じる</button>
-                    <button class="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold">インポート実行</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 子画面 9: 自動適用ルール管理モーダル (`ruleModal`) -->
-        <div x-show="ruleModalOpen" @click.self="ruleModalOpen = false" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style="display: none;">
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
-                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <h3 class="text-sm font-bold text-slate-200 flex items-center space-x-2">
-                        <i data-lucide="file-cog" class="w-4 h-4 text-violet-400"></i>
-                        <span>自動適用ルールの作成</span>
-                    </h3>
-                    <button @click="ruleModalOpen = false" class="text-slate-400"><i data-lucide="x" class="w-4 h-4"></i></button>
-                </div>
-                <div class="space-y-3 text-xs">
-                    <div>
-                        <label class="text-slate-400 block mb-1">マッチングパターン（ファイル名）</label>
-                        <input type="text" placeholder="例: ツーリング" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
-                    </div>
-                    <div>
-                        <label class="text-slate-400 block mb-1">適用するタグ</label>
-                        <select class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
-                            <template x-for="t in tagList" :key="t.name">
-                                <option :value="t.name" x-text="t.name"></option>
-                            </template>
-                        </select>
-                    </div>
-                </div>
-                <div class="flex justify-end space-x-2">
-                    <button @click="ruleModalOpen = false" class="px-3 py-1.5 text-slate-400 text-xs">キャンセル</button>
-                    <button @click="ruleModalOpen = false" class="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold">保存する</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 子画面 10: スマートフォルダ保存モーダル (`smartFolderModal`) -->
-        <div x-show="smartFolderModalOpen" @click.self="smartFolderModalOpen = false" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style="display: none;">
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
-                <h3 class="text-sm font-bold text-slate-200">スマートフォルダの保存</h3>
-                <div class="space-y-2 text-xs">
-                    <label class="text-slate-400">現在の検索クエリをフォルダとして保存</label>
-                    <input type="text" placeholder="フォルダ名（例: 秋の旅行動画）" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
-                    <p class="text-[10px] text-slate-500 font-mono" x-text="`クエリ: ${searchQuery || '全動画'}`"></p>
-                </div>
-                <div class="flex justify-end space-x-2">
-                    <button @click="smartFolderModalOpen = false" class="px-3 py-1.5 text-slate-400 text-xs">キャンセル</button>
-                    <button @click="smartFolderModalOpen = false" class="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold">保存</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 子画面 11: システム管理ドロワー (`drawerOpen`) -->
-        <div x-show="drawerOpen" @click="drawerOpen = false" class="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" style="display: none;"></div>
-        <div 
-            x-show="drawerOpen" 
-            x-transition:enter="transition ease-out duration-200"
-            x-transition:enter-start="translate-x-full"
-            x-transition:enter-end="translate-x-0"
-            x-transition:leave="transition ease-in duration-150"
-            x-transition:leave-start="translate-x-0"
-            x-transition:leave-end="translate-x-full"
-            class="fixed inset-y-0 right-0 w-72 bg-slate-900 border-l border-slate-800 z-50 p-5 flex flex-col justify-between shadow-2xl"
-            style="display: none;"
+        <!-- プレイヤー下部コントロール（連続視聴） -->
+        <div
+          class="p-4 bg-gradient-to-t from-black/95 to-transparent space-y-3 pb-safe"
         >
-            <div class="space-y-6">
-                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <h2 class="text-sm font-bold text-slate-200">メニュー・管理機能</h2>
-                    <button @click="drawerOpen = false" class="touch-target text-slate-400 hover:text-white">
-                        <i data-lucide="x" class="w-5 h-5"></i>
-                    </button>
-                </div>
+          <div class="flex items-center justify-around max-w-xs mx-auto">
+            <button
+              @click="playPrev()"
+              :disabled="player.currentIndex <= 0"
+              class="touch-target rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 disabled:opacity-30 disabled:pointer-events-none"
+            >
+              <i data-lucide="skip-back" class="w-5 h-5"></i>
+            </button>
+            <button
+              class="w-14 h-14 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+            >
+              <i data-lucide="play" class="w-6 h-6 fill-current ml-0.5"></i>
+            </button>
+            <button
+              @click="playNext()"
+              :disabled="player.currentIndex >= filteredVideos.length - 1"
+              class="touch-target rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 disabled:opacity-30 disabled:pointer-events-none"
+            >
+              <i data-lucide="skip-forward" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="text-center text-[10px] text-slate-500">
+            <span
+              x-text="`${player.currentIndex + 1} / ${filteredVideos.length}`"
+            ></span>
+            動画
+          </div>
+        </div>
+      </div>
 
-                <!-- 各種子画面へのショートカット -->
-                <div class="space-y-2">
-                    <p class="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">データ操作</p>
-                    <button @click="triggerSync(); drawerOpen = false;" class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs">
-                        <i data-lucide="refresh-cw" class="w-4 h-4 text-indigo-400"></i>
-                        <span>ディレクトリ完全同期</span>
-                    </button>
-                    <button @click="bulkModalOpen = true; drawerOpen = false;" class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs">
-                        <i data-lucide="file-up" class="w-4 h-4 text-indigo-400"></i>
-                        <span>一括インポート・エクスポート</span>
-                    </button>
-                </div>
-
-                <div class="space-y-2">
-                    <p class="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">タグ・統計・ルール</p>
-                    <button @click="analyticsModalOpen = true; drawerOpen = false;" class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs">
-                        <i data-lucide="bar-chart-2" class="w-4 h-4 text-violet-400"></i>
-                        <span>統計・おすすめ動画</span>
-                    </button>
-                    <button @click="ruleModalOpen = true; drawerOpen = false;" class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs">
-                        <i data-lucide="file-cog" class="w-4 h-4 text-violet-400"></i>
-                        <span>自動適用ルールの管理</span>
-                    </button>
-                    <button @click="smartFolderModalOpen = true; drawerOpen = false;" class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs">
-                        <i data-lucide="folder-heart" class="w-4 h-4 text-pink-400"></i>
-                        <span>スマートフォルダに保存</span>
-                    </button>
-                </div>
-            </div>
-
-            <div class="text-[10px] text-slate-600 text-center font-mono">
-                TagBasedVideoManager v1.2 (PWA)
-            </div>
+      <!-- 子画面 2: タグ階層ブラウザ & 検索シート（ボトムスライド） -->
+      <div
+        x-show="tagBrowserOpen"
+        @click="tagBrowserOpen = false"
+        class="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
+        style="display: none"
+      ></div>
+      <div
+        x-show="tagBrowserOpen"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="translate-y-full"
+        x-transition:enter-end="translate-y-0"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="translate-y-0"
+        x-transition:leave-end="translate-y-full"
+        class="fixed inset-x-0 bottom-0 max-h-[80vh] bg-slate-900 border-t border-slate-800 rounded-t-3xl z-50 flex flex-col shadow-2xl pb-safe"
+        style="display: none"
+      >
+        <div
+          class="p-4 border-b border-slate-800 flex items-center justify-between"
+        >
+          <div class="flex items-center space-x-2">
+            <i data-lucide="tag" class="w-4 h-4 text-indigo-400"></i>
+            <h2 class="text-sm font-bold text-slate-200">タグ階層 & 検索</h2>
+          </div>
+          <button
+            @click="tagBrowserOpen = false"
+            class="text-slate-400 hover:text-white p-1"
+          >
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
         </div>
 
+        <!-- タグ検索入力 & 新規作成ボタン -->
+        <div class="p-3 border-b border-slate-850 flex items-center space-x-2">
+          <div class="relative flex-1">
+            <input
+              type="text"
+              x-model="tagSearchQuery"
+              placeholder="タグ名で検索..."
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500"
+            />
+          </div>
+          <button
+            @click="openCreateTagModal(); tagBrowserOpen = false;"
+            class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center space-x-1 shrink-0 shadow"
+          >
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            <span>新規タグ</span>
+          </button>
+        </div>
+
+        <!-- タグ階層ツリーリスト -->
+        <div class="p-3 overflow-y-auto space-y-1.5 flex-1 max-h-80">
+          <template x-for="tag in filteredTagTree" :key="tag.id">
+            <div
+              class="p-2 rounded-xl flex items-center justify-between hover:bg-slate-800/50 transition-colors"
+              :style="{ paddingLeft: `${tag.level * 16 + 8}px` }"
+            >
+              <div
+                @click="filterByTag(tag.name); tagBrowserOpen = false;"
+                class="flex items-center space-x-2 flex-1 cursor-pointer"
+              >
+                <span
+                  class="w-2 h-2 rounded-full"
+                  :style="{ backgroundColor: tag.color }"
+                ></span>
+                <span
+                  class="text-xs font-medium text-slate-200"
+                  x-text="tag.name"
+                ></span>
+                <span
+                  class="text-[10px] text-slate-500"
+                  x-text="`(${tag.count}件)`"
+                ></span>
+              </div>
+              <div class="flex items-center space-x-1">
+                <button
+                  @click="openEditTagModal(tag); tagBrowserOpen = false;"
+                  class="p-1 text-slate-500 hover:text-indigo-400"
+                >
+                  <i data-lucide="edit-3" class="w-3 h-3"></i>
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- 子画面 3: 表示・ソート設定シート (`toolbarSheet`) -->
+      <div
+        x-show="toolbarSheetOpen"
+        @click="toolbarSheetOpen = false"
+        class="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
+        style="display: none"
+      ></div>
+      <div
+        x-show="toolbarSheetOpen"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="translate-y-full"
+        x-transition:enter-end="translate-y-0"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="translate-y-0"
+        x-transition:leave-end="translate-y-full"
+        class="fixed inset-x-0 bottom-0 bg-slate-900 border-t border-slate-800 rounded-t-3xl z-50 p-5 flex flex-col space-y-4 shadow-2xl pb-safe"
+        style="display: none"
+      >
+        <div
+          class="flex items-center justify-between border-b border-slate-800 pb-3"
+        >
+          <h2
+            class="text-sm font-bold text-slate-200 flex items-center space-x-2"
+          >
+            <i
+              data-lucide="sliders-horizontal"
+              class="w-4 h-4 text-indigo-400"
+            ></i>
+            <span>表示・ソート設定</span>
+          </h2>
+          <button
+            @click="toolbarSheetOpen = false"
+            class="text-slate-400 hover:text-white p-1"
+          >
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- 並び替え基準 & 昇順降順 -->
+        <div class="space-y-1.5">
+          <label class="text-[11px] font-semibold text-slate-400"
+            >並び替え基準</label
+          >
+          <div class="flex items-center space-x-2">
+            <select
+              x-model="sortBy"
+              class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
+            >
+              <option value="createdAt">登録日時</option>
+              <option value="title">ファイル名</option>
+              <option value="views">再生回数</option>
+              <option value="duration">再生時間</option>
+            </select>
+            <button
+              @click="sortOrder = (sortOrder === 'desc' ? 'asc' : 'desc')"
+              class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-indigo-400 flex items-center space-x-1"
+            >
+              <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>
+              <span x-text="sortOrder === 'desc' ? '降順' : '昇順'"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- サムネイル表示トグル -->
+        <div class="flex items-center justify-between py-1">
+          <span class="text-xs text-slate-300">サムネイル画像を表示</span>
+          <input
+            type="checkbox"
+            x-model="showThumbnails"
+            class="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0 w-4 h-4"
+          />
+        </div>
+
+        <!-- ページング / 順次追加モード -->
+        <div class="space-y-1.5">
+          <label class="text-[11px] font-semibold text-slate-400"
+            >読み込みモード</label
+          >
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              @click="displayMode = 'paging'"
+              class="py-2 rounded-xl text-xs font-semibold border transition-all"
+              :class="displayMode === 'paging' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-950 text-slate-400 border-slate-800'"
+            >
+              ページング表示
+            </button>
+            <button
+              @click="displayMode = 'incremental'"
+              class="py-2 rounded-xl text-xs font-semibold border transition-all"
+              :class="displayMode === 'incremental' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-950 text-slate-400 border-slate-800'"
+            >
+              順次追加読み込み
+            </button>
+          </div>
+        </div>
+
+        <button
+          @click="toolbarSheetOpen = false"
+          class="w-full py-2.5 rounded-xl bg-slate-800 text-xs font-semibold text-slate-200 hover:bg-slate-750"
+        >
+          完了
+        </button>
+      </div>
+
+      <!-- 子画面 4: タグ新規作成・編集モーダル (`tagModal`) -->
+      <div
+        x-show="tagModal.show"
+        @click.self="tagModal.show = false"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+        style="display: none"
+      >
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl"
+        >
+          <h3
+            class="text-sm font-bold text-slate-200"
+            x-text="tagModal.isEdit ? 'タグの編集' : '新規タグ作成'"
+          ></h3>
+          <div class="space-y-3 text-xs">
+            <div>
+              <label class="text-slate-400 block mb-1">タグ名</label>
+              <input
+                type="text"
+                x-model="tagModal.name"
+                placeholder="例: キャンプ"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div>
+              <label class="text-slate-400 block mb-1">カラー</label>
+              <div class="flex items-center space-x-2">
+                <template x-for="c in colorOptions" :key="c">
+                  <button
+                    @click="tagModal.color = c"
+                    class="w-6 h-6 rounded-full border-2 transition-transform"
+                    :style="{ backgroundColor: c }"
+                    :class="tagModal.color === c ? 'scale-125 border-white' : 'border-transparent'"
+                  ></button>
+                </template>
+              </div>
+            </div>
+            <div>
+              <label class="text-slate-400 block mb-1">親タグ（階層）</label>
+              <select
+                x-model="tagModal.parentId"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+              >
+                <option value="">なし（ルートタグ）</option>
+                <template x-for="t in tagList" :key="t.id">
+                  <option :value="t.id" x-text="t.name"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+          <div class="flex justify-end space-x-2 pt-2">
+            <button
+              @click="tagModal.show = false"
+              class="px-4 py-2 text-xs text-slate-400"
+            >
+              キャンセル
+            </button>
+            <button
+              @click="saveTag()"
+              class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold shadow"
+            >
+              保存する
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 子画面 5: 動画へのタグ付与モーダル (`addTagModal`) -->
+      <div
+        x-show="addTagModal.show"
+        @click.self="addTagModal.show = false"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+        style="display: none"
+      >
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl"
+        >
+          <div
+            class="flex items-center justify-between border-b border-slate-800 pb-2"
+          >
+            <h3
+              class="text-xs font-bold text-slate-200 truncate pr-2"
+              x-text="`タグ設定: ${addTagModal.targetVideo?.title}`"
+            ></h3>
+            <button @click="addTagModal.show = false" class="text-slate-400">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="space-y-1.5 max-h-48 overflow-y-auto">
+            <template x-for="tag in tagList" :key="tag.name">
+              <label
+                class="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800/80 cursor-pointer"
+              >
+                <span class="text-xs text-slate-200" x-text="tag.name"></span>
+                <input
+                  type="checkbox"
+                  :checked="addTagModal.targetVideo?.tags.includes(tag.name)"
+                  @change="toggleVideoTag(addTagModal.targetVideo, tag.name)"
+                  class="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0 w-4 h-4"
+                />
+              </label>
+            </template>
+          </div>
+          <div class="flex justify-between items-center pt-2">
+            <button
+              @click="openCreateTagModal(); addTagModal.show = false;"
+              class="text-xs text-indigo-400 underline"
+            >
+              + 新規タグ作成
+            </button>
+            <button
+              @click="addTagModal.show = false"
+              class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold"
+            >
+              完了
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 子画面 6: 一括タグ操作モーダル (`batchTagModal`) -->
+      <div
+        x-show="batchTagModal.show"
+        @click.self="batchTagModal.show = false"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+        style="display: none"
+      >
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl"
+        >
+          <h3
+            class="text-xs font-bold text-slate-200"
+            x-text="batchTagModal.mode === 'add' ? `${selectedVideoIds.length} 件にタグ追加` : `${selectedVideoIds.length} 件からタグ削除`"
+          ></h3>
+          <select
+            x-model="batchTagModal.selectedTagName"
+            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
+          >
+            <template x-for="t in tagList" :key="t.name">
+              <option :value="t.name" x-text="t.name"></option>
+            </template>
+          </select>
+          <div class="flex justify-end space-x-2">
+            <button
+              @click="batchTagModal.show = false"
+              class="px-3 py-1.5 text-xs text-slate-400"
+            >
+              キャンセル
+            </button>
+            <button
+              @click="executeBatchTag()"
+              class="px-3 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-xl"
+            >
+              適用
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 子画面 7: 統計・おすすめ動画モーダル (`analyticsModal`) -->
+      <div
+        x-show="analyticsModalOpen"
+        @click.self="analyticsModalOpen = false"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+        style="display: none"
+      >
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl max-h-[85vh] flex flex-col"
+        >
+          <div
+            class="flex items-center justify-between border-b border-slate-800 pb-2"
+          >
+            <h3
+              class="text-sm font-bold text-slate-200 flex items-center space-x-2"
+            >
+              <i data-lucide="bar-chart-2" class="w-4 h-4 text-violet-400"></i>
+              <span>統計・おすすめ動画</span>
+            </h3>
+            <button @click="analyticsModalOpen = false" class="text-slate-400">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="space-y-3 overflow-y-auto flex-1 text-xs">
+            <p class="font-semibold text-slate-400">🔥 再生回数トップ</p>
+            <div class="space-y-2">
+              <template x-for="v in topVideos" :key="v.id">
+                <div
+                  class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-850"
+                >
+                  <span
+                    class="truncate pr-2 font-medium"
+                    x-text="v.title"
+                  ></span>
+                  <span
+                    class="text-indigo-400 font-mono shrink-0"
+                    x-text="`${v.views}回`"
+                  ></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 子画面 8: 一括インポート・エクスポートモーダル (`bulkModal`) -->
+      <div
+        x-show="bulkModalOpen"
+        @click.self="bulkModalOpen = false"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+        style="display: none"
+      >
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl"
+        >
+          <div
+            class="flex items-center justify-between border-b border-slate-800 pb-2"
+          >
+            <h3
+              class="text-sm font-bold text-slate-200 flex items-center space-x-2"
+            >
+              <i data-lucide="file-up" class="w-4 h-4 text-indigo-400"></i>
+              <span>一括インポート・エクスポート</span>
+            </h3>
+            <button @click="bulkModalOpen = false" class="text-slate-400">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="space-y-2 text-xs">
+            <p class="text-slate-400">
+              設定データ（TSV形式）のバックアップおよび一括投入が行えます。
+            </p>
+            <textarea
+              placeholder="TSVデータを貼り付け..."
+              class="w-full h-24 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 text-xs font-mono"
+            ></textarea>
+          </div>
+          <div class="flex justify-end space-x-2">
+            <button
+              @click="bulkModalOpen = false"
+              class="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-xl text-xs"
+            >
+              閉じる
+            </button>
+            <button
+              class="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold"
+            >
+              インポート実行
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 子画面 9: 自動適用ルール管理モーダル (`ruleModal`) -->
+      <div
+        x-show="ruleModalOpen"
+        @click.self="ruleModalOpen = false"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+        style="display: none"
+      >
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl"
+        >
+          <div
+            class="flex items-center justify-between border-b border-slate-800 pb-2"
+          >
+            <h3
+              class="text-sm font-bold text-slate-200 flex items-center space-x-2"
+            >
+              <i data-lucide="file-cog" class="w-4 h-4 text-violet-400"></i>
+              <span>自動適用ルールの作成</span>
+            </h3>
+            <button @click="ruleModalOpen = false" class="text-slate-400">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="space-y-3 text-xs">
+            <div>
+              <label class="text-slate-400 block mb-1"
+                >マッチングパターン（ファイル名）</label
+              >
+              <input
+                type="text"
+                placeholder="例: ツーリング"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+              />
+            </div>
+            <div>
+              <label class="text-slate-400 block mb-1">適用するタグ</label>
+              <select
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+              >
+                <template x-for="t in tagList" :key="t.name">
+                  <option :value="t.name" x-text="t.name"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+          <div class="flex justify-end space-x-2">
+            <button
+              @click="ruleModalOpen = false"
+              class="px-3 py-1.5 text-slate-400 text-xs"
+            >
+              キャンセル
+            </button>
+            <button
+              @click="ruleModalOpen = false"
+              class="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold"
+            >
+              保存する
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 子画面 10: スマートフォルダ保存モーダル (`smartFolderModal`) -->
+      <div
+        x-show="smartFolderModalOpen"
+        @click.self="smartFolderModalOpen = false"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+        style="display: none"
+      >
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl"
+        >
+          <h3 class="text-sm font-bold text-slate-200">
+            スマートフォルダの保存
+          </h3>
+          <div class="space-y-2 text-xs">
+            <label class="text-slate-400"
+              >現在の検索クエリをフォルダとして保存</label
+            >
+            <input
+              type="text"
+              placeholder="フォルダ名（例: 秋の旅行動画）"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+            />
+            <p
+              class="text-[10px] text-slate-500 font-mono"
+              x-text="`クエリ: ${searchQuery || '全動画'}`"
+            ></p>
+          </div>
+          <div class="flex justify-end space-x-2">
+            <button
+              @click="smartFolderModalOpen = false"
+              class="px-3 py-1.5 text-slate-400 text-xs"
+            >
+              キャンセル
+            </button>
+            <button
+              @click="smartFolderModalOpen = false"
+              class="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold"
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 子画面 11: システム管理ドロワー (`drawerOpen`) -->
+      <div
+        x-show="drawerOpen"
+        @click="drawerOpen = false"
+        class="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
+        style="display: none"
+      ></div>
+      <div
+        x-show="drawerOpen"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="translate-x-full"
+        x-transition:enter-end="translate-x-0"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="translate-x-0"
+        x-transition:leave-end="translate-x-full"
+        class="fixed inset-y-0 right-0 w-72 bg-slate-900 border-l border-slate-800 z-50 p-5 flex flex-col justify-between shadow-2xl"
+        style="display: none"
+      >
+        <div class="space-y-6">
+          <div
+            class="flex items-center justify-between border-b border-slate-800 pb-3"
+          >
+            <h2 class="text-sm font-bold text-slate-200">メニュー・管理機能</h2>
+            <button
+              @click="drawerOpen = false"
+              class="touch-target text-slate-400 hover:text-white"
+            >
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+
+          <!-- 各種子画面へのショートカット -->
+          <div class="space-y-2">
+            <p
+              class="text-[10px] uppercase font-semibold text-slate-500 tracking-wider"
+            >
+              データ操作
+            </p>
+            <button
+              @click="triggerSync(); drawerOpen = false;"
+              class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs"
+            >
+              <i data-lucide="refresh-cw" class="w-4 h-4 text-indigo-400"></i>
+              <span>ディレクトリ完全同期</span>
+            </button>
+            <button
+              @click="bulkModalOpen = true; drawerOpen = false;"
+              class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs"
+            >
+              <i data-lucide="file-up" class="w-4 h-4 text-indigo-400"></i>
+              <span>一括インポート・エクスポート</span>
+            </button>
+          </div>
+
+          <div class="space-y-2">
+            <p
+              class="text-[10px] uppercase font-semibold text-slate-500 tracking-wider"
+            >
+              タグ・統計・ルール
+            </p>
+            <button
+              @click="analyticsModalOpen = true; drawerOpen = false;"
+              class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs"
+            >
+              <i data-lucide="bar-chart-2" class="w-4 h-4 text-violet-400"></i>
+              <span>統計・おすすめ動画</span>
+            </button>
+            <button
+              @click="ruleModalOpen = true; drawerOpen = false;"
+              class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs"
+            >
+              <i data-lucide="file-cog" class="w-4 h-4 text-violet-400"></i>
+              <span>自動適用ルールの管理</span>
+            </button>
+            <button
+              @click="smartFolderModalOpen = true; drawerOpen = false;"
+              class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs"
+            >
+              <i data-lucide="folder-heart" class="w-4 h-4 text-pink-400"></i>
+              <span>スマートフォルダに保存</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="text-[10px] text-slate-600 text-center font-mono">
+          TagBasedVideoManager v1.2 (PWA)
+        </div>
+      </div>
     </div>
 
     <!-- モック用 Alpine.js スクリプト -->
     <script>
-        function mobileMockupApp() {
-            return {
-                viewMode: 'grid', // 'grid' | 'compact'
-                sortBy: 'createdAt',
-                sortOrder: 'desc',
-                showThumbnails: true,
-                displayMode: 'paging', // 'paging' | 'incremental'
-                currentPage: 1,
-                pageSize: 4,
-                incrementalCount: 4,
+      function mobileMockupApp() {
+        return {
+          viewMode: "grid", // 'grid' | 'compact'
+          sortBy: "createdAt",
+          sortOrder: "desc",
+          showThumbnails: true,
+          displayMode: "paging", // 'paging' | 'incremental'
+          currentPage: 1,
+          pageSize: 4,
+          incrementalCount: 4,
 
-                searchQuery: '',
-                favoriteOnly: false,
-                isScanning: false,
+          searchQuery: "",
+          favoriteOnly: false,
+          isScanning: false,
 
-                selectedVideoIds: [],
+          selectedVideoIds: [],
 
-                // 各種モーダル開閉フラグ
-                drawerOpen: false,
-                tagBrowserOpen: false,
-                toolbarSheetOpen: false,
-                analyticsModalOpen: false,
-                bulkModalOpen: false,
-                ruleModalOpen: false,
-                smartFolderModalOpen: false,
+          // 各種モーダル開閉フラグ
+          drawerOpen: false,
+          tagBrowserOpen: false,
+          toolbarSheetOpen: false,
+          analyticsModalOpen: false,
+          bulkModalOpen: false,
+          ruleModalOpen: false,
+          smartFolderModalOpen: false,
 
-                tagSearchQuery: '',
+          tagSearchQuery: "",
 
-                player: {
-                    show: false,
-                    currentIndex: 0
-                },
+          player: {
+            show: false,
+            currentIndex: 0,
+          },
 
-                tagModal: {
-                    show: false,
-                    isEdit: false,
-                    id: '',
-                    name: '',
-                    color: '#6366f1',
-                    parentId: ''
-                },
+          tagModal: {
+            show: false,
+            isEdit: false,
+            id: "",
+            name: "",
+            color: "#6366f1",
+            parentId: "",
+          },
 
-                addTagModal: {
-                    show: false,
-                    targetVideo: null
-                },
+          addTagModal: {
+            show: false,
+            targetVideo: null,
+          },
 
-                batchTagModal: {
-                    show: false,
-                    mode: 'add',
-                    selectedTagName: 'ツーリング'
-                },
+          batchTagModal: {
+            show: false,
+            mode: "add",
+            selectedTagName: "ツーリング",
+          },
 
-                colorOptions: ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6'],
+          colorOptions: [
+            "#6366f1",
+            "#10b981",
+            "#f59e0b",
+            "#ec4899",
+            "#06b6d4",
+            "#8b5cf6",
+          ],
 
-                tagList: [
-                    { id: '1', name: 'ツーリング', color: '#6366f1', level: 1, parentId: 'p1', count: 12 },
-                    { id: '2', name: 'キャンプ', color: '#10b981', level: 1, parentId: 'p1', count: 8 },
-                    { id: '3', name: '日常', color: '#f59e0b', level: 0, parentId: '', count: 15 },
-                    { id: '4', name: '旅行', color: '#ec4899', level: 0, parentId: '', count: 9 },
-                    { id: '5', name: 'ペット', color: '#06b6d4', level: 1, parentId: 'p2', count: 5 }
-                ],
+          tagList: [
+            {
+              id: "1",
+              name: "ツーリング",
+              color: "#6366f1",
+              level: 1,
+              parentId: "p1",
+              count: 12,
+            },
+            {
+              id: "2",
+              name: "キャンプ",
+              color: "#10b981",
+              level: 1,
+              parentId: "p1",
+              count: 8,
+            },
+            {
+              id: "3",
+              name: "日常",
+              color: "#f59e0b",
+              level: 0,
+              parentId: "",
+              count: 15,
+            },
+            {
+              id: "4",
+              name: "旅行",
+              color: "#ec4899",
+              level: 0,
+              parentId: "",
+              count: 9,
+            },
+            {
+              id: "5",
+              name: "ペット",
+              color: "#06b6d4",
+              level: 1,
+              parentId: "p2",
+              count: 5,
+            },
+          ],
 
-                videos: [
-                    { id: '1', title: '2026-10-12_秋の山中湖ロングツーリング_4K.mp4', duration: '05:20', size: '280MB', views: 18, isFav: true, tags: ['ツーリング', '旅行'], thumbnail: 'https://picsum.photos/seed/touring/400/225', createdAt: '2026-10-12' },
-                    { id: '2', title: '家族で楽しむ秋の焚き火キャンプハイライト.mp4', duration: '12:45', size: '640MB', views: 8, isFav: false, tags: ['キャンプ', '日常'], thumbnail: 'https://picsum.photos/seed/camp/400/225', createdAt: '2026-10-10' },
-                    { id: '3', title: '猫ののんびり昼下がり_リラックス映像.mp4', duration: '03:10', size: '150MB', views: 32, isFav: true, tags: ['ペット', '日常'], thumbnail: 'https://picsum.photos/seed/cat/400/225', createdAt: '2026-10-08' },
-                    { id: '4', title: '北海道周遊ドライブ_DAY1_千歳から富良野へ.mp4', duration: '24:10', size: '1.2GB', views: 5, isFav: false, tags: ['旅行', 'ツーリング'], thumbnail: 'https://picsum.photos/seed/hokkaido/400/225', createdAt: '2026-10-05' },
-                    { id: '5', title: '週末DIY_木製ウッドラック自作工程.mp4', duration: '08:30', size: '390MB', views: 12, isFav: false, tags: ['日常'], thumbnail: 'https://picsum.photos/seed/diy/400/225', createdAt: '2026-10-01' },
-                    { id: '6', title: '雨の日の室内アコースティックギター即興演奏.mp4', duration: '06:15', size: '210MB', views: 24, isFav: true, tags: ['日常'], thumbnail: 'https://picsum.photos/seed/guitar/400/225', createdAt: '2026-09-28' }
-                ],
+          videos: [
+            {
+              id: "1",
+              title: "2026-10-12_秋の山中湖ロングツーリング_4K.mp4",
+              duration: "05:20",
+              size: "280MB",
+              views: 18,
+              isFav: true,
+              tags: ["ツーリング", "旅行"],
+              thumbnail: "https://picsum.photos/seed/touring/400/225",
+              createdAt: "2026-10-12",
+            },
+            {
+              id: "2",
+              title: "家族で楽しむ秋の焚き火キャンプハイライト.mp4",
+              duration: "12:45",
+              size: "640MB",
+              views: 8,
+              isFav: false,
+              tags: ["キャンプ", "日常"],
+              thumbnail: "https://picsum.photos/seed/camp/400/225",
+              createdAt: "2026-10-10",
+            },
+            {
+              id: "3",
+              title: "猫ののんびり昼下がり_リラックス映像.mp4",
+              duration: "03:10",
+              size: "150MB",
+              views: 32,
+              isFav: true,
+              tags: ["ペット", "日常"],
+              thumbnail: "https://picsum.photos/seed/cat/400/225",
+              createdAt: "2026-10-08",
+            },
+            {
+              id: "4",
+              title: "北海道周遊ドライブ_DAY1_千歳から富良野へ.mp4",
+              duration: "24:10",
+              size: "1.2GB",
+              views: 5,
+              isFav: false,
+              tags: ["旅行", "ツーリング"],
+              thumbnail: "https://picsum.photos/seed/hokkaido/400/225",
+              createdAt: "2026-10-05",
+            },
+            {
+              id: "5",
+              title: "週末DIY_木製ウッドラック自作工程.mp4",
+              duration: "08:30",
+              size: "390MB",
+              views: 12,
+              isFav: false,
+              tags: ["日常"],
+              thumbnail: "https://picsum.photos/seed/diy/400/225",
+              createdAt: "2026-10-01",
+            },
+            {
+              id: "6",
+              title: "雨の日の室内アコースティックギター即興演奏.mp4",
+              duration: "06:15",
+              size: "210MB",
+              views: 24,
+              isFav: true,
+              tags: ["日常"],
+              thumbnail: "https://picsum.photos/seed/guitar/400/225",
+              createdAt: "2026-09-28",
+            },
+          ],
 
-                init() {
-                    this.$nextTick(() => { lucide.createIcons(); });
-                    this.$watch('searchQuery', () => { this.currentPage = 1; });
-                    this.$watch('favoriteOnly', () => { this.currentPage = 1; });
-                },
+          init() {
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+            this.$watch("searchQuery", () => {
+              this.currentPage = 1;
+            });
+            this.$watch("favoriteOnly", () => {
+              this.currentPage = 1;
+            });
+          },
 
-                // 絞り込み & ソート後の動画リスト
-                get filteredVideos() {
-                    let list = this.videos.filter(v => {
-                        if (this.favoriteOnly && !v.isFav) return false;
-                        if (this.searchQuery) {
-                            const q = this.searchQuery.toLowerCase();
-                            if (q.startsWith('tag:')) {
-                                const t = q.replace('tag:', '').trim();
-                                if (!v.tags.some(tag => tag.toLowerCase().includes(t))) return false;
-                            } else {
-                                if (!v.title.toLowerCase().includes(q) && !v.tags.some(tag => tag.toLowerCase().includes(q))) {
-                                    return false;
-                                }
-                            }
-                        }
-                        return true;
-                    });
-
-                    // ソート
-                    list.sort((a, b) => {
-                        let va = a[this.sortBy];
-                        let vb = b[this.sortBy];
-                        if (this.sortOrder === 'asc') return va > vb ? 1 : -1;
-                        return va < vb ? 1 : -1;
-                    });
-
-                    return list;
-                },
-
-                get totalPages() {
-                    return Math.max(1, Math.ceil(this.filteredVideos.length / this.pageSize));
-                },
-
-                get pagedVideos() {
-                    if (this.displayMode === 'incremental') {
-                        return this.filteredVideos.slice(0, this.incrementalCount);
-                    }
-                    const start = (this.currentPage - 1) * this.pageSize;
-                    return this.filteredVideos.slice(start, start + this.pageSize);
-                },
-
-                get hasMore() {
-                    return this.incrementalCount < this.filteredVideos.length;
-                },
-
-                get currentVideo() {
-                    return this.filteredVideos[this.player.currentIndex] || null;
-                },
-
-                get filteredTagTree() {
-                    if (!this.tagSearchQuery) return this.tagList;
-                    const q = this.tagSearchQuery.toLowerCase();
-                    return this.tagList.filter(t => t.name.toLowerCase().includes(q));
-                },
-
-                get topVideos() {
-                    return [...this.videos].sort((a, b) => b.views - a.views).slice(0, 3);
-                },
-
-                loadMore() {
-                    this.incrementalCount += 4;
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                filterByTag(tagName) {
-                    if (this.searchQuery === `tag:${tagName}`) {
-                        this.searchQuery = '';
-                    } else {
-                        this.searchQuery = `tag:${tagName}`;
-                    }
-                    this.currentPage = 1;
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                clearTagFilter() {
-                    if (this.searchQuery.startsWith('tag:')) {
-                        this.searchQuery = '';
-                    }
-                    this.currentPage = 1;
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                clearAllFilters() {
-                    this.searchQuery = '';
-                    this.favoriteOnly = false;
-                    this.currentPage = 1;
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                toggleViewMode() {
-                    this.viewMode = this.viewMode === 'grid' ? 'compact' : 'grid';
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                toggleFavoriteFilter() {
-                    this.favoriteOnly = !this.favoriteOnly;
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                toggleFav(id) {
-                    const v = this.videos.find(x => x.id === id);
-                    if (v) {
-                        v.isFav = !v.isFav;
-                        this.$nextTick(() => { lucide.createIcons(); });
-                    }
-                },
-
-                resetViews(id) {
-                    const v = this.videos.find(x => x.id === id);
-                    if (v) {
-                        v.views = 0;
-                        this.$nextTick(() => { lucide.createIcons(); });
-                    }
-                },
-
-                triggerSync() {
-                    this.isScanning = true;
-                    setTimeout(() => {
-                        this.isScanning = false;
-                        this.$nextTick(() => { lucide.createIcons(); });
-                    }, 1500);
-                },
-
-                openPlayer(idx) {
-                    this.player.currentIndex = idx;
-                    this.player.show = true;
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                playNext() {
-                    if (this.player.currentIndex < this.filteredVideos.length - 1) {
-                        this.player.currentIndex++;
-                        this.$nextTick(() => { lucide.createIcons(); });
-                    }
-                },
-
-                playPrev() {
-                    if (this.player.currentIndex > 0) {
-                        this.player.currentIndex--;
-                        this.$nextTick(() => { lucide.createIcons(); });
-                    }
-                },
-
-                openCreateTagModal() {
-                    this.tagModal = {
-                        show: true,
-                        isEdit: false,
-                        id: '',
-                        name: '',
-                        color: '#6366f1',
-                        parentId: ''
-                    };
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                openEditTagModal(tag) {
-                    this.tagModal = {
-                        show: true,
-                        isEdit: true,
-                        id: tag.id,
-                        name: tag.name,
-                        color: tag.color,
-                        parentId: tag.parentId || ''
-                    };
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                saveTag() {
-                    if (!this.tagModal.name.trim()) return;
-                    if (this.tagModal.isEdit) {
-                        const t = this.tagList.find(x => x.id === this.tagModal.id);
-                        if (t) {
-                            t.name = this.tagModal.name;
-                            t.color = this.tagModal.color;
-                            t.parentId = this.tagModal.parentId;
-                        }
-                    } else {
-                        const newTag = {
-                            id: String(Date.now()),
-                            name: this.tagModal.name,
-                            color: this.tagModal.color,
-                            level: this.tagModal.parentId ? 1 : 0,
-                            parentId: this.tagModal.parentId,
-                            count: 0
-                        };
-                        this.tagList.push(newTag);
-                    }
-                    this.tagModal.show = false;
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                openAddTagModal(video) {
-                    this.addTagModal = {
-                        show: true,
-                        targetVideo: video
-                    };
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                toggleVideoTag(video, tagName) {
-                    if (!video) return;
-                    const idx = video.tags.indexOf(tagName);
-                    if (idx >= 0) {
-                        video.tags.splice(idx, 1);
-                    } else {
-                        video.tags.push(tagName);
-                    }
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                openBatchTagModal(mode) {
-                    this.batchTagModal = {
-                        show: true,
-                        mode: mode,
-                        selectedTagName: this.tagList[0]?.name || ''
-                    };
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                executeBatchTag() {
-                    const tag = this.batchTagModal.selectedTagName;
-                    this.videos.forEach(v => {
-                        if (this.selectedVideoIds.includes(v.id)) {
-                            const idx = v.tags.indexOf(tag);
-                            if (this.batchTagModal.mode === 'add' && idx < 0) {
-                                v.tags.push(tag);
-                            } else if (this.batchTagModal.mode === 'remove' && idx >= 0) {
-                                v.tags.splice(idx, 1);
-                            }
-                        }
-                    });
-                    this.batchTagModal.show = false;
-                    this.selectedVideoIds = [];
-                    this.$nextTick(() => { lucide.createIcons(); });
-                },
-
-                batchFav(status) {
-                    this.videos.forEach(v => {
-                        if (this.selectedVideoIds.includes(v.id)) {
-                            v.isFav = status;
-                        }
-                    });
-                    this.selectedVideoIds = [];
-                    this.$nextTick(() => { lucide.createIcons(); });
+          // 絞り込み & ソート後の動画リスト
+          get filteredVideos() {
+            let list = this.videos.filter((v) => {
+              if (this.favoriteOnly && !v.isFav) return false;
+              if (this.searchQuery) {
+                const q = this.searchQuery.toLowerCase();
+                if (q.startsWith("tag:")) {
+                  const t = q.replace("tag:", "").trim();
+                  if (!v.tags.some((tag) => tag.toLowerCase().includes(t)))
+                    return false;
+                } else {
+                  if (
+                    !v.title.toLowerCase().includes(q) &&
+                    !v.tags.some((tag) => tag.toLowerCase().includes(q))
+                  ) {
+                    return false;
+                  }
                 }
+              }
+              return true;
+            });
+
+            // ソート
+            list.sort((a, b) => {
+              let va = a[this.sortBy];
+              let vb = b[this.sortBy];
+              if (this.sortOrder === "asc") return va > vb ? 1 : -1;
+              return va < vb ? 1 : -1;
+            });
+
+            return list;
+          },
+
+          get totalPages() {
+            return Math.max(
+              1,
+              Math.ceil(this.filteredVideos.length / this.pageSize),
+            );
+          },
+
+          get pagedVideos() {
+            if (this.displayMode === "incremental") {
+              return this.filteredVideos.slice(0, this.incrementalCount);
             }
-        }
+            const start = (this.currentPage - 1) * this.pageSize;
+            return this.filteredVideos.slice(start, start + this.pageSize);
+          },
+
+          get hasMore() {
+            return this.incrementalCount < this.filteredVideos.length;
+          },
+
+          get currentVideo() {
+            return this.filteredVideos[this.player.currentIndex] || null;
+          },
+
+          get filteredTagTree() {
+            if (!this.tagSearchQuery) return this.tagList;
+            const q = this.tagSearchQuery.toLowerCase();
+            return this.tagList.filter((t) => t.name.toLowerCase().includes(q));
+          },
+
+          get topVideos() {
+            return [...this.videos]
+              .sort((a, b) => b.views - a.views)
+              .slice(0, 3);
+          },
+
+          loadMore() {
+            this.incrementalCount += 4;
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          filterByTag(tagName) {
+            if (this.searchQuery === `tag:${tagName}`) {
+              this.searchQuery = "";
+            } else {
+              this.searchQuery = `tag:${tagName}`;
+            }
+            this.currentPage = 1;
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          clearTagFilter() {
+            if (this.searchQuery.startsWith("tag:")) {
+              this.searchQuery = "";
+            }
+            this.currentPage = 1;
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          clearAllFilters() {
+            this.searchQuery = "";
+            this.favoriteOnly = false;
+            this.currentPage = 1;
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          toggleViewMode() {
+            this.viewMode = this.viewMode === "grid" ? "compact" : "grid";
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          toggleFavoriteFilter() {
+            this.favoriteOnly = !this.favoriteOnly;
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          toggleFav(id) {
+            const v = this.videos.find((x) => x.id === id);
+            if (v) {
+              v.isFav = !v.isFav;
+              this.$nextTick(() => {
+                lucide.createIcons();
+              });
+            }
+          },
+
+          resetViews(id) {
+            const v = this.videos.find((x) => x.id === id);
+            if (v) {
+              v.views = 0;
+              this.$nextTick(() => {
+                lucide.createIcons();
+              });
+            }
+          },
+
+          triggerSync() {
+            this.isScanning = true;
+            setTimeout(() => {
+              this.isScanning = false;
+              this.$nextTick(() => {
+                lucide.createIcons();
+              });
+            }, 1500);
+          },
+
+          openPlayer(idx) {
+            this.player.currentIndex = idx;
+            this.player.show = true;
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          playNext() {
+            if (this.player.currentIndex < this.filteredVideos.length - 1) {
+              this.player.currentIndex++;
+              this.$nextTick(() => {
+                lucide.createIcons();
+              });
+            }
+          },
+
+          playPrev() {
+            if (this.player.currentIndex > 0) {
+              this.player.currentIndex--;
+              this.$nextTick(() => {
+                lucide.createIcons();
+              });
+            }
+          },
+
+          openCreateTagModal() {
+            this.tagModal = {
+              show: true,
+              isEdit: false,
+              id: "",
+              name: "",
+              color: "#6366f1",
+              parentId: "",
+            };
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          openEditTagModal(tag) {
+            this.tagModal = {
+              show: true,
+              isEdit: true,
+              id: tag.id,
+              name: tag.name,
+              color: tag.color,
+              parentId: tag.parentId || "",
+            };
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          saveTag() {
+            if (!this.tagModal.name.trim()) return;
+            if (this.tagModal.isEdit) {
+              const t = this.tagList.find((x) => x.id === this.tagModal.id);
+              if (t) {
+                t.name = this.tagModal.name;
+                t.color = this.tagModal.color;
+                t.parentId = this.tagModal.parentId;
+              }
+            } else {
+              const newTag = {
+                id: String(Date.now()),
+                name: this.tagModal.name,
+                color: this.tagModal.color,
+                level: this.tagModal.parentId ? 1 : 0,
+                parentId: this.tagModal.parentId,
+                count: 0,
+              };
+              this.tagList.push(newTag);
+            }
+            this.tagModal.show = false;
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          openAddTagModal(video) {
+            this.addTagModal = {
+              show: true,
+              targetVideo: video,
+            };
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          toggleVideoTag(video, tagName) {
+            if (!video) return;
+            const idx = video.tags.indexOf(tagName);
+            if (idx >= 0) {
+              video.tags.splice(idx, 1);
+            } else {
+              video.tags.push(tagName);
+            }
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          openBatchTagModal(mode) {
+            this.batchTagModal = {
+              show: true,
+              mode: mode,
+              selectedTagName: this.tagList[0]?.name || "",
+            };
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          executeBatchTag() {
+            const tag = this.batchTagModal.selectedTagName;
+            this.videos.forEach((v) => {
+              if (this.selectedVideoIds.includes(v.id)) {
+                const idx = v.tags.indexOf(tag);
+                if (this.batchTagModal.mode === "add" && idx < 0) {
+                  v.tags.push(tag);
+                } else if (this.batchTagModal.mode === "remove" && idx >= 0) {
+                  v.tags.splice(idx, 1);
+                }
+              }
+            });
+            this.batchTagModal.show = false;
+            this.selectedVideoIds = [];
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+
+          batchFav(status) {
+            this.videos.forEach((v) => {
+              if (this.selectedVideoIds.includes(v.id)) {
+                v.isFav = status;
+              }
+            });
+            this.selectedVideoIds = [];
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+        };
+      }
     </script>
-</body>
+  </body>
 </html>
