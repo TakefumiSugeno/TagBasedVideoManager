@@ -11,7 +11,7 @@ open Microsoft.Extensions.DependencyInjection
 open TagBasedVideoManager
 
 /// README.md に掲載するための画面キャプチャを自動的に取得して
-/// doc/images/ ディレクトリ配下に保存する専用のツール（テストランナー経由で実行可能）
+/// assets/images/ ディレクトリ配下に保存する専用のツール（テストランナー経由で実行可能）
 type ScreenshotGenerator () =
 
     // リポジトリルートを確実に特定するヘルパー
@@ -74,9 +74,9 @@ type ScreenshotGenerator () =
             let dbPath = Path.Combine(testWorkDir, $"screenshot_generator_{Guid.NewGuid():N}.db")
             
             // doc/images ディレクトリのパスを設定
-            let docImagesDir = Path.Combine(repoRoot, "doc", "images")
-            if not (Directory.Exists(docImagesDir)) then
-                Directory.CreateDirectory(docImagesDir) |> ignore
+            let assetsImagesDir = Path.Combine(repoRoot, "assets", "images")
+            if not (Directory.Exists(assetsImagesDir)) then
+                Directory.CreateDirectory(assetsImagesDir) |> ignore
 
             // 再生テスト用のダミーmp4ファイルを作成 (サイズ0バイトで問題なし)
             let dummyVideoFile1 = Path.Combine(testWorkDir, $"dummy_ani_1_{Guid.NewGuid():N}.mp4")
@@ -186,7 +186,7 @@ type ScreenshotGenerator () =
                 do! page.WaitForTimeoutAsync(2500.0f) // レンダリングおよびCSSの安定化待機
 
                 // --- 1. メイン画面 (screenshot_main.png) ---
-                let mainScreenshotPath = Path.Combine(docImagesDir, "screenshot_main.png")
+                let mainScreenshotPath = Path.Combine(assetsImagesDir, "screenshot_main.png")
                 let! _ = page.ScreenshotAsync(PageScreenshotOptions(Path = mainScreenshotPath))
                 
                 // --- 2. 動画再生モーダル (screenshot_player.png) ---
@@ -198,7 +198,7 @@ type ScreenshotGenerator () =
                 do! videoEl.WaitForAsync()
                 do! page.WaitForTimeoutAsync(1500.0f) // モーダルの出現フェードアニメーションを待つ
                 
-                let playerScreenshotPath = Path.Combine(docImagesDir, "screenshot_player.png")
+                let playerScreenshotPath = Path.Combine(assetsImagesDir, "screenshot_player.png")
                 let! _ = page.ScreenshotAsync(PageScreenshotOptions(Path = playerScreenshotPath))
 
                 // モーダルを閉じる
@@ -220,7 +220,7 @@ type ScreenshotGenerator () =
                     do! bulkModalContainer.WaitForAsync()
                     do! page.WaitForTimeoutAsync(1500.0f)
                     
-                    let settingsScreenshotPath = Path.Combine(docImagesDir, "screenshot_settings.png")
+                    let settingsScreenshotPath = Path.Combine(assetsImagesDir, "screenshot_settings.png")
                     let! _ = page.ScreenshotAsync(PageScreenshotOptions(Path = settingsScreenshotPath))
                     
                     // 設定モーダルを閉じる (キャンセルボタンをクリック)
@@ -243,7 +243,7 @@ type ScreenshotGenerator () =
                         do! errorLogTab.ClickAsync()
                         do! page.WaitForTimeoutAsync(1000.0f) // ログアコーディオンの描画待機
                     
-                    let dashboardScreenshotPath = Path.Combine(docImagesDir, "screenshot_dashboard.png")
+                    let dashboardScreenshotPath = Path.Combine(assetsImagesDir, "screenshot_dashboard.png")
                     let! _ = page.ScreenshotAsync(PageScreenshotOptions(Path = dashboardScreenshotPath))
                     ()
 
