@@ -67,6 +67,8 @@ nunit-*.xml
  
 # Local database and media files
 *.db
+*.db-shm
+*.db-wal
 test/**/videos/
 test/**/thumbnails/
 
