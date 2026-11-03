@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="ja" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Mobile UI Mockup - TagBasedVideoManager</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            950: '#030712',
+                            850: '#111827',
+                            750: '#1f293d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Alpine.js (CDN) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', 'Noto Sans JP', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* スクロールバー非表示（タグピル用） */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* 44px タップ領域確保用クラス */
+        .touch-target {
+            min-width: 44px;
+            min-height: 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100 flex justify-center items-center p-0 md:p-6 select-none" x-data="mobileMockupApp()" x-init="init()">
+
+    <!-- モバイル外枠（デスクトップ閲覧時はスマホ端末枠として表示、実スマホでは全画面） -->
+    <div class="w-full h-full md:max-w-[420px] md:h-[844px] bg-slate-950 md:rounded-[40px] md:border-4 md:border-slate-800 md:shadow-2xl md:shadow-indigo-500/10 flex flex-col overflow-hidden relative">
+
+        <!-- モバイル上部ヘッダー -->
+        <header class="flex-shrink-0 bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 px-3.5 py-2.5 flex items-center justify-between z-20 pt-safe">
+            <div class="flex items-center space-x-2">
+                <!-- ブランドロゴ -->
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
+                    <i data-lucide="play" class="w-4 h-4 text-white fill-white/30"></i>
+                </div>
+                <div>
+                    <h1 class="text-sm font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-indigo-200 to-violet-300">
+                        TagVideoManager
+                    </h1>
+                    <span class="text-[9px] text-indigo-400 font-mono" x-text="`${filteredVideos.length} 件`"></span>
+                </div>
+            </div>
+
+            <!-- 右側アクションボタングループ（44pxタッチターゲット確保） -->
+            <div class="flex items-center space-x-0.5">
+                <!-- ディレクトリ同期ボタン -->
+                <button 
+                    @click="triggerSync()" 
+                    class="touch-target text-slate-400 hover:text-indigo-400 active:scale-95 transition-all"
+                    :title="isScanning ? '同期中...' : 'ディレクトリ同期'"
+                >
+                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="isScanning ? 'animate-spin text-indigo-400' : ''"></i>
+                </button>
+
+                <!-- 表示切り替えトグル（2列グリッド ⇄ スリムリスト） -->
+                <button 
+                    @click="toggleViewMode()" 
+                    class="touch-target text-slate-400 hover:text-indigo-400 active:scale-95 transition-all"
+                    :title="viewMode === 'grid' ? 'スリムリスト表示へ切替' : '2列グリッド表示へ切替'"
+                >
+                    <template x-if="viewMode === 'grid'">
+                        <i data-lucide="list" class="w-4 h-4 text-indigo-400"></i>
+                    </template>
+                    <template x-if="viewMode === 'compact'">
+                        <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-400"></i>
+                    </template>
+                </button>
+
+                <!-- お気に入り絞り込みトグル -->
+                <button 
+                    @click="toggleFavoriteFilter()" 
+                    class="touch-target transition-all active:scale-95"
+                    :class="favoriteOnly ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'"
+                    title="お気に入りのみ表示"
+                >
+                    <i data-lucide="star" class="w-4 h-4" :class="favoriteOnly ? 'fill-current' : ''"></i>
+                </button>
+
+                <!-- ドロワーメニュー [≡] -->
+                <button 
+                    @click="drawerOpen = true" 
+                    class="touch-target text-slate-400 hover:text-slate-200 active:scale-95 transition-all"
+                    title="メニュー"
+                >
+                    <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- クイックタグピルバー（横スクロール） -->
+        <div class="flex-shrink-0 bg-slate-900/50 border-b border-slate-850 px-3 py-2 overflow-x-auto no-scrollbar flex items-center space-x-1.5 z-10">
+            <button 
+                @click="selectedTag = ''" 
+                class="px-3 py-1 rounded-full text-xs font-medium transition-all shrink-0 border"
+                :class="selectedTag === '' ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm' : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200'"
+            >
+                すべて
+            </button>
+            <template x-for="tag in tagList" :key="tag.name">
+                <button 
+                    @click="selectedTag = (selectedTag === tag.name ? '' : tag.name)" 
+                    class="px-2.5 py-1 rounded-full text-xs font-medium transition-all shrink-0 border flex items-center space-x-1"
+                    :class="selectedTag === tag.name ? 'border-indigo-500 text-white shadow-sm' : 'border-slate-800 text-slate-400 hover:text-slate-200 bg-slate-900/60'"
+                    :style="selectedTag === tag.name ? { backgroundColor: `${tag.color}40`, borderColor: tag.color, color: '#fff' } : {}"
+                >
+                    <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: tag.color }"></span>
+                    <span x-text="tag.name"></span>
+                </button>
+            </template>
+        </div>
+
+        <!-- メイン動画表示領域（スクロール可能） -->
+        <main class="flex-1 overflow-y-auto p-3 space-y-3 pb-20">
+
+            <!-- 【モード3: 2列グリッド型 (ギャラリー風)】 -->
+            <div x-show="viewMode === 'grid'" class="grid grid-cols-2 gap-2.5">
+                <template x-for="(video, idx) in filteredVideos" :key="video.id">
+                    <div 
+                        class="bg-slate-900/50 border border-slate-800/80 rounded-2xl overflow-hidden shadow-lg flex flex-col active:scale-[0.98] transition-all"
+                        @click="openPlayer(idx)"
+                    >
+                        <!-- サムネイル（タップで即再生） -->
+                        <div class="relative aspect-video bg-slate-950 overflow-hidden">
+                            <img :src="video.thumbnail" class="w-full h-full object-cover">
+                            <!-- 再生時間バッジ -->
+                            <span class="absolute bottom-1.5 right-1.5 bg-slate-950/80 backdrop-blur-sm border border-slate-800 px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-300" x-text="video.duration"></span>
+                            <!-- 再生オーバーレイマーク -->
+                            <div class="absolute inset-0 flex items-center justify-center bg-black/20">
+                                <div class="w-7 h-7 rounded-full bg-indigo-600/80 flex items-center justify-center text-white">
+                                    <i data-lucide="play" class="w-3.5 h-3.5 fill-current ml-0.5"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- メタデータ部 -->
+                        <div class="p-2.5 flex-1 flex flex-col justify-between space-y-1.5">
+                            <div class="flex items-start justify-between min-w-0">
+                                <h3 class="text-xs font-medium text-slate-200 line-clamp-2 leading-snug flex-1" x-text="video.title"></h3>
+                                <!-- お気に入りボタン（独立したタッチ領域） -->
+                                <button 
+                                    @click.stop="toggleFav(video.id)" 
+                                    class="w-7 h-7 flex items-center justify-center shrink-0 ml-1 text-slate-500 active:scale-125 transition-transform"
+                                    :class="video.isFav ? 'text-amber-400' : 'hover:text-slate-300'"
+                                >
+                                    <i data-lucide="star" class="w-3.5 h-3.5" :class="video.isFav ? 'fill-current' : ''"></i>
+                                </button>
+                            </div>
+                            <div class="flex items-center justify-between text-[10px] text-slate-500">
+                                <span x-text="video.size"></span>
+                                <span class="bg-slate-800/60 px-1 py-0.5 rounded text-[9px]" x-text="`${video.views}回`"></span>
+                            </div>
+                            <div class="flex flex-wrap gap-1">
+                                <template x-for="tag in video.tags" :key="tag">
+                                    <span class="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20" x-text="tag"></span>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- 【モード4: スリムリスト型 (高密度エクスプローラー風)】 -->
+            <div x-show="viewMode === 'compact'" class="divide-y divide-slate-850 bg-slate-900/30 rounded-2xl border border-slate-800/80 overflow-hidden" style="display: none;">
+                <template x-for="(video, idx) in filteredVideos" :key="video.id">
+                    <div 
+                        class="p-2.5 flex items-center justify-between hover:bg-slate-850/40 active:bg-slate-850/70 transition-colors"
+                        @click="openPlayer(idx)"
+                    >
+                        <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+                            <!-- 極小サムネイル / 再生アイコン -->
+                            <div class="relative w-12 aspect-video rounded-lg overflow-hidden shrink-0 bg-slate-950">
+                                <img :src="video.thumbnail" class="w-full h-full object-cover">
+                                <span class="absolute bottom-0 right-0 bg-black/80 text-[7px] font-mono px-0.5 text-slate-300" x-text="video.duration"></span>
+                            </div>
+                            <!-- タイトル & メタデータ一行表示 -->
+                            <div class="min-w-0 flex-1">
+                                <h3 class="text-xs font-medium text-slate-200 truncate" x-text="video.title"></h3>
+                                <div class="flex items-center space-x-2 text-[10px] text-slate-500 mt-0.5">
+                                    <span x-text="video.size"></span>
+                                    <span>•</span>
+                                    <span x-text="`${video.views}回`"></span>
+                                    <span>•</span>
+                                    <span class="text-indigo-400 truncate" x-text="video.tags.join(', ')"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- お気に入りボタン -->
+                        <button 
+                            @click.stop="toggleFav(video.id)" 
+                            class="touch-target text-slate-500 shrink-0 ml-1"
+                            :class="video.isFav ? 'text-amber-400' : 'hover:text-slate-300'"
+                        >
+                            <i data-lucide="star" class="w-4 h-4" :class="video.isFav ? 'fill-current' : ''"></i>
+                        </button>
+                    </div>
+                </template>
+            </div>
+
+            <!-- 動画0件（Zero-State） -->
+            <div x-show="filteredVideos.length === 0" class="py-16 flex flex-col items-center justify-center text-slate-500 space-y-2">
+                <i data-lucide="inbox" class="w-10 h-10 text-slate-600"></i>
+                <p class="text-xs">該当する動画がありません</p>
+                <button @click="selectedTag = ''; favoriteOnly = false;" class="text-xs text-indigo-400 underline">条件をリセット</button>
+            </div>
+
+        </main>
+
+        <!-- 全画面没入型プレイヤー（モーダル） -->
+        <div 
+            x-show="player.show" 
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0 translate-y-4"
+            x-transition:enter-end="opacity-100 translate-y-0"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="opacity-100 translate-y-0"
+            x-transition:leave-end="opacity-0 translate-y-4"
+            class="fixed inset-0 z-50 bg-black flex flex-col justify-between"
+            style="display: none;"
+        >
+            <!-- プレイヤー上部バー -->
+            <div class="p-3 bg-gradient-to-b from-black/90 to-transparent flex items-center justify-between z-10 pt-safe">
+                <div class="flex items-center space-x-2 min-w-0 flex-1 pr-2">
+                    <button @click="player.show = false" class="touch-target text-slate-300 hover:text-white" title="閉じる">
+                        <i data-lucide="chevron-down" class="w-6 h-6"></i>
+                    </button>
+                    <h3 class="text-xs font-semibold text-slate-200 truncate" x-text="currentVideo?.title"></h3>
+                </div>
+                <div class="flex items-center space-x-1 shrink-0">
+                    <button @click="toggleFav(currentVideo?.id)" class="touch-target" :class="currentVideo?.isFav ? 'text-amber-400' : 'text-slate-400'">
+                        <i data-lucide="star" class="w-5 h-5" :class="currentVideo?.isFav ? 'fill-current' : ''"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 動画スクリーン本体 -->
+            <div class="flex-1 flex items-center justify-center bg-black relative">
+                <img :src="currentVideo?.thumbnail" class="w-full aspect-video object-contain">
+                <!-- 疑似シークバー -->
+                <div class="absolute bottom-2 inset-x-4 flex items-center space-x-2">
+                    <div class="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div class="w-1/3 h-full bg-indigo-500"></div>
+                    </div>
+                    <span class="text-[9px] font-mono text-slate-400" x-text="currentVideo?.duration"></span>
+                </div>
+            </div>
+
+            <!-- プレイヤー下部コントロール（連続視聴ナビゲーション） -->
+            <div class="p-4 bg-gradient-to-t from-black/95 to-transparent space-y-3 pb-safe">
+                <!-- 前へ / 再生一時停止 / 次へ -->
+                <div class="flex items-center justify-around max-w-xs mx-auto">
+                    <!-- 前の動画 -->
+                    <button 
+                        @click="playPrev()" 
+                        :disabled="player.currentIndex <= 0" 
+                        class="touch-target rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 disabled:opacity-30 disabled:pointer-events-none"
+                        title="前の動画"
+                    >
+                        <i data-lucide="skip-back" class="w-5 h-5"></i>
+                    </button>
+                    <!-- 再生 / 一時停止 -->
+                    <button class="w-14 h-14 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/30 active:scale-95 transition-transform">
+                        <i data-lucide="play" class="w-6 h-6 fill-current ml-0.5"></i>
+                    </button>
+                    <!-- 次の動画 -->
+                    <button 
+                        @click="playNext()" 
+                        :disabled="player.currentIndex >= filteredVideos.length - 1" 
+                        class="touch-target rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 disabled:opacity-30 disabled:pointer-events-none"
+                        title="次の動画"
+                    >
+                        <i data-lucide="skip-forward" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <div class="text-center text-[10px] text-slate-500">
+                    <span x-text="`${player.currentIndex + 1} / ${filteredVideos.length}`"></span> 動画
+                </div>
+            </div>
+        </div>
+
+        <!-- サイドドロワーメニュー（管理・詳細設定退避先） -->
+        <div x-show="drawerOpen" @click="drawerOpen = false" class="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" style="display: none;"></div>
+        <div 
+            x-show="drawerOpen" 
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="translate-x-full"
+            x-transition:enter-end="translate-x-0"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="translate-x-0"
+            x-transition:leave-end="translate-x-full"
+            class="fixed inset-y-0 right-0 w-72 bg-slate-900 border-l border-slate-800 z-50 p-5 flex flex-col justify-between shadow-2xl"
+            style="display: none;"
+        >
+            <div class="space-y-6">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h2 class="text-sm font-bold text-slate-200">システム設定・管理</h2>
+                    <button @click="drawerOpen = false" class="touch-target text-slate-400 hover:text-white">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <!-- 退避された管理メニュー -->
+                <div class="space-y-2">
+                    <p class="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">データ操作</p>
+                    <button @click="triggerSync(); drawerOpen = false;" class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs">
+                        <i data-lucide="refresh-cw" class="w-4 h-4 text-indigo-400"></i>
+                        <span>ディレクトリ完全同期</span>
+                    </button>
+                    <button class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs">
+                        <i data-lucide="file-up" class="w-4 h-4 text-indigo-400"></i>
+                        <span>一括インポート・エクスポート</span>
+                    </button>
+                    <button class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs">
+                        <i data-lucide="stop-circle" class="w-4 h-4 text-red-400"></i>
+                        <span>メディア生成停止</span>
+                    </button>
+                </div>
+
+                <div class="space-y-2">
+                    <p class="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">タグ・統計</p>
+                    <button class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs">
+                        <i data-lucide="bar-chart-2" class="w-4 h-4 text-violet-400"></i>
+                        <span>統計・おすすめ動画</span>
+                    </button>
+                    <button class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 text-xs">
+                        <i data-lucide="file-cog" class="w-4 h-4 text-violet-400"></i>
+                        <span>自動適用ルールの管理</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="text-[10px] text-slate-600 text-center font-mono">
+                TagBasedVideoManager v1.2 (PWA)
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function mobileMockupApp() {
+            return {
+                viewMode: 'grid', // 'grid' | 'compact'
+                favoriteOnly: false,
+                selectedTag: '',
+                isScanning: false,
+                drawerOpen: false,
+                player: {
+                    show: false,
+                    currentIndex: 0
+                },
+                tagList: [
+                    { name: 'ツーリング', color: '#6366f1' },
+                    { name: 'キャンプ', color: '#10b981' },
+                    { name: '日常', color: '#f59e0b' },
+                    { name: '旅行', color: '#ec4899' },
+                    { name: 'ペット', color: '#06b6d4' }
+                ],
+                videos: [
+                    { id: '1', title: '2026-10-12_秋の山中湖ロングツーリング_4K.mp4', duration: '05:20', size: '280MB', views: 18, isFav: true, tags: ['ツーリング', '旅行'], thumbnail: 'https://picsum.photos/seed/touring/400/225' },
+                    { id: '2', title: '家族で楽しむ秋の焚き火キャンプハイライト.mp4', duration: '12:45', size: '640MB', views: 8, isFav: false, tags: ['キャンプ', '日常'], thumbnail: 'https://picsum.photos/seed/camp/400/225' },
+                    { id: '3', title: '猫ののんびり昼下がり_リラックス映像.mp4', duration: '03:10', size: '150MB', views: 32, isFav: true, tags: ['ペット', '日常'], thumbnail: 'https://picsum.photos/seed/cat/400/225' },
+                    { id: '4', title: '北海道周遊ドライブ_DAY1_千歳から富良野へ.mp4', duration: '24:10', size: '1.2GB', views: 5, isFav: false, tags: ['旅行', 'ツーリング'], thumbnail: 'https://picsum.photos/seed/hokkaido/400/225' },
+                    { id: '5', title: '週末DIY_木製ウッドラック自作工程.mp4', duration: '08:30', size: '390MB', views: 12, isFav: false, tags: ['日常'], thumbnail: 'https://picsum.photos/seed/diy/400/225' }
+                ],
+                init() {
+                    this.$nextTick(() => { lucide.createIcons(); });
+                },
+                get filteredVideos() {
+                    return this.videos.filter(v => {
+                        if (this.favoriteOnly && !v.isFav) return false;
+                        if (this.selectedTag && !v.tags.includes(this.selectedTag)) return false;
+                        return true;
+                    });
+                },
+                get currentVideo() {
+                    return this.filteredVideos[this.player.currentIndex] || null;
+                },
+                toggleViewMode() {
+                    this.viewMode = this.viewMode === 'grid' ? 'compact' : 'grid';
+                    this.$nextTick(() => { lucide.createIcons(); });
+                },
+                toggleFavoriteFilter() {
+                    this.favoriteOnly = !this.favoriteOnly;
+                    this.$nextTick(() => { lucide.createIcons(); });
+                },
+                toggleFav(id) {
+                    const v = this.videos.find(x => x.id === id);
+                    if (v) {
+                        v.isFav = !v.isFav;
+                        this.$nextTick(() => { lucide.createIcons(); });
+                    }
+                },
+                triggerSync() {
+                    this.isScanning = true;
+                    setTimeout(() => {
+                        this.isScanning = false;
+                        this.$nextTick(() => { lucide.createIcons(); });
+                    }, 1500);
+                },
+                openPlayer(idx) {
+                    this.player.currentIndex = idx;
+                    this.player.show = true;
+                    this.$nextTick(() => { lucide.createIcons(); });
+                },
+                playNext() {
+                    if (this.player.currentIndex < this.filteredVideos.length - 1) {
+                        this.player.currentIndex++;
+                        this.$nextTick(() => { lucide.createIcons(); });
+                    }
+                },
+                playPrev() {
+                    if (this.player.currentIndex > 0) {
+                        this.player.currentIndex--;
+                        this.$nextTick(() => { lucide.createIcons(); });
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
