@@ -162,9 +162,9 @@
 
             <!-- すべてボタン -->
             <button 
-                @click="selectedTag = ''" 
+                @click="clearTagFilter()" 
                 class="px-2.5 py-1 rounded-full text-xs font-medium transition-all shrink-0 border"
-                :class="selectedTag === '' ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm' : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200'"
+                :class="!searchQuery.includes('tag:') ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm' : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200'"
             >
                 すべて
             </button>
@@ -172,10 +172,10 @@
             <!-- 主要タグピル一覧 -->
             <template x-for="tag in tagList" :key="tag.id">
                 <button 
-                    @click="selectedTag = (selectedTag === tag.name ? '' : tag.name)" 
+                    @click="filterByTag(tag.name)" 
                     class="px-2.5 py-1 rounded-full text-xs font-medium transition-all shrink-0 border flex items-center space-x-1"
-                    :class="selectedTag === tag.name ? 'border-indigo-500 text-white shadow-sm' : 'border-slate-800 text-slate-400 hover:text-slate-200 bg-slate-900/60'"
-                    :style="selectedTag === tag.name ? { backgroundColor: `${tag.color}40`, borderColor: tag.color, color: '#fff' } : {}"
+                    :class="searchQuery.includes(`tag:${tag.name}`) ? 'border-indigo-500 text-white shadow-sm' : 'border-slate-800 text-slate-400 hover:text-slate-200 bg-slate-900/60'"
+                    :style="searchQuery.includes(`tag:${tag.name}`) ? { backgroundColor: `${tag.color}40`, borderColor: tag.color, color: '#fff' } : {}"
                 >
                     <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: tag.color }"></span>
                     <span x-text="tag.name"></span>
@@ -262,8 +262,9 @@
                             <div class="flex flex-wrap gap-1 items-center">
                                 <template x-for="tname in video.tags" :key="tname">
                                     <span 
-                                        @click.stop="selectedTag = tname"
-                                        class="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 cursor-pointer" 
+                                        @click.stop="filterByTag(tname)"
+                                        class="text-[9px] px-1.5 py-0.2 rounded cursor-pointer transition-colors" 
+                                        :class="searchQuery.includes(`tag:${tname}`) ? 'bg-indigo-600 text-white border border-indigo-400' : 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 hover:bg-indigo-500/20'"
                                         x-text="tname"
                                     ></span>
                                 </template>
@@ -387,7 +388,7 @@
             <div x-show="filteredVideos.length === 0" class="py-16 flex flex-col items-center justify-center text-slate-500 space-y-2">
                 <i data-lucide="inbox" class="w-10 h-10 text-slate-600"></i>
                 <p class="text-xs">該当する動画がありません</p>
-                <button @click="searchQuery = ''; selectedTag = ''; favoriteOnly = false;" class="text-xs text-indigo-400 underline">条件をリセット</button>
+                <button @click="clearAllFilters()" class="text-xs text-indigo-400 underline">条件をリセット</button>
             </div>
 
         </main>
@@ -538,7 +539,7 @@
                         :style="{ paddingLeft: `${tag.level * 16 + 8}px` }"
                     >
                         <div 
-                            @click="selectedTag = tag.name; tagBrowserOpen = false;" 
+                            @click="filterByTag(tag.name); tagBrowserOpen = false;" 
                             class="flex items-center space-x-2 flex-1 cursor-pointer"
                         >
                             <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: tag.color }"></span>
@@ -795,7 +796,7 @@
                 <div class="space-y-2 text-xs">
                     <label class="text-slate-400">現在の検索クエリをフォルダとして保存</label>
                     <input type="text" placeholder="フォルダ名（例: 秋の旅行動画）" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
-                    <p class="text-[10px] text-slate-500 font-mono" x-text="`クエリ: ${searchQuery || selectedTag || '全動画'}`"></p>
+                    <p class="text-[10px] text-slate-500 font-mono" x-text="`クエリ: ${searchQuery || '全動画'}`"></p>
                 </div>
                 <div class="flex justify-end space-x-2">
                     <button @click="smartFolderModalOpen = false" class="px-3 py-1.5 text-slate-400 text-xs">キャンセル</button>
@@ -876,7 +877,6 @@
                 incrementalCount: 4,
 
                 searchQuery: '',
-                selectedTag: '',
                 favoriteOnly: false,
                 isScanning: false,
 
@@ -940,7 +940,6 @@
                 init() {
                     this.$nextTick(() => { lucide.createIcons(); });
                     this.$watch('searchQuery', () => { this.currentPage = 1; });
-                    this.$watch('selectedTag', () => { this.currentPage = 1; });
                     this.$watch('favoriteOnly', () => { this.currentPage = 1; });
                 },
 
@@ -948,7 +947,6 @@
                 get filteredVideos() {
                     let list = this.videos.filter(v => {
                         if (this.favoriteOnly && !v.isFav) return false;
-                        if (this.selectedTag && !v.tags.includes(this.selectedTag)) return false;
                         if (this.searchQuery) {
                             const q = this.searchQuery.toLowerCase();
                             if (q.startsWith('tag:')) {
@@ -1006,6 +1004,31 @@
 
                 loadMore() {
                     this.incrementalCount += 4;
+                    this.$nextTick(() => { lucide.createIcons(); });
+                },
+
+                filterByTag(tagName) {
+                    if (this.searchQuery === `tag:${tagName}`) {
+                        this.searchQuery = '';
+                    } else {
+                        this.searchQuery = `tag:${tagName}`;
+                    }
+                    this.currentPage = 1;
+                    this.$nextTick(() => { lucide.createIcons(); });
+                },
+
+                clearTagFilter() {
+                    if (this.searchQuery.startsWith('tag:')) {
+                        this.searchQuery = '';
+                    }
+                    this.currentPage = 1;
+                    this.$nextTick(() => { lucide.createIcons(); });
+                },
+
+                clearAllFilters() {
+                    this.searchQuery = '';
+                    this.favoriteOnly = false;
+                    this.currentPage = 1;
                     this.$nextTick(() => { lucide.createIcons(); });
                 },
 
