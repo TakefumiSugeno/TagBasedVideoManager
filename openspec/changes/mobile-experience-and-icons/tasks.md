@@ -2,10 +2,10 @@
 
 ## 1. ブランディング & PWA 基盤の作成
 
-- [ ] 1.1 ブランドロゴシンボル（Tag + Play）をデザインし、`favicon.svg` を作成して `src/TagBasedVideoManager/wwwroot/` に配置する。ブラウザで SVG が正常に描画されることを確認する。
-- [ ] 1.2 `favicon.svg` からマルチサイズ ICO (`favicon.ico`: 16/32/48) および PNG (`apple-touch-icon.png`: 180x180, `icon-192.png`: 192x192, `icon-512.png`: 512x512) を生成して配置する。ファイルサイズと解像度を確認する。
-- [ ] 1.3 `manifest.webmanifest` を作成し、アイコン定義、スタンドアロンモード (`display: standalone`)、テーマカラー (`#030712`) を設定する。Giraffe から適切な MIME タイプ (`application/manifest+json`) で配信されることをテストで確認する。
-- [ ] 1.4 `index.html` の `<head>` にファビコン、apple-touch-icon、manifest の `<link>` タグを追加し、ブラウザタブおよび開発者ツールで 404 が解消されていることを確認する。
+- [x] 1.1 ブランドロゴシンボル（Tag + Play）をデザインし、`favicon.svg` を作成して `src/TagBasedVideoManager/wwwroot/` に配置する。ブラウザで SVG が正常に描画されることを確認する。
+- [x] 1.2 `favicon.svg` からマルチサイズ ICO (`favicon.ico`: 16/32/48) および PNG (`apple-touch-icon.png`: 180x180, `icon-192.png`: 192x192, `icon-512.png`: 512x512) を生成して配置する。ファイルサイズと解像度を確認する。
+- [x] 1.3 `manifest.webmanifest` を作成し、アイコン定義、スタンドアロンモード (`display: standalone`)、テーマカラー (`#030712`) を設定する。Giraffe から適切な MIME タイプ (`application/manifest+json`) で配信されることをテストで確認する。
+- [x] 1.4 `index.html` の `<head>` にファビコン、apple-touch-icon、manifest の `<link>` タグを追加し、ブラウザタブおよび開発者ツールで 404 が解消されていることを確認する。
 
 ## 2. モバイルレイアウト基盤 & メイン画面 UI 実装
 

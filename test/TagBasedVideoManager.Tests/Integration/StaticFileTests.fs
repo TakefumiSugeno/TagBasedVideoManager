@@ -79,3 +79,70 @@ type StaticFileTests () =
 
         let response = client.GetAsync("/nonexistent.html").Result
         response.StatusCode |> should equal HttpStatusCode.NotFound
+
+    [<Fact>]
+    member _.``favicon_icoへのGETリクエストは200を返却する (IT-FAV-01)`` () =
+        let contentRoot, webRoot = getContentAndWebRoot ()
+        let builder =
+            WebHostBuilder()
+                .UseContentRoot(contentRoot)
+                .UseWebRoot(webRoot)
+                .ConfigureServices(Program.configureServices)
+                .Configure(Program.configureApp)
+
+        use server = new TestServer(builder)
+        use client = server.CreateClient()
+
+        let response = client.GetAsync("/favicon.ico").Result
+        response.StatusCode |> should equal HttpStatusCode.OK
+
+    [<Fact>]
+    member _.``favicon_svgへのGETリクエストは200およびimage_svg+xmlを返却する (IT-FAV-02)`` () =
+        let contentRoot, webRoot = getContentAndWebRoot ()
+        let builder =
+            WebHostBuilder()
+                .UseContentRoot(contentRoot)
+                .UseWebRoot(webRoot)
+                .ConfigureServices(Program.configureServices)
+                .Configure(Program.configureApp)
+
+        use server = new TestServer(builder)
+        use client = server.CreateClient()
+
+        let response = client.GetAsync("/favicon.svg").Result
+        response.StatusCode |> should equal HttpStatusCode.OK
+        response.Content.Headers.ContentType.MediaType |> should equal "image/svg+xml"
+
+    [<Fact>]
+    member _.``apple-touch-icon_pngへのGETリクエストは200およびimage_pngを返却する (IT-FAV-03)`` () =
+        let contentRoot, webRoot = getContentAndWebRoot ()
+        let builder =
+            WebHostBuilder()
+                .UseContentRoot(contentRoot)
+                .UseWebRoot(webRoot)
+                .ConfigureServices(Program.configureServices)
+                .Configure(Program.configureApp)
+
+        use server = new TestServer(builder)
+        use client = server.CreateClient()
+
+        let response = client.GetAsync("/apple-touch-icon.png").Result
+        response.StatusCode |> should equal HttpStatusCode.OK
+        response.Content.Headers.ContentType.MediaType |> should equal "image/png"
+
+    [<Fact>]
+    member _.``manifest_webmanifestへのGETリクエストは200およびapplication_manifest+jsonを返却する (IT-MAN-01)`` () =
+        let contentRoot, webRoot = getContentAndWebRoot ()
+        let builder =
+            WebHostBuilder()
+                .UseContentRoot(contentRoot)
+                .UseWebRoot(webRoot)
+                .ConfigureServices(Program.configureServices)
+                .Configure(Program.configureApp)
+
+        use server = new TestServer(builder)
+        use client = server.CreateClient()
+
+        let response = client.GetAsync("/manifest.webmanifest").Result
+        response.StatusCode |> should equal HttpStatusCode.OK
+        response.Content.Headers.ContentType.MediaType |> should equal "application/manifest+json"
