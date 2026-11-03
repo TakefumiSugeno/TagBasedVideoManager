@@ -59,25 +59,94 @@ TagBasedVideoManagerは、バイクツーリングの記録、旅行動画、大
 
 ### メイン画面 (動画ライブラリ)
 
-![メイン画面 (動画ライブラリ)](./doc/images/screenshot_main.png)
+![メイン画面 (動画ライブラリ)](./assets/images/screenshot_main.png)
 _(動画の一覧、お気に入り登録、複数選択、タグによる絞り込み等の操作を行うメインUIです)_
 
 ### 動画再生モーダル
 
-![動画再生モーダル](./doc/images/screenshot_player.png)
+![動画再生モーダル](./assets/images/screenshot_player.png)
 _(HTTP 206 Rangeリクエストによるスムーズなシークに対応した組み込み動画プレイヤーです)_
 
 ### 分析ダッシュボード・エラーログ
 
-![分析ダッシュボード](./doc/images/screenshot_dashboard.png)
+![分析ダッシュボード](./assets/images/screenshot_dashboard.png)
 _(再生ランキング、あなたへのおすすめ動画リスト、およびシステム例外エラーログが確認できます)_
 
 ### 設定管理モーダル
 
-![設定管理モーダル](./doc/images/screenshot_settings.png)
+![設定管理モーダル](./assets/images/screenshot_settings.png)
 _(タグ階層のCRUD、自動ルールの定義、およびTSV/JSONによる設定の一括入出力を行うUIです)_
 
 ---
+
+---
+
+## データベース設計 (SQLite Database Schema)
+
+本システムはローカル運用のための軽量・単一ファイルデータベースとして SQLite を採用しています。バックエンド起動時にテーブルが自動マイグレーション・初期化され、`ErrorLogs` テーブルは自動クリーンアップされます。
+
+```sql
+-- 1. 動画メタデータテーブル
+CREATE TABLE Videos (
+    Id TEXT PRIMARY KEY,
+    FileName TEXT NOT NULL,
+    FilePath TEXT NOT NULL UNIQUE,
+    Duration INTEGER NOT NULL,
+    FileSize INTEGER NOT NULL,
+    ThumbnailPath TEXT,
+    IsFavorite INTEGER DEFAULT 0,
+    CreatedAt TEXT NOT NULL,
+    AccessCount INTEGER DEFAULT 0,
+    LastAccessedAt TEXT
+);
+
+-- 2. タグ管理テーブル（自己参照階層）
+CREATE TABLE Tags (
+    Id TEXT PRIMARY KEY,
+    Name TEXT NOT NULL UNIQUE,
+    ColorCode TEXT DEFAULT '#71717a',
+    ParentId TEXT,
+    FOREIGN KEY (ParentId) REFERENCES Tags(Id) ON DELETE SET NULL
+);
+
+-- 3. ビデオ・タグ中間テーブル（多対多）
+CREATE TABLE VideoTags (
+    VideoId TEXT NOT NULL,
+    TagId TEXT NOT NULL,
+    PRIMARY KEY (VideoId, TagId),
+    FOREIGN KEY (VideoId) REFERENCES Videos(Id) ON DELETE CASCADE,
+    FOREIGN KEY (TagId) REFERENCES Tags(Id) ON DELETE CASCADE
+);
+
+-- 4. 自動タグ付けルールテーブル
+CREATE TABLE TaggingRules (
+    Id TEXT PRIMARY KEY,
+    Pattern TEXT NOT NULL,
+    TagId TEXT NOT NULL,
+    MatchType TEXT DEFAULT 'partial', -- prefix, suffix, partial, regex
+    TargetField TEXT DEFAULT 'fileName', -- fileName, filePath, folderName
+    MinSize INTEGER, -- 最小ファイルサイズ (MB)
+    MaxSize INTEGER, -- 最大ファイルサイズ (MB)
+    CreatedAt TEXT NOT NULL,
+    FOREIGN KEY (TagId) REFERENCES Tags(Id) ON DELETE CASCADE
+);
+
+-- 5. スマートフォルダテーブル
+CREATE TABLE SmartFolders (
+    Id TEXT PRIMARY KEY,
+    Name TEXT NOT NULL,
+    Query TEXT NOT NULL,
+    CreatedAt TEXT NOT NULL
+);
+
+-- 6. 例外エラーログテーブル
+CREATE TABLE ErrorLogs (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    Message TEXT NOT NULL,
+    StackTrace TEXT,
+    CreatedAt TEXT NOT NULL
+);
+```
 
 ## 動作環境 (Requirements)
 
