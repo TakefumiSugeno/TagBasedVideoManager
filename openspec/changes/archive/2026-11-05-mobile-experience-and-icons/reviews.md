@@ -157,3 +157,58 @@
 - **条件付きLGTM**: なし
 - **保留指摘（申し送り）**: なし
 - **次のアクション**: Gate 2 (apply) 検証スクリプト実行および Archive への移行案内
+
+---
+
+# レビュー記録: mobile-experience-and-icons / archive
+
+- **日時**: 2026-11-05
+- **フェーズ**: archive
+- **レビュアー**: User Reviewer, SE Reviewer, PG Reviewer, QA Reviewer Agents
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: 実装コード、テストコード、仕様書（`openspec/specs/`）、`mockup.html`、`handover.md`、Gate 検証結果
+
+---
+
+## 1. 隠された技術的負債・妥協点の自白（悪魔の代弁者）
+
+**担当: SE Reviewer Agent ＆ PG Reviewer Agent**
+
+1. **今回あえて残した技術的負債**:
+   - `lucide.createIcons()` への依存: 動的に切り替わるアイコン（表示切り替えトグル、ソート順、トースト、動画プレースホルダー）は `x-show` ＋ インライン SVG に変更して増殖バグを根絶したが、静的ボタン等にはまだ `data-lucide` が残っている。現時点では静的要素に対する再実行は安全であるが、将来的な SVG スプライト化を `handover.md` の改善候補に記録した。
+2. **将来の機能追加で踏み抜く可能性が高い罠**:
+   - 今後新しい切り替えトグルや動的要素を追加する際、`<template x-if>` の中に `<i data-lucide="...">` を直接記述すると、Lucide の `replaceChild` による DOM 置換と Alpine.js のノード追跡の乖離により、再度アイコン増殖バグを踏み抜くリスクがある。動的表示切り替えには `x-show` ＋ インライン SVG を採用することを規約化する。
+
+---
+
+## 2. 初見エンジニア視点でのドキュメント検証（Whyの欠落告発）
+
+**担当: User Reviewer Agent**
+
+1. **設計の背景（Why）の追跡可能性**:
+   - なぜ 2列グリッドとスリムリストの 2 モードを用意したのか、なぜ全画面プレイヤーに連続視聴ナビを配置したのかの背景とトレードオフが `proposal.md`, `design.md`, `specs/` に詳細に言語化されている。
+   - `handover.md` にも不具合の根本原因と解消手順が記録されており、初見のエンジニアでも迷わず理解可能。
+2. **トラブルシューティング手順の十分性**:
+   - `DATABASE_PATH` 親ディレクトリ未存在エラー、およびアイコン増殖不具合の原因と対処法が `handover.md` に明記されており、運用時の自己解決性が担保されている。
+
+---
+
+## 3. ロールバック・安全性の最終検証
+
+**担当: SE Reviewer Agent ＆ QA Reviewer Agent**
+
+1. **ロールバック（Revert）手順の検証**:
+   - 本変更はフロントエンド静的ファイル群（HTML/CSS/JS/アセット）および E2E テストの追加・更新が主体であり、DB スキーマへの破壊的変更や非可逆なデータ移行は含まれていない。
+   - 万が一不具合が生じた場合でも、本変更のコミットを `git revert` するだけで直前の安定バージョンへ安全にロールバック可能。
+2. **保留指摘の全件引き継ぎ確認**:
+   - 保留指摘（Minor/Suggestion）は 0 件であり、全課題が解消されていることを確認。
+
+---
+
+## 総合判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: handover.md に全ての負債・申し送りが記録済み
+- **リリース可否**: 即時リリース可
+- **承認者**: User Reviewer, SE Reviewer, PG Reviewer, QA Reviewer Agents
