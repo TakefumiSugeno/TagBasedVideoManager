@@ -122,15 +122,46 @@
           <!-- 表示切り替えトグル（2列グリッド ⇄ スリムリスト：機能は欠落せずレイアウトのみ切替） -->
           <button
             @click="toggleViewMode()"
-            class="touch-target text-slate-400 hover:text-indigo-400 active:scale-95 transition-all"
+            class="touch-target text-slate-400 hover:text-indigo-400 active:scale-95 transition-all flex items-center justify-center"
             :title="viewMode === 'grid' ? 'スリムリスト表示へ切替' : '2列グリッド表示へ切替'"
           >
-            <template x-if="viewMode === 'grid'">
-              <i data-lucide="list" class="w-4 h-4 text-indigo-400"></i>
-            </template>
-            <template x-if="viewMode === 'compact'">
-              <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-400"></i>
-            </template>
+            <span
+              x-show="viewMode === 'grid'"
+              class="inline-flex items-center justify-center"
+            >
+              <svg
+                class="w-4 h-4 text-indigo-400 fill-none stroke-current"
+                viewBox="0 0 24 24"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+            </span>
+            <span
+              x-show="viewMode === 'compact'"
+              class="inline-flex items-center justify-center"
+              style="display: none"
+            >
+              <svg
+                class="w-4 h-4 text-indigo-400 fill-none stroke-current"
+                viewBox="0 0 24 24"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+            </span>
           </button>
 
           <!-- お気に入り絞り込みトグル -->

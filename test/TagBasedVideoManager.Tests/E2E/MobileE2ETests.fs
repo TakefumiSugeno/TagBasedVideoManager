@@ -538,3 +538,126 @@ type MobileE2ETests (output: ITestOutputHelper) =
                     if File.Exists(f) then
                         try File.Delete(f) with | _ -> ()
         }
+
+    [<Fact>]
+    member _.``E2E Mobile: 表示切り替えボタンをクリックしてもアイコンが増殖しないこと`` () =
+        task {
+            let contentRoot = Directory.GetCurrentDirectory()
+            let dbPath = Path.Combine(contentRoot, $"test_e2e_mobile_icon_duplication_{Guid.NewGuid():N}.db")
+            let dummyFiles = seedTestData dbPath
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools()
+
+            let host, url = startTestServer dbPath
+            try
+                do! host.StartAsync()
+
+                let! (playwright: IPlaywright) = Playwright.CreateAsync()
+                let! (browser: IBrowser) = playwright.Chromium.LaunchAsync(BrowserTypeLaunchOptions(Headless = true))
+                let! (page: IPage) = browser.NewPageAsync(BrowserNewPageOptions(
+                    ViewportSize = ViewportSize(Width = 390, Height = 844),
+                    IsMobile = Nullable true,
+                    HasTouch = Nullable true
+                ))
+
+                let! _ = page.GotoAsync(url)
+                let toggleBtn = page.Locator("button[title*='表示へ切替']").First
+                do! toggleBtn.WaitForAsync(LocatorWaitForOptions(State = WaitForSelectorState.Visible, Timeout = Nullable 10000.0f))
+
+                // 初期状態のSVG数を確認 (1個)
+                let! (count0: int) = toggleBtn.Locator("svg:visible").CountAsync()
+                output.WriteLine($"[ICON_CHECK] Initial SVG count: {count0}")
+                count0 |> should equal 1
+
+                // 1回目の切り替え
+                do! toggleBtn.ClickAsync()
+                do! page.WaitForTimeoutAsync(200.0f)
+                let! (count1: int) = toggleBtn.Locator("svg:visible").CountAsync()
+                output.WriteLine($"[ICON_CHECK] After 1st click SVG count: {count1}")
+                count1 |> should equal 1
+
+                // 2回目の切り替え
+                do! toggleBtn.ClickAsync()
+                do! page.WaitForTimeoutAsync(200.0f)
+                let! (count2: int) = toggleBtn.Locator("svg:visible").CountAsync()
+                output.WriteLine($"[ICON_CHECK] After 2nd click SVG count: {count2}")
+                count2 |> should equal 1
+
+                // 3回目の切り替え
+                do! toggleBtn.ClickAsync()
+                do! page.WaitForTimeoutAsync(200.0f)
+                let! (count3: int) = toggleBtn.Locator("svg:visible").CountAsync()
+                output.WriteLine($"[ICON_CHECK] After 3rd click SVG count: {count3}")
+                count3 |> should equal 1
+
+                do! browser.CloseAsync()
+            finally
+                host.Dispose()
+                if File.Exists(dbPath) then
+                    try File.Delete(dbPath) with | _ -> ()
+                for f in dummyFiles do
+                    if File.Exists(f) then
+                        try File.Delete(f) with | _ -> ()
+        }
+
+    [<Fact>]
+    member _.``E2E Desktop: グリッド表示とリスト表示を切り替えてもアイコンが増殖しないこと`` () =
+        task {
+            let contentRoot = Directory.GetCurrentDirectory()
+            let dbPath = Path.Combine(contentRoot, $"test_e2e_desktop_icon_duplication_{Guid.NewGuid():N}.db")
+            let dummyFiles = seedTestData dbPath
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools()
+
+            let host, url = startTestServer dbPath
+            try
+                do! host.StartAsync()
+
+                let! (playwright: IPlaywright) = Playwright.CreateAsync()
+                let! (browser: IBrowser) = playwright.Chromium.LaunchAsync(BrowserTypeLaunchOptions(Headless = true))
+                let! (page: IPage) = browser.NewPageAsync(BrowserNewPageOptions(
+                    ViewportSize = ViewportSize(Width = 1280, Height = 800)
+                ))
+
+                let! _ = page.GotoAsync(url)
+                let gridBtn = page.Locator("button[title='グリッド表示']").First
+                let listBtn = page.Locator("button[title='リスト表示']").First
+                do! gridBtn.WaitForAsync(LocatorWaitForOptions(State = WaitForSelectorState.Visible, Timeout = Nullable 10000.0f))
+
+                // 各ボタンのSVG数が常に1個であること
+                let! (gridSvg0: int) = gridBtn.Locator("svg").CountAsync()
+                let! (listSvg0: int) = listBtn.Locator("svg").CountAsync()
+                gridSvg0 |> should equal 1
+                listSvg0 |> should equal 1
+
+                // リスト表示へ切り替え
+                do! listBtn.ClickAsync()
+                do! page.WaitForTimeoutAsync(200.0f)
+                let! (gridSvg1: int) = gridBtn.Locator("svg").CountAsync()
+                let! (listSvg1: int) = listBtn.Locator("svg").CountAsync()
+                gridSvg1 |> should equal 1
+                listSvg1 |> should equal 1
+
+                // グリッド表示へ切り替え
+                do! gridBtn.ClickAsync()
+                do! page.WaitForTimeoutAsync(200.0f)
+                let! (gridSvg2: int) = gridBtn.Locator("svg").CountAsync()
+                let! (listSvg2: int) = listBtn.Locator("svg").CountAsync()
+                gridSvg2 |> should equal 1
+                listSvg2 |> should equal 1
+
+                // 再度リスト表示へ切り替え
+                do! listBtn.ClickAsync()
+                do! page.WaitForTimeoutAsync(200.0f)
+                let! (gridSvg3: int) = gridBtn.Locator("svg").CountAsync()
+                let! (listSvg3: int) = listBtn.Locator("svg").CountAsync()
+                gridSvg3 |> should equal 1
+                listSvg3 |> should equal 1
+
+                do! browser.CloseAsync()
+            finally
+                host.Dispose()
+                if File.Exists(dbPath) then
+                    try File.Delete(dbPath) with | _ -> ()
+                for f in dummyFiles do
+                    if File.Exists(f) then
+                        try File.Delete(f) with | _ -> ()
+        }
