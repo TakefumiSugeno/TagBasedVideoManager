@@ -197,7 +197,29 @@ OPENROUTER_MODEL=google/gemini-2.0-flash-lite-preview-02-05:free
 PATH_LENGTH_THRESHOLD=240
 ```
 
-### 3. Docker Composeによるコンテナ起動 (Web アプリ)
+### 3. コンテナ起動 (Web アプリ)
+
+本アプリは単一コンテナ構成であり、Docker Compose なしで直接 OCI ランタイムから起動できます。
+Windows 11（WSL 3.0 / Docker Desktop）および Linux（Docker / Podman）向けに、ワンクリックでビルド・再起動・ヘルスチェックを行うデプロイスクリプトを用意しています。
+
+#### (A) デプロイスクリプトを使用する場合 (推奨)
+
+- **Windows 11 (WSL 3.0 または Docker Desktop)**:
+  PowerShell で以下を実行します。WSL 3.0 (`wslc`) または `docker` を自動検出し、ポート 5620 の事前チェック、旧コンテナの安全な停止・削除、イメージビルド、コンテナ再起動、およびヘルスチェック（失敗時は自動で `logs` を表示）を実行します。
+
+  ```powershell
+  pwsh ./scripts/deploy.ps1
+  ```
+
+  ※WSL 3.0 (`wslc`) 利用時は Docker Desktop なしで直接コンテナを稼働できます。AMD GPU をパススルーする場合は `-EnableGpu` オプションを指定できます。
+
+- **Linux (Docker または Podman)**:
+  Bash で以下を実行します。`docker` または `podman` を自動検出してデプロイします。
+  ```bash
+  ./scripts/deploy.sh
+  ```
+
+#### (B) Docker Compose を使用する場合
 
 `docker-compose.yml` で利用するデバイス（GPU）に合わせて以下の設定変更を行います。
 
@@ -285,6 +307,22 @@ AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベ�
 ---
 
 ## 開発者向け情報とテスト実行 (For Developers & Testing)
+
+### DevContainer による開発環境 (VS Code)
+
+本リポジトリには VS Code DevContainer 定義（`.devcontainer/`）が含まれており、ローカル環境に .NET SDK や FFmpeg を個別にセットアップすることなく、コンテナ内で統一された開発環境を即座に立ち上げることができます。
+
+- **含まれるツール**:
+  - .NET 10 SDK
+  - FFmpeg / ffprobe
+  - SQLite3
+  - F# (Ionide-fsharp) / C# DevKit 拡張機能
+- **開発用ポートの分離 (5621)**:
+  本番用コンテナ（ポート 5620）とのポート競合を防ぐため、DevContainer 開発環境は **ポート 5621**（環境変数 `PORT=5621`）に分離・自動フォワードされています。常用コンテナを起動したまま安全に並行開発が可能です。
+- **利用手順**:
+  1. VS Code で本リポジトリを開きます。
+  2. コマンドパレット（`Ctrl+Shift+P`）から `Dev Containers: Reopen in Container` を選択します。
+  3. コンテナ起動後、ターミナルで `dotnet run --project src/TagBasedVideoManager` を実行すると `http://localhost:5621` でアプリが立ち上がります。
 
 ### ローカル起動 (Web アプリケーション)
 

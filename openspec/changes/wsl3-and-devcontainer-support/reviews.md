@@ -54,14 +54,55 @@
 
 ---
 
-## 3. 総合判定
+## 3. PG Reviewer Agent レビュー結果（Apply フェーズ）
+
+- **レビュアー**: pg (PG Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`（コード品質・削減・暗黙の仮定告発）
+- **判定**: **LGTM: true**
+
+### 悪魔の代弁者設問回答・検証サマリ
+
+1. **暗黙の前提（都合の良い思い込み）の検証**:
+   - `ContainerController.parseContainerPsOutput` は出力が複数行にわたる場合や、コンテナランタイムの非 JSON ログ・警告文が混入するケースを考慮し、行単位で分割して個別に JSON パースを試みる設計となっている。パース失敗行は `eprintfn` で標準エラー出力に生テキストを出力しつつスキップするため、ランタイム警告によるクラッシュや状態判定不能を防止している。
+   - `executeActionWithTimeout` においては、タイムアウト発生時に `Kill(entireProcessTree = true)` を指定してプロセスツリーごと強制終了し、リソースリークやゾンビプロセスの発生を防止している。
+2. **例外の握りつぶし・根拠のないフォールバックの排除**:
+   - Propose レビューの指摘事項通り、非ゼロ終了コード（ExitCode ≠ 0）時は stderr を保持して `ContainerError` に含め、パース失敗時は生テキストを標準エラー出力へ記録して可観測性を確保した。
+3. **過剰抽象化の排除（YAGNI検証）**:
+   - Docker Compose のプロジェクト/サービス階層を全廃し、単一コンテナ OCI CLI に特化した 170 行程度の純粋関数型モジュール（`ContainerController.fs`）として最小限かつ明瞭に実装された。
+   - PowerShell スクリプト（`scripts/common.ps1`）も 5 つの独立した純粋関数（パス変換、ポート競合チェック、ポート解決、ランタイム検出、引数生成）に構造化され、重複なく簡潔にまとまっている。
+
+---
+
+## 4. QA Reviewer Agent レビュー結果（Apply フェーズ）
+
+- **レビュアー**: qa (QA Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md`（Adversarial QA・網羅性検証）
+- **判定**: **LGTM: true**
+
+### Adversarial QA（破壊テスト実行による客観的判定）
+
+1. **破壊テストの作成・実行**:
+   - 不正な JSON 出力（壊れた JSON 文字列 `{"broken` や空文字、改行のみ）および未定義フィールドを含む JSON を `parseContainerPsOutput` に注入するテスト（`UT-CC-07`, `UT-CC-08`）を実行。
+   - 存在しない CLI コマンドや非ゼロ終了コード、タイムアウト（10 秒超過）をシミュレートするテスト（`UT-RUN-02`, `UT-RUN-03`, `IT-CC-02`）を実行。
+   - パス変換（`ConvertTo-WslPath`）への不正な空文字や存在しないドライブ文字注入テスト（`UT-PATH-03`, `UT-PATH-04`）を実行。
+2. **実行結果**:
+   - 判定: **落とせなかった（Green / 堅牢性を確認）**
+   - 不正入力やタイムアウトに対しても例外でクラッシュすることなく、適切に `Result.Error` / 警告ログ出力 / 安全なフォールバックが行われることを確認した。
+3. **テスト品質・C0/C1/C2 網羅**:
+   - `TagBasedVideoManager.Renamer.Tests`: 292 件成功（失敗 0 / スキップ 0）
+   - `TagBasedVideoManager.Tests`: 83 件成功（失敗 0 / スキップ 0）
+   - 全体計 375 件の自動テストがすべて PASS。トートロジーや無断 skip は皆無であることを確認。
+
+---
+
+## 5. 総合判定
 
 - **LGTM**: true
 - **条件付きLGTM**: なし
 - **指摘サマリ**:
   - `Critical`: 0 件
-  - `Major`: 0 件（当初 5 件検出、全件修正済み）
-  - `Minor`: 0 件（当初 4 件検出、全件修正済み）
-  - `Suggestion`: 0 件（当初 1 件検出、全件修正済み）
+  - `Major`: 0 件
+  - `Minor`: 0 件
+  - `Suggestion`: 0 件
 - **保留指摘（申し送り）**: なし
-- **承認者**: User Reviewer Agent, SE Reviewer Agent
+- **承認者**: User Reviewer Agent, SE Reviewer Agent, PG Reviewer Agent, QA Reviewer Agent

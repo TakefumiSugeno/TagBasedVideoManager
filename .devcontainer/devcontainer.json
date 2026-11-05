@@ -1,0 +1,25 @@
+{
+  "name": "TagBasedVideoManager DevContainer",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  // 本番コンテナ (5620) との競合を防ぐため開発用ポート 5621 をフォワード
+  "forwardPorts": ["5621"],
+  "containerEnv": {
+    "PORT": "5621"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Ionide.Ionide-fsharp",
+        "ms-dotnettools.csdevkit",
+        "ms-dotnettools.csharp",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "dotnet.defaultSolution": "TagBasedVideoManager.slnx"
+      }
+    }
+  },
+  "postCreateCommand": "dotnet restore"
+}

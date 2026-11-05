@@ -13,6 +13,7 @@
     <Compile Include="WebSearchClient.fs" />
     <Compile Include="OpenRouterClient.fs" />
     <Compile Include="DockerController.fs" />
+    <Compile Include="ContainerController.fs" />
     <Compile Include="State.fs" />
     <Compile Include="Views.fs" />
     <Compile Include="Program.fs" />

@@ -224,7 +224,7 @@ module State =
                 (fun cfg -> SettingsLoaded (Ok cfg))
 
         let checkDockerCmd =
-            Cmd.OfAsync.perform (fun () -> DockerController.checkStatus None None (Directory.GetCurrentDirectory())) () DockerStatusUpdated
+            Cmd.OfAsync.perform (fun () -> ContainerController.checkStatus (ContainerController.defaultRuntime ()) None None (Directory.GetCurrentDirectory())) () DockerStatusUpdated
 
         model, Cmd.batch [ loadSettingsCmd; checkDockerCmd ]
 
@@ -532,7 +532,7 @@ module State =
             if restartContainer then
                 let restartCmd =
                     Cmd.OfAsync.perform
-                        (fun () -> DockerController.executeAction None (Directory.GetCurrentDirectory()) "restart tag-based-video-manager")
+                        (fun () -> ContainerController.executeAction (ContainerController.defaultRuntime ()) None (Directory.GetCurrentDirectory()) "restart")
                         ()
                         (fun res -> DockerCommandCompleted ("restart", res))
                 newModel, Cmd.batch [ restartCmd; Cmd.ofMsg CheckDockerStatus ]
@@ -568,7 +568,7 @@ module State =
                             match FileRenamer.executeUndo lastRecords with
                             | Ok () ->
                                 // 元ファイル復元成功後、コンテナを再起動
-                                let! _ = DockerController.executeAction None (Directory.GetCurrentDirectory()) "restart tag-based-video-manager"
+                                let! _ = ContainerController.executeAction (ContainerController.defaultRuntime ()) None (Directory.GetCurrentDirectory()) "restart"
                                 return Ok ()
                             | Error err ->
                                 return Error err
@@ -589,7 +589,7 @@ module State =
         | CheckDockerStatus ->
             let cmd =
                 Cmd.OfAsync.perform
-                    (fun () -> DockerController.checkStatus None None (Directory.GetCurrentDirectory()))
+                    (fun () -> ContainerController.checkStatus (ContainerController.defaultRuntime ()) None None (Directory.GetCurrentDirectory()))
                     ()
                     DockerStatusUpdated
             model, cmd
@@ -600,15 +600,20 @@ module State =
         | ExecuteDockerAction action ->
             let cmd =
                 Cmd.OfAsync.perform
-                    (fun () -> DockerController.executeAction None (Directory.GetCurrentDirectory()) action)
+                    (fun () -> ContainerController.executeAction (ContainerController.defaultRuntime ()) None (Directory.GetCurrentDirectory()) action)
                     ()
                     (fun res -> DockerCommandCompleted (action, res))
             { model with IsDockerBusy = true }, cmd
 
         | DockerCommandCompleted (_, Ok _) ->
             model, Cmd.ofMsg CheckDockerStatus
+        | DockerCommandCompleted (action, Error (ContainerError (_, _, stderr))) ->
+            { model with IsDockerBusy = false; ErrorMessage = Some ($"コンテナ コマンド '{action}' エラー: {stderr}") }, Cmd.ofMsg CheckDockerStatus
         | DockerCommandCompleted (action, Error (DockerError (_, _, stderr))) ->
-            { model with IsDockerBusy = false; ErrorMessage = Some ($"Docker コマンド '{action}' エラー: {stderr}") }, Cmd.ofMsg CheckDockerStatus
+            { model with IsDockerBusy = false; ErrorMessage = Some ($"コンテナ コマンド '{action}' エラー: {stderr}") }, Cmd.ofMsg CheckDockerStatus
+        | DockerCommandCompleted (action, Error (TimeoutError cmd)) ->
+            { model with IsDockerBusy = false; ErrorMessage = Some ($"コンテナ コマンド '{cmd}' がタイムアウトしました。") }, Cmd.ofMsg CheckDockerStatus
+
         | DockerCommandCompleted (_, Error other) ->
             { model with IsDockerBusy = false; ErrorMessage = Some ($"Docker エラー: {other}") }, Cmd.ofMsg CheckDockerStatus
 
