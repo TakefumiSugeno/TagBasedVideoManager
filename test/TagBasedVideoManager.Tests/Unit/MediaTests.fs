@@ -113,3 +113,43 @@ type MediaTests () =
                 Assert.Fail($"Thumbnail generation failed with high speed seek & fallback config: {err}")
 
 
+
+    [<Fact>]
+    member _.``GenerateThumbnailは出力先の親ディレクトリが存在しない場合でも自動作成してサムネイルを生成できること`` () =
+        if not (isFFmpegAvailable()) then
+            ()
+        else
+            createDummyVideo()
+            let processor = MediaProcessor() :> IMediaProcessor
+            let nonExistentDir = Path.Combine(AppContext.BaseDirectory, $"non_existent_thumbs_{Guid.NewGuid():N}")
+            let nestedThumbPath = Path.Combine(nonExistentDir, "nested", "test_thumb.jpg")
+            
+            try
+                let result = processor.GenerateThumbnail(dummyVideoPath, nestedThumbPath) |> Async.RunSynchronously
+                match result with
+                | Ok path ->
+                    path |> should equal nestedThumbPath
+                    File.Exists(nestedThumbPath) |> should be True
+                | Error err ->
+                    Assert.Fail($"Thumbnail generation failed with non-existent dir: {err}")
+            finally
+                if Directory.Exists(nonExistentDir) then
+                    try Directory.Delete(nonExistentDir, true) with _ -> ()
+
+    [<Fact>]
+    member _.``GenerateThumbnailはoutputPathがnullまたは空の場合に例外を投げずResult型でエラーを返すこと`` () =
+        let processor = MediaProcessor() :> IMediaProcessor
+        let dummyVideo = Path.Combine(AppContext.BaseDirectory, $"dummy_guard_{Guid.NewGuid():N}.mp4")
+        File.WriteAllText(dummyVideo, "dummy")
+        try
+            let resultNull = processor.GenerateThumbnail(dummyVideo, null) |> Async.RunSynchronously
+            match resultNull with
+            | Error (InvalidFormat msg) -> msg.Length |> should be (greaterThan 0)
+            | other -> Assert.Fail($"Expected Error (InvalidFormat), but got: {other}")
+
+            let resultEmpty = processor.GenerateThumbnail(dummyVideo, "") |> Async.RunSynchronously
+            match resultEmpty with
+            | Error (InvalidFormat msg) -> msg.Length |> should be (greaterThan 0)
+            | other -> Assert.Fail($"Expected Error (InvalidFormat), but got: {other}")
+        finally
+            if File.Exists(dummyVideo) then try File.Delete(dummyVideo) with _ -> ()

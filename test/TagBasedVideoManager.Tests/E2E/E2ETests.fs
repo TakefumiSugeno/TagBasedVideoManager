@@ -253,6 +253,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = false
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -362,6 +363,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = false
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -375,6 +377,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = false
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -502,6 +505,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = true // お気に入り
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -515,6 +519,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = false
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -646,6 +651,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = false
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -876,6 +882,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = false
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -995,6 +1002,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = false
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -1008,6 +1016,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = false
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -1150,6 +1159,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = false
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.AccessCount = 5
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = Some DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -1246,6 +1256,7 @@ type E2ETests (output: ITestOutputHelper) =
                         TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                         TagBasedVideoManager.Domain.Video.IsFavorite = false
                         TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow.AddMinutes(float -i)
+                        TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow.AddMinutes(float -i)
                         TagBasedVideoManager.Domain.Video.AccessCount = 0
                         TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                         TagBasedVideoManager.Domain.Video.Tags = []
@@ -1352,6 +1363,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = false
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow.AddMinutes(-5.0)
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow.AddMinutes(-5.0)
                     TagBasedVideoManager.Domain.Video.AccessCount = 5
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -1365,6 +1377,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.ThumbnailPath = None
                     TagBasedVideoManager.Domain.Video.IsFavorite = false
                     TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.AccessCount = 10
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
@@ -1502,6 +1515,108 @@ type E2ETests (output: ITestOutputHelper) =
                 host.Dispose()
                 if File.Exists(dbPath) then
                     try File.Delete(dbPath) with | _ -> ()
+        }
+
+    [<Fact>]
+    member _.``E2E: 動画一覧のファイル更新日時による並び替えが正常に動作する`` () =
+        task {
+            let contentRoot = Directory.GetCurrentDirectory()
+            let dbPath = Path.Combine(contentRoot, $"test_e2e_mod_sort_{Guid.NewGuid():N}.db")
+            let dummyVideoFile1 = Path.Combine(contentRoot, $"dummy_mod_video1_{Guid.NewGuid():N}.mp4")
+            let dummyVideoFile2 = Path.Combine(contentRoot, $"dummy_mod_video2_{Guid.NewGuid():N}.mp4")
+            File.WriteAllBytes(dummyVideoFile1, [| 0uy; 0uy; 0uy; 0uy |])
+            File.WriteAllBytes(dummyVideoFile2, [| 0uy; 0uy; 0uy; 0uy |])
+            
+            do
+                use conn = TagBasedVideoManager.Infrastructure.Db.getConnection dbPath
+                let _ = TagBasedVideoManager.Infrastructure.DbInit.initializeDatabase conn |> ignore
+                let v1 = {
+                    TagBasedVideoManager.Domain.Video.Id = "v_mod_1"
+                    TagBasedVideoManager.Domain.Video.FileName = "Alpha_Old_Video.mp4"
+                    TagBasedVideoManager.Domain.Video.FilePath = dummyVideoFile1
+                    TagBasedVideoManager.Domain.Video.Duration = 10L
+                    TagBasedVideoManager.Domain.Video.FileSize = 1000L
+                    TagBasedVideoManager.Domain.Video.ThumbnailPath = None
+                    TagBasedVideoManager.Domain.Video.IsFavorite = false
+                    TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow.AddYears(-3) // 古い更新日時
+                    TagBasedVideoManager.Domain.Video.AccessCount = 0
+                    TagBasedVideoManager.Domain.Video.LastAccessedAt = None
+                    TagBasedVideoManager.Domain.Video.Tags = []
+                }
+                let v2 = {
+                    TagBasedVideoManager.Domain.Video.Id = "v_mod_2"
+                    TagBasedVideoManager.Domain.Video.FileName = "Beta_New_Video.mp4"
+                    TagBasedVideoManager.Domain.Video.FilePath = dummyVideoFile2
+                    TagBasedVideoManager.Domain.Video.Duration = 10L
+                    TagBasedVideoManager.Domain.Video.FileSize = 1000L
+                    TagBasedVideoManager.Domain.Video.ThumbnailPath = None
+                    TagBasedVideoManager.Domain.Video.IsFavorite = false
+                    TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                    TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow.AddDays(-1.0) // 新しい更新日時
+                    TagBasedVideoManager.Domain.Video.AccessCount = 0
+                    TagBasedVideoManager.Domain.Video.LastAccessedAt = None
+                    TagBasedVideoManager.Domain.Video.Tags = []
+                }
+                let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn v1 |> Async.RunSynchronously
+                let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn v2 |> Async.RunSynchronously
+                ()
+
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools()
+
+            let host, url = startTestServer dbPath
+            do! host.StartAsync()
+
+            try
+                use! playwright = Playwright.CreateAsync()
+                let! browser = playwright.Chromium.LaunchAsync(BrowserTypeLaunchOptions(Headless = true))
+                let! page = browser.NewPageAsync()
+                let! (cdp: ICDPSession) = page.Context.NewCDPSessionAsync(page)
+                let! _ = cdp.SendAsync("Profiler.enable", null)
+                let args = System.Collections.Generic.Dictionary<string, obj>()
+                args.Add("callCount", true)
+                args.Add("detailed", true)
+                let! _ = cdp.SendAsync("Profiler.startPreciseCoverage", args)
+                let! _ = page.GotoAsync(url)
+
+                let cards = page.Locator("div[x-show=\"viewMode === 'grid'\"] > div")
+                let! _ = page.WaitForSelectorAsync("div[x-show=\"viewMode === 'grid'\"] > div")
+
+                let! toolbarVisible = page.Locator("div[x-show='showToolbar']").IsVisibleAsync()
+                if not toolbarVisible then
+                    do! page.ClickAsync("button[title='表示設定ツールバーの開閉']")
+
+                // ソートを「更新日時」に変更 (値: "fileModifiedAt")
+                let! _ = page.SelectOptionAsync("select[x-model='sortBy']", "fileModifiedAt")
+                do! page.WaitForTimeoutAsync(300.0f)
+
+                // 降順なので更新日時が新しい Beta_New_Video.mp4 が最初
+                let! sortedFirstCardText = cards.Nth(0).Locator(".video-title-text").TextContentAsync()
+                sortedFirstCardText.Trim() |> should equal "Beta_New_Video.mp4"
+
+                // 昇順（ASC）に変更して並び替え順が反転する（Alpha_Old_Video.mp4 が最初になる）ことを確認
+                let! _ = page.ClickAsync("button[title='降順'], button[title='昇順']")
+                do! page.WaitForTimeoutAsync(300.0f)
+
+                let! ascFirstCardText = cards.Nth(0).Locator(".video-title-text").TextContentAsync()
+                ascFirstCardText.Trim() |> should equal "Alpha_Old_Video.mp4"
+
+                let! covResult = cdp.SendAsync("Profiler.takePreciseCoverage", null)
+                if covResult.HasValue then
+                    E2ETests.ParseAndAddCoverage(covResult.Value)
+                let! _ = cdp.SendAsync("Profiler.stopPreciseCoverage", null)
+                let! _ = cdp.SendAsync("Profiler.disable", null)
+                do! cdp.DetachAsync()
+                do! browser.CloseAsync()
+
+            finally
+                host.Dispose()
+                if File.Exists(dbPath) then
+                    try File.Delete(dbPath) with | _ -> ()
+                if File.Exists(dummyVideoFile1) then
+                    try File.Delete(dummyVideoFile1) with | _ -> ()
+                if File.Exists(dummyVideoFile2) then
+                    try File.Delete(dummyVideoFile2) with | _ -> ()
         }
 
 

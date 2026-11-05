@@ -53,6 +53,7 @@ type RuleTests () =
             ThumbnailPath = None
             IsFavorite = false
             CreatedAt = DateTime.UtcNow
+            FileModifiedAt = DateTime.UtcNow
             AccessCount = 0
             LastAccessedAt = None
             Tags = []

@@ -21,6 +21,7 @@ type Video = {
     ThumbnailPath: string option
     IsFavorite: bool
     CreatedAt: DateTime
+    FileModifiedAt: DateTime
     AccessCount: int
     LastAccessedAt: DateTime option
     Tags: Tag list

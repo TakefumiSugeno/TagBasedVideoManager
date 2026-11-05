@@ -39,7 +39,7 @@ function videoManager() {
 
     gridSize: "md", // 'sm' | 'md' | 'lg'
 
-    sortBy: "createdAt", // 'createdAt' | 'fileName' | 'duration' | 'fileSize' | 'accessCount'
+    sortBy: "fileModifiedAt", // 'fileModifiedAt' | 'createdAt' | 'fileName' | 'fileSize' | 'accessCount' | 'duration'
 
     sortOrder: "desc", // 'desc' | 'asc'
 
@@ -234,7 +234,11 @@ function videoManager() {
 
         let valB = b[this.sortBy];
 
-        if (this.sortBy === "createdAt") {
+        if (this.sortBy === "fileModifiedAt") {
+          valA = new Date(valA || a.createdAt).getTime();
+
+          valB = new Date(valB || b.createdAt).getTime();
+        } else if (this.sortBy === "createdAt") {
           valA = new Date(valA).getTime();
 
           valB = new Date(valB).getTime();

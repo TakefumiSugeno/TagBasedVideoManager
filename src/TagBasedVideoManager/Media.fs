@@ -139,41 +139,47 @@ type MediaProcessor () =
 
         member this.GenerateThumbnail(videoPath, outputPath) =
             async {
-                let resolvedPath = PathHelper.resolvePhysicalPath videoPath
-                if not (File.Exists(resolvedPath)) then
-                    return Error (FileNotFound videoPath)
+                if String.IsNullOrWhiteSpace(outputPath) then
+                    return Error (InvalidFormat "Output path is null or empty")
                 else
-                    // 1. 動画の長さを取得して中間地点（秒）を算出 (1秒以下の動画は先頭0.0秒から切り出す)
-                    let! metaResult = (this :> IMediaProcessor).GetMetadata(resolvedPath)
-                    let ssSec =
-                        match metaResult with
-                        | Ok (duration, _) when duration > 1L -> float duration / 2.0
-                        | _ -> 0.0
-                    
-                    // 2. まずは高速シーク（-ss を -i の前）で試行（余計なデコードが発生せず一瞬で完了）
-                    let fastArgs = $"-y -ss {ssSec.ToString(CultureInfo.InvariantCulture)} -hwaccel auto -i \"{resolvedPath}\" -vframes 1 -q:v 2 -pix_fmt yuvj420p \"{outputPath}\""
-                    let! fastResult = runProcess true "ffmpeg" fastArgs
-                    
-                    let! finalResult =
-                        match fastResult with
-                        | Ok _ when File.Exists(outputPath) ->
-                            async { return Ok (outputPath, "fast") }
-                        | _ ->
-                            // 高速シークで失敗、またはファイルが出力されなかった場合は、
-                            // 従来の安全シーク（-ss を -i の後）でフォールバック実行（デコードを伴うため遅いが確実）
-                            let safeArgs = $"-y -hwaccel auto -i \"{resolvedPath}\" -ss {ssSec.ToString(CultureInfo.InvariantCulture)} -vframes 1 -q:v 2 -pix_fmt yuvj420p \"{outputPath}\""
-                            async {
-                                let! safeResult = runProcess true "ffmpeg" safeArgs
-                                match safeResult with
-                                | Ok _ -> return Ok (outputPath, "safe")
-                                | Error err -> return Error err
-                            }
-                    
-                    match finalResult with
-                    | Ok (path, mode) ->
-                        if File.Exists(path) then
-                            return Ok path
-                        else
-                            return Error (FFmpegExecutionError $"Output thumbnail file was not created via {mode} seek.")
-                    | Error err -> return Error err
+                    let resolvedPath = PathHelper.resolvePhysicalPath videoPath
+                    if not (File.Exists(resolvedPath)) then
+                        return Error (FileNotFound videoPath)
+                    else
+                        let thumbDir = Path.GetDirectoryName(outputPath)
+                        if not (String.IsNullOrEmpty(thumbDir)) && not (Directory.Exists(thumbDir)) then
+                            try Directory.CreateDirectory(thumbDir) |> ignore with _ -> ()
+                        // 1. 動画の長さを取得して中間地点（秒）を算出 (1秒以下の動画は先頭0.0秒から切り出す)
+                        let! metaResult = (this :> IMediaProcessor).GetMetadata(resolvedPath)
+                        let ssSec =
+                            match metaResult with
+                            | Ok (duration, _) when duration > 1L -> float duration / 2.0
+                            | _ -> 0.0
+                        
+                        // 2. まずは高速シーク（-ss を -i の前）で試行（余計なデコードが発生せず一瞬で完了）
+                        let fastArgs = $"-y -ss {ssSec.ToString(CultureInfo.InvariantCulture)} -hwaccel auto -i \"{resolvedPath}\" -vframes 1 -q:v 2 -pix_fmt yuvj420p \"{outputPath}\""
+                        let! fastResult = runProcess true "ffmpeg" fastArgs
+                        
+                        let! finalResult =
+                            match fastResult with
+                            | Ok _ when File.Exists(outputPath) ->
+                                async { return Ok (outputPath, "fast") }
+                            | _ ->
+                                // 高速シークで失敗、またはファイルが出力されなかった場合は、
+                                // 従来の安全シーク（-ss を -i の後）でフォールバック実行（デコードを伴うため遅いが確実）
+                                let safeArgs = $"-y -hwaccel auto -i \"{resolvedPath}\" -ss {ssSec.ToString(CultureInfo.InvariantCulture)} -vframes 1 -q:v 2 -pix_fmt yuvj420p \"{outputPath}\""
+                                async {
+                                    let! safeResult = runProcess true "ffmpeg" safeArgs
+                                    match safeResult with
+                                    | Ok _ -> return Ok (outputPath, "safe")
+                                    | Error err -> return Error err
+                                }
+                        
+                        match finalResult with
+                        | Ok (path, mode) ->
+                            if File.Exists(path) then
+                                return Ok path
+                            else
+                                return Error (FFmpegExecutionError $"Output thumbnail file was not created via {mode} seek.")
+                        | Error err -> return Error err
             }

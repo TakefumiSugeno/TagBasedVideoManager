@@ -88,6 +88,9 @@ module Scanner =
     let syncVideoDirectory (videoDir: string) (thumbDir: string) (mediaProc: IMediaProcessor) (conn: IDbConnection) : Async<Result<int, DbError>> =
         async {
             try
+                if not (String.IsNullOrEmpty(thumbDir)) && not (Directory.Exists(thumbDir)) then
+                    try Directory.CreateDirectory(thumbDir) |> ignore with _ -> ()
+
                 // 1. ディレクトリ内の全ファイルを再帰走査
                 if not (Directory.Exists(videoDir)) then
                     return Ok 0
@@ -102,11 +105,11 @@ module Scanner =
                             Array.contains ext supportedExtensions
                         )
 
-                    // 2.5 既存の動画一覧を取得して、FilePath -> Id のマップを作成
+                    // 2.5 既存の動画一覧を取得して、FilePath -> Video のマップを作成
                     let! existingVideosResult = Db.getVideos conn None
                     let existingVideoMap =
                         match existingVideosResult with
-                        | Ok list -> list |> List.map (fun v -> v.FilePath, v.Id) |> Map.ofList
+                        | Ok list -> list |> List.map (fun v -> v.FilePath, v) |> Map.ofList
                         | Error _ -> Map.empty
 
                     // 3. 自動タグ付けルール一覧を取得
@@ -129,10 +132,12 @@ module Scanner =
                         let fileName = Path.GetFileName filePath
                         let fi = FileInfo(filePath)
                         let fileSize = if fi.Exists then fi.Length else 0L
+                        let fileModifiedAt = if fi.Exists then fi.LastWriteTimeUtc else DateTime.UtcNow
                         
+                        let existingOpt = Map.tryFind filePath existingVideoMap
                         let isNew, targetVideoId =
-                            match Map.tryFind filePath existingVideoMap with
-                            | Some id -> false, id
+                            match existingOpt with
+                            | Some v -> false, v.Id
                             | None ->
                                 let guidStr = Guid.NewGuid().ToString("N")
                                 let videoId = $"v_{guidStr.Substring(0, 8)}"
@@ -149,6 +154,7 @@ module Scanner =
                                 ThumbnailPath = None
                                 IsFavorite = false
                                 CreatedAt = DateTime.UtcNow
+                                FileModifiedAt = fileModifiedAt
                                 AccessCount = 0
                                 LastAccessedAt = None
                                 Tags = []
@@ -167,28 +173,29 @@ module Scanner =
                                 }
                             | _ -> ()
                         else
-                            // 既存動画の場合でも、サムネイル画像が未作成・実ファイルが存在しない、またはメタデータが未取得 (Duration = 0L) の場合はキューへ再投入
-                            let needsReprocessing =
-                                match existingVideosResult with
-                                | Ok list ->
-                                    match list |> List.tryFind (fun v -> v.Id = targetVideoId) with
-                                    | Some v ->
-                                        let thumbMissing = 
-                                            match v.ThumbnailPath with
-                                            | None -> v.Duration = 0L
-                                            | Some path -> not (File.Exists(path))
-                                        let durationMissing = v.Duration = 0L
-                                        thumbMissing || durationMissing
+                            match existingOpt with
+                            | Some v ->
+                                // 既存動画の場合でも、サムネイル画像が未作成・実ファイルが存在しない、またはメタデータが未取得 (Duration = 0L) の場合はキューへ再投入
+                                let thumbMissing = 
+                                    match v.ThumbnailPath with
                                     | None -> true
-                                | Error _ -> true
-                            if needsReprocessing then
-                                MediaQueue.enqueue {
-                                    VideoId = targetVideoId
-                                    FilePath = filePath
-                                    ThumbDir = thumbDir
-                                    MediaProc = mediaProc
-                                    ConnectionString = conn.ConnectionString
-                                }
+                                    | Some path -> not (File.Exists(path))
+                                let durationMissing = v.Duration = 0L
+                                if thumbMissing || durationMissing then
+                                    MediaQueue.enqueue {
+                                        VideoId = targetVideoId
+                                        FilePath = filePath
+                                        ThumbDir = thumbDir
+                                        MediaProc = mediaProc
+                                        ConnectionString = conn.ConnectionString
+                                    }
+
+                                // 既存動画の FileModifiedAt バックフィル（UTC基準で厳密に比較し無駄な更新を抑止）
+                                let diffSeconds = Math.Abs((v.FileModifiedAt.ToUniversalTime() - fileModifiedAt.ToUniversalTime()).TotalSeconds)
+                                if diffSeconds > 1.0 then
+                                    let! _ = Db.updateVideoFileModifiedAt conn targetVideoId fileModifiedAt
+                                    ()
+                            | None -> ()
 
 
                         // フォルダ名からタグを自動作成・付与（階層構造は維持しない、全子フォルダ対象）
