@@ -1,37 +1,78 @@
 body {
-    font-family: 'Outfit', 'Noto Sans JP', sans-serif;
+  font-family: "Outfit", "Noto Sans JP", sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
 /* スクロールバーのカスタマイズ */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-    background: rgba(15, 23, 42, 0.3);
+  background: rgba(15, 23, 42, 0.3);
 }
 ::-webkit-scrollbar-thumb {
-    background: rgba(99, 102, 241, 0.4);
-    border-radius: 3px;
+  background: rgba(99, 102, 241, 0.4);
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(99, 102, 241, 0.7);
+  background: rgba(99, 102, 241, 0.7);
+}
+
+/* safe-area と 100dvh サポート */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.h-dvh {
+  height: 100dvh;
+}
+.min-h-dvh {
+  min-height: 100dvh;
+}
+
+/* スクロールバー非表示（横スクロールタグピル等） */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 44px タッチ領域確保用ユーティリティ */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* タイトル marquee アニメーション */
 .video-title-container {
-    overflow: hidden;
-    white-space: nowrap;
-    position: relative;
-    width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  position: relative;
+  width: 100%;
 }
 .video-title-container.is-overflowing .video-title-text {
-    display: inline-block;
-    white-space: nowrap;
-    animation: title-marquee var(--scroll-duration, 8s) linear infinite alternate;
+  display: inline-block;
+  white-space: nowrap;
+  animation: title-marquee var(--scroll-duration, 8s) linear infinite alternate;
 }
 @keyframes title-marquee {
-    0% { transform: translateX(0); }
-    15% { transform: translateX(0); }
-    85% { transform: translateX(var(--scroll-amount)); }
-    100% { transform: translateX(var(--scroll-amount)); }
+  0% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(0);
+  }
+  85% {
+    transform: translateX(var(--scroll-amount));
+  }
+  100% {
+    transform: translateX(var(--scroll-amount));
+  }
 }

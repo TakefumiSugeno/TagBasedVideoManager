@@ -1,6 +1,7 @@
 namespace TagBasedVideoManager.Infrastructure
 
 open System
+open System.IO
 open System.Data
 open Microsoft.Data.Sqlite
 open Dapper
@@ -62,6 +63,13 @@ type private ErrorLogDbDto = {
 module Db =
     /// データベース接続を取得する
     let getConnection (dbPath: string) : IDbConnection =
+        if not (String.IsNullOrWhiteSpace(dbPath)) && not (dbPath.Equals(":memory:", StringComparison.OrdinalIgnoreCase)) then
+            try
+                let fullPath = Path.GetFullPath(dbPath)
+                let dir = Path.GetDirectoryName(fullPath)
+                if not (String.IsNullOrEmpty(dir)) && not (Directory.Exists(dir)) then
+                    Directory.CreateDirectory(dir) |> ignore
+            with _ -> ()
         new SqliteConnection($"Data Source={dbPath}")
 
     let importTags (conn: IDbConnection) (tags: Tag list) : Async<Result<Tag list, DbError>> =

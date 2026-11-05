@@ -11,7 +11,6 @@ open Giraffe
 open TagBasedVideoManager.Infrastructure
 open TagBasedVideoManager.Domain
 
-
 module Program =
     
     /// サービスの登録設定
@@ -42,11 +41,15 @@ module Program =
 
         // サムネイル画像用の静的ファイルマウント配信
         let thumbnailDir = Environment.GetEnvironmentVariable("THUMBNAIL_DIR")
-        if not (String.IsNullOrEmpty(thumbnailDir)) && Directory.Exists(thumbnailDir) then
-            let options = StaticFileOptions()
-            options.FileProvider <- new PhysicalFileProvider(Path.GetFullPath(thumbnailDir))
-            options.RequestPath <- PathString("/thumbnails")
-            app.UseStaticFiles(options) |> ignore
+        if not (String.IsNullOrEmpty(thumbnailDir)) then
+            let fullThumbnailDir = Path.GetFullPath(thumbnailDir)
+            if not (Directory.Exists(fullThumbnailDir)) then
+                try Directory.CreateDirectory(fullThumbnailDir) |> ignore with _ -> ()
+            if Directory.Exists(fullThumbnailDir) then
+                let options = StaticFileOptions()
+                options.FileProvider <- new PhysicalFileProvider(fullThumbnailDir)
+                options.RequestPath <- PathString("/thumbnails")
+                app.UseStaticFiles(options) |> ignore
         
         // Giraffe エラーハンドラーの適用
         app.UseGiraffeErrorHandler(fun ex logger -> HttpHandlers.giraffeErrorHandler ex logger) |> ignore
@@ -54,17 +57,22 @@ module Program =
         // Giraffe ミドルウェアの適用
         app.UseGiraffe(HttpHandlers.webApp)
 
-
     /// .env ファイルから環境変数をロードする簡易関数
     let loadDotEnv () =
-        let paths = [
-            Path.Combine(Directory.GetCurrentDirectory(), ".env")
-            Path.Combine(Directory.GetCurrentDirectory(), "..", ".env")
-            Path.Combine(AppContext.BaseDirectory, ".env")
-            Path.Combine(AppContext.BaseDirectory, "../../../.env")
-            Path.Combine(AppContext.BaseDirectory, "../../../../.env")
+        let rec findDotEnv (dir: DirectoryInfo) =
+            if isNull dir then None
+            else
+                let envFile = Path.Combine(dir.FullName, ".env")
+                if File.Exists(envFile) then Some envFile
+                else findDotEnv dir.Parent
+
+        let searchDirs = [
+            DirectoryInfo(Directory.GetCurrentDirectory())
+            DirectoryInfo(AppContext.BaseDirectory)
         ]
-        let foundPath = paths |> List.tryFind File.Exists
+
+        let foundPath = searchDirs |> List.tryPick findDotEnv
+
         match foundPath with
         | Some path ->
             try

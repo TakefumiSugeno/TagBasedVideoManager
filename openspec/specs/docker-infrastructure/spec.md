@@ -1,6 +1,7 @@
 # docker-infrastructure Specification
 
 ## Purpose
+
 TagBasedVideoManager を Docker コンテナ環境下で効率的かつ安全にビルド・運用するための、マルチステージビルド、ホスト動画フォルダの安全なマウント、データ永続化ボリューム、および CPU/AMD/NVIDIA GPU ハードウェアアクセラレーション構成仕様を規定する。
 
 ## Requirements
