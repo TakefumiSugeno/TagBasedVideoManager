@@ -18,6 +18,7 @@ type private VideoDbDto = {
     ThumbnailPath: string
     IsFavorite: int
     CreatedAt: string
+    FileModifiedAt: string
     AccessCount: int
     LastAccessedAt: string
 }
@@ -61,6 +62,47 @@ type private ErrorLogDbDto = {
 
 
 module Db =
+    let private parseIsoDate (s: string) (fallback: DateTime) =
+        if String.IsNullOrWhiteSpace(s) then fallback
+        else
+            match DateTime.TryParse(s, Globalization.CultureInfo.InvariantCulture, Globalization.DateTimeStyles.RoundtripKind) with
+            | true, dt ->
+                if dt.Kind = DateTimeKind.Unspecified then DateTime.SpecifyKind(dt, DateTimeKind.Utc)
+                elif dt.Kind = DateTimeKind.Local then dt.ToUniversalTime()
+                else dt
+            | false, _ -> fallback
+
+    let private dtoToVideo (dto: VideoDbDto) : Video =
+        let createdAt = parseIsoDate dto.CreatedAt DateTime.UtcNow
+        let fileModifiedAt = 
+            if String.IsNullOrWhiteSpace(dto.FileModifiedAt) then createdAt
+            else parseIsoDate dto.FileModifiedAt createdAt
+        let lastAccessedAt =
+            if String.IsNullOrWhiteSpace(dto.LastAccessedAt) then None
+            else
+                match DateTime.TryParse(dto.LastAccessedAt, Globalization.CultureInfo.InvariantCulture, Globalization.DateTimeStyles.RoundtripKind) with
+                | true, dt ->
+                    let utcDt =
+                        if dt.Kind = DateTimeKind.Unspecified then DateTime.SpecifyKind(dt, DateTimeKind.Utc)
+                        elif dt.Kind = DateTimeKind.Local then dt.ToUniversalTime()
+                        else dt
+                    Some utcDt
+                | false, _ -> None
+        {
+            Id = dto.Id
+            FileName = dto.FileName
+            FilePath = dto.FilePath
+            Duration = dto.Duration
+            FileSize = dto.FileSize
+            ThumbnailPath = Option.ofObj dto.ThumbnailPath
+            IsFavorite = dto.IsFavorite <> 0
+            CreatedAt = createdAt
+            FileModifiedAt = fileModifiedAt
+            AccessCount = dto.AccessCount
+            LastAccessedAt = lastAccessedAt
+            Tags = []
+        }
+
     /// データベース接続を取得する
     let getConnection (dbPath: string) : IDbConnection =
         if not (String.IsNullOrWhiteSpace(dbPath)) && not (dbPath.Equals(":memory:", StringComparison.OrdinalIgnoreCase)) then
@@ -135,24 +177,9 @@ module Db =
     let getVideos (conn: IDbConnection) (searchQuery: string option) : Async<Result<Video list, DbError>> =
         async {
             try
-                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, AccessCount, LastAccessedAt FROM Videos"
+                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt FROM Videos"
                 let! dtos = Async.AwaitTask (conn.QueryAsync<VideoDbDto>(sql))
-                let videos = 
-                    dtos
-                    |> Seq.map (fun dto -> {
-                        Id = dto.Id
-                        FileName = dto.FileName
-                        FilePath = dto.FilePath
-                        Duration = dto.Duration
-                        FileSize = dto.FileSize
-                        ThumbnailPath = Option.ofObj dto.ThumbnailPath
-                        IsFavorite = dto.IsFavorite <> 0
-                        CreatedAt = DateTime.Parse(dto.CreatedAt)
-                        AccessCount = dto.AccessCount
-                        LastAccessedAt = if String.IsNullOrEmpty(dto.LastAccessedAt) then None else Some (DateTime.Parse(dto.LastAccessedAt))
-                        Tags = []
-                    })
-                    |> Seq.toList
+                let videos = dtos |> Seq.map dtoToVideo |> Seq.toList
 
                 // 各動画に紐付くタグ情報を結合取得する
                 let! videosWithTags = 
@@ -188,24 +215,12 @@ module Db =
     let getVideo (conn: IDbConnection) (videoId: string) : Async<Result<Video, DbError>> =
         async {
             try
-                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, AccessCount, LastAccessedAt FROM Videos WHERE Id = @Id"
+                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt FROM Videos WHERE Id = @Id"
                 let! dto = Async.AwaitTask (conn.QuerySingleOrDefaultAsync<VideoDbDto>(sql, {| Id = videoId |}))
                 if box dto = null then
                     return Error (RecordNotFound $"Video with id {videoId} not found")
                 else
-                    let video = {
-                        Id = dto.Id
-                        FileName = dto.FileName
-                        FilePath = dto.FilePath
-                        Duration = dto.Duration
-                        FileSize = dto.FileSize
-                        ThumbnailPath = Option.ofObj dto.ThumbnailPath
-                        IsFavorite = dto.IsFavorite <> 0
-                        CreatedAt = DateTime.Parse(dto.CreatedAt)
-                        AccessCount = dto.AccessCount
-                        LastAccessedAt = if String.IsNullOrEmpty(dto.LastAccessedAt) then None else Some (DateTime.Parse(dto.LastAccessedAt))
-                        Tags = []
-                    }
+                    let video = dtoToVideo dto
 
                     // タグ情報を結合
                     let tagSql = """
@@ -236,7 +251,7 @@ module Db =
         async {
             try
                 let mutable sql = """
-                    SELECT DISTINCT v.Id, v.FileName, v.FilePath, v.Duration, v.FileSize, v.ThumbnailPath, v.IsFavorite, v.CreatedAt, v.AccessCount, v.LastAccessedAt
+                    SELECT DISTINCT v.Id, v.FileName, v.FilePath, v.Duration, v.FileSize, v.ThumbnailPath, v.IsFavorite, v.CreatedAt, v.FileModifiedAt, v.AccessCount, v.LastAccessedAt
                     FROM Videos v
                 """
                 let parameters = DynamicParameters()
@@ -296,22 +311,7 @@ module Db =
                     sql <- sql + " WHERE " + whereSql
 
                 let! dtos = Async.AwaitTask (conn.QueryAsync<VideoDbDto>(sql, parameters))
-                let videos = 
-                    dtos
-                    |> Seq.map (fun dto -> {
-                        Id = dto.Id
-                        FileName = dto.FileName
-                        FilePath = dto.FilePath
-                        Duration = dto.Duration
-                        FileSize = dto.FileSize
-                        ThumbnailPath = Option.ofObj dto.ThumbnailPath
-                        IsFavorite = dto.IsFavorite <> 0
-                        CreatedAt = DateTime.Parse(dto.CreatedAt)
-                        AccessCount = dto.AccessCount
-                        LastAccessedAt = if String.IsNullOrEmpty(dto.LastAccessedAt) then None else Some (DateTime.Parse(dto.LastAccessedAt))
-                        Tags = []
-                    })
-                    |> Seq.toList
+                let videos = dtos |> Seq.map dtoToVideo |> Seq.toList
 
                 // 各動画に紐付くタグ情報を結合取得する
                 let! videosWithTags = 
@@ -440,8 +440,8 @@ module Db =
         async {
             try
                 let sql = """
-                    INSERT OR IGNORE INTO Videos (Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, AccessCount, LastAccessedAt)
-                    VALUES (@Id, @FileName, @FilePath, @Duration, @FileSize, @ThumbnailPath, @IsFavorite, @CreatedAt, @AccessCount, @LastAccessedAt)
+                    INSERT OR IGNORE INTO Videos (Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt)
+                    VALUES (@Id, @FileName, @FilePath, @Duration, @FileSize, @ThumbnailPath, @IsFavorite, @CreatedAt, @FileModifiedAt, @AccessCount, @LastAccessedAt)
                 """
                 let task = conn.ExecuteAsync(sql, {|
                     Id = video.Id
@@ -452,11 +452,23 @@ module Db =
                     ThumbnailPath = Option.toObj video.ThumbnailPath
                     IsFavorite = if video.IsFavorite then 1 else 0
                     CreatedAt = video.CreatedAt.ToString("o")
+                    FileModifiedAt = video.FileModifiedAt.ToUniversalTime().ToString("o")
                     AccessCount = video.AccessCount
                     LastAccessedAt = match video.LastAccessedAt with Some d -> d.ToString("o") | None -> null
                 |})
                 let! rows = Async.AwaitTask task
                 return Ok rows
+            with
+            | ex -> return Error (QueryError ex.Message)
+        }
+
+    /// 動画のファイル最終更新日時を更新する (バックフィル用)
+    let updateVideoFileModifiedAt (conn: IDbConnection) (videoId: string) (fileModifiedAt: DateTime) : Async<Result<unit, DbError>> =
+        async {
+            try
+                let sql = "UPDATE Videos SET FileModifiedAt = @FileModifiedAt WHERE Id = @Id"
+                let! _ = Async.AwaitTask (conn.ExecuteAsync(sql, {| Id = videoId; FileModifiedAt = fileModifiedAt.ToUniversalTime().ToString("o") |}))
+                return Ok ()
             with
             | ex -> return Error (QueryError ex.Message)
         }
@@ -673,24 +685,9 @@ module Db =
     let getVideoRanking (conn: IDbConnection) : Async<Result<Video list, DbError>> =
         async {
             try
-                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, AccessCount, LastAccessedAt FROM Videos WHERE AccessCount > 0 ORDER BY AccessCount DESC, LastAccessedAt DESC LIMIT 100"
+                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt FROM Videos WHERE AccessCount > 0 ORDER BY AccessCount DESC, LastAccessedAt DESC LIMIT 100"
                 let! dtos = Async.AwaitTask (conn.QueryAsync<VideoDbDto>(sql))
-                let videos = 
-                    dtos
-                    |> Seq.map (fun dto -> {
-                        Id = dto.Id
-                        FileName = dto.FileName
-                        FilePath = dto.FilePath
-                        Duration = dto.Duration
-                        FileSize = dto.FileSize
-                        ThumbnailPath = Option.ofObj dto.ThumbnailPath
-                        IsFavorite = dto.IsFavorite <> 0
-                        CreatedAt = DateTime.Parse(dto.CreatedAt)
-                        AccessCount = dto.AccessCount
-                        LastAccessedAt = if String.IsNullOrEmpty(dto.LastAccessedAt) then None else Some (DateTime.Parse(dto.LastAccessedAt))
-                        Tags = []
-                    })
-                    |> Seq.toList
+                let videos = dtos |> Seq.map dtoToVideo |> Seq.toList
 
                 let! videosWithTags = 
                     videos 
@@ -787,24 +784,9 @@ module Db =
                 let! tagsResult = getTags conn
                 let tags = match tagsResult with Ok t -> t | Error _ -> []
 
-                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, AccessCount, LastAccessedAt FROM Videos"
+                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt FROM Videos"
                 let! dtos = Async.AwaitTask (conn.QueryAsync<VideoDbDto>(sql))
-                let allVideos = 
-                    dtos
-                    |> Seq.map (fun dto -> {
-                        Id = dto.Id
-                        FileName = dto.FileName
-                        FilePath = dto.FilePath
-                        Duration = dto.Duration
-                        FileSize = dto.FileSize
-                        ThumbnailPath = Option.ofObj dto.ThumbnailPath
-                        IsFavorite = dto.IsFavorite <> 0
-                        CreatedAt = DateTime.Parse(dto.CreatedAt)
-                        AccessCount = dto.AccessCount
-                        LastAccessedAt = if String.IsNullOrEmpty(dto.LastAccessedAt) then None else Some (DateTime.Parse(dto.LastAccessedAt))
-                        Tags = []
-                    })
-                    |> Seq.toList
+                let allVideos = dtos |> Seq.map dtoToVideo |> Seq.toList
 
                 let playedVideos = allVideos |> List.filter (fun v -> v.AccessCount > 0)
                 
@@ -861,6 +843,7 @@ module DbInit =
             ThumbnailPath TEXT,
             IsFavorite INTEGER DEFAULT 0,
             CreatedAt TEXT NOT NULL,
+            FileModifiedAt TEXT,
             AccessCount INTEGER DEFAULT 0,
             LastAccessedAt TEXT
         );
@@ -955,6 +938,7 @@ module DbInit =
                 if not (Set.contains colName existingVideosColNames) then
                     conn.Execute($"ALTER TABLE Videos ADD COLUMN {colDef}") |> ignore
 
+            alterVideosIfMissing "FileModifiedAt" "FileModifiedAt TEXT"
             alterVideosIfMissing "AccessCount"    "AccessCount INTEGER DEFAULT 0"
             alterVideosIfMissing "LastAccessedAt" "LastAccessedAt TEXT"
 

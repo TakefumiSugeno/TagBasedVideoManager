@@ -183,6 +183,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.ThumbnailPath = Some dummyThumbnail
             TagBasedVideoManager.Domain.Video.IsFavorite = false
             TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+            TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
@@ -209,11 +210,11 @@ type ScannerTests () =
         durationUpdated |> should equal true
 
     [<Fact>]
-    member _.``syncVideoDirectoryは既存動画でDurationがプラスかつサムネイルパスがNoneの場合は再処理をスキップする`` () =
+    member _.``syncVideoDirectoryは既存動画でDurationがプラスかつサムネイルパスがNoneの場合は再処理キューへ投入する`` () =
         Directory.CreateDirectory(videoDir) |> ignore
         Directory.CreateDirectory(thumbDir) |> ignore
         
-        let videoFile = Path.Combine(videoDir, "reprocess_skipped.mp4")
+        let videoFile = Path.Combine(videoDir, "reprocess_needed_no_thumb.mp4")
         File.WriteAllText(videoFile, "dummy")
 
         use conn = Db.getConnection dbPath
@@ -224,13 +225,69 @@ type ScannerTests () =
 
         let existingVideo = {
             TagBasedVideoManager.Domain.Video.Id = videoId
-            TagBasedVideoManager.Domain.Video.FileName = "reprocess_skipped.mp4"
+            TagBasedVideoManager.Domain.Video.FileName = "reprocess_needed_no_thumb.mp4"
             TagBasedVideoManager.Domain.Video.FilePath = videoFile
             TagBasedVideoManager.Domain.Video.Duration = 120L
             TagBasedVideoManager.Domain.Video.FileSize = 100L
             TagBasedVideoManager.Domain.Video.ThumbnailPath = None
             TagBasedVideoManager.Domain.Video.IsFavorite = false
             TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+            TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
+            TagBasedVideoManager.Domain.Video.AccessCount = 0
+            TagBasedVideoManager.Domain.Video.LastAccessedAt = None
+            TagBasedVideoManager.Domain.Video.Tags = []
+        }
+        let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
+
+        MediaQueue.clearQueue()
+
+        let result = Scanner.syncVideoDirectory videoDir thumbDir mockMediaProcessor conn |> Async.RunSynchronously
+        result |> should equal (Ok 0 : Result<int, DbError>)
+
+        let mutable thumbUpdated = false
+        let limit = DateTime.UtcNow.AddSeconds(3.0)
+        while not thumbUpdated && DateTime.UtcNow < limit do
+            let checkResult = Db.getVideos conn None |> Async.RunSynchronously
+            match checkResult with
+            | Ok videos ->
+                let vid = videos |> List.tryFind (fun v -> v.FileName = "reprocess_needed_no_thumb.mp4")
+                if vid.IsSome && vid.Value.ThumbnailPath.IsSome then
+                    thumbUpdated <- true
+                else
+                    System.Threading.Thread.Sleep(50)
+            | Error _ ->
+                System.Threading.Thread.Sleep(50)
+
+        thumbUpdated |> should equal true
+
+    [<Fact>]
+    member _.``syncVideoDirectoryは既存動画でDurationがプラスかつサムネイル実ファイルが存在する場合は再処理をスキップする`` () =
+        Directory.CreateDirectory(videoDir) |> ignore
+        Directory.CreateDirectory(thumbDir) |> ignore
+        
+        let videoFile = Path.Combine(videoDir, "already_completed.mp4")
+        File.WriteAllText(videoFile, "dummy")
+
+        let guidStr = Guid.NewGuid().ToString("N")
+        let videoId = $"v_{guidStr.Substring(0, 8)}"
+        // デフォルトの出力命名 ({videoId}.jpg) とは異なるカスタムパスを指定し、
+        // 再処理によって上書きされていないことを厳密に検証可能にする（甘いアサーションの排除）
+        let dummyThumbnail = Path.Combine(thumbDir, $"{videoId}_existing_custom.jpg")
+        File.WriteAllText(dummyThumbnail, "dummy_thumb_content")
+
+        use conn = Db.getConnection dbPath
+        let _ = DbInit.initializeDatabase conn |> ignore
+
+        let existingVideo = {
+            TagBasedVideoManager.Domain.Video.Id = videoId
+            TagBasedVideoManager.Domain.Video.FileName = "already_completed.mp4"
+            TagBasedVideoManager.Domain.Video.FilePath = videoFile
+            TagBasedVideoManager.Domain.Video.Duration = 120L
+            TagBasedVideoManager.Domain.Video.FileSize = 100L
+            TagBasedVideoManager.Domain.Video.ThumbnailPath = Some dummyThumbnail
+            TagBasedVideoManager.Domain.Video.IsFavorite = false
+            TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+            TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
@@ -246,10 +303,9 @@ type ScannerTests () =
         let checkResult = Db.getVideos conn None |> Async.RunSynchronously
         match checkResult with
         | Ok videos ->
-            let vid = videos |> List.tryFind (fun v -> v.FileName = "reprocess_skipped.mp4")
+            let vid = videos |> List.tryFind (fun v -> v.FileName = "already_completed.mp4")
             vid.IsSome |> should equal true
-            vid.Value.Duration |> should equal 120L
-            vid.Value.ThumbnailPath |> should equal None
+            vid.Value.ThumbnailPath |> should equal (Some dummyThumbnail)
         | Error _ -> failwith "Failed to get videos"
 
     [<Fact>]
@@ -278,6 +334,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.ThumbnailPath = Some missingThumbnailPath
             TagBasedVideoManager.Domain.Video.IsFavorite = false
             TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+            TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
@@ -351,3 +408,49 @@ type ScannerTests () =
                 | Error _ -> failwith "Failed to get videos with tags"
             | Error _ -> failwith "Failed to get tags"
         | Error _ -> failwith "Failed to get videos"
+
+    [<Fact>]
+    member _.``syncVideoDirectoryは既存動画の再スキャン時にタイムゾーン乖離による不要なバックフィル更新が発生しないこと`` () =
+        Directory.CreateDirectory(videoDir) |> ignore
+        Directory.CreateDirectory(thumbDir) |> ignore
+
+        let videoFile = Path.Combine(videoDir, "timezone_test.mp4")
+        File.WriteAllText(videoFile, "dummy")
+        let fi = FileInfo(videoFile)
+        let originalUtc = fi.LastWriteTimeUtc
+
+        use conn = Db.getConnection dbPath
+        let _ = DbInit.initializeDatabase conn |> ignore
+
+        let guidStr = Guid.NewGuid().ToString("N")
+        let videoId = $"v_{guidStr.Substring(0, 8)}"
+        let dummyThumbnail = Path.Combine(thumbDir, $"{videoId}.jpg")
+        File.WriteAllText(dummyThumbnail, "dummy_thumb_content")
+
+        let existingVideo = {
+            TagBasedVideoManager.Domain.Video.Id = videoId
+            TagBasedVideoManager.Domain.Video.FileName = "timezone_test.mp4"
+            TagBasedVideoManager.Domain.Video.FilePath = videoFile
+            TagBasedVideoManager.Domain.Video.Duration = 100L
+            TagBasedVideoManager.Domain.Video.FileSize = 100L
+            TagBasedVideoManager.Domain.Video.ThumbnailPath = Some dummyThumbnail
+            TagBasedVideoManager.Domain.Video.IsFavorite = false
+            TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+            TagBasedVideoManager.Domain.Video.FileModifiedAt = originalUtc
+            TagBasedVideoManager.Domain.Video.AccessCount = 0
+            TagBasedVideoManager.Domain.Video.LastAccessedAt = None
+            TagBasedVideoManager.Domain.Video.Tags = []
+        }
+        let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
+
+        let checkBefore = Db.getVideo conn videoId |> Async.RunSynchronously
+        match checkBefore with
+        | Ok loadedVideo ->
+            let diff = Math.Abs((loadedVideo.FileModifiedAt.ToUniversalTime() - originalUtc.ToUniversalTime()).TotalSeconds)
+            diff |> should be (lessThanOrEqualTo 1.0)
+            loadedVideo.FileModifiedAt.Kind |> should equal DateTimeKind.Utc
+        | Error err -> failwith $"Failed to get video: {err}"
+
+        MediaQueue.clearQueue()
+        let result = Scanner.syncVideoDirectory videoDir thumbDir mockMediaProcessor conn |> Async.RunSynchronously
+        result |> should equal (Ok 0 : Result<int, DbError>)

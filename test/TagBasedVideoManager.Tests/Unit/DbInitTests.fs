@@ -80,3 +80,35 @@ type DbInitTests () =
         countAfter |> should equal 0L
 
 
+
+    [<Fact>]
+    member _.``旧スキーマのVideosテーブルが存在する場合にinitializeDatabaseを実行するとFileModifiedAtカラムが自動追加される`` () =
+        use conn = Db.getConnection dbPath
+        // 1. FileModifiedAt カラムのない旧スキーマの Videos テーブルを手動作成
+        let oldDdl = """
+            CREATE TABLE Videos (
+                Id TEXT PRIMARY KEY,
+                FileName TEXT NOT NULL,
+                FilePath TEXT NOT NULL UNIQUE,
+                Duration INTEGER NOT NULL,
+                FileSize INTEGER NOT NULL,
+                ThumbnailPath TEXT,
+                IsFavorite INTEGER DEFAULT 0,
+                CreatedAt TEXT NOT NULL,
+                AccessCount INTEGER DEFAULT 0,
+                LastAccessedAt TEXT
+            );
+        """
+        conn.Execute(oldDdl) |> ignore
+
+        // 2. initializeDatabase を実行 (マイグレーション実行)
+        let result = DbInit.initializeDatabase conn
+        result |> should equal (Ok () : Result<unit, string>)
+
+        // 3. PRAGMA table_info(Videos) で FileModifiedAt カラムが追加されたか確認
+        let columnInfos = conn.Query("PRAGMA table_info(Videos);")
+        let columns = 
+            columnInfos 
+            |> Seq.map (fun row -> (row :?> System.Collections.Generic.IDictionary<string, obj>).["name"] |> string) 
+            |> Seq.toList
+        columns |> should contain "FileModifiedAt"
