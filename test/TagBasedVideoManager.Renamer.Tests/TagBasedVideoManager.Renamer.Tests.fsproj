@@ -14,7 +14,6 @@
     <Compile Include="FileRenamerTests.fs" />
     <Compile Include="WebSearchClientTests.fs" />
     <Compile Include="OpenRouterClientTests.fs" />
-    <Compile Include="DockerControllerTests.fs" />
     <Compile Include="ContainerControllerTests.fs" />
     <Compile Include="DevContainerConfigTests.fs" />
     <Compile Include="DeployScriptTests.fs" />

@@ -609,8 +609,6 @@ module State =
             model, Cmd.ofMsg CheckDockerStatus
         | DockerCommandCompleted (action, Error (ContainerError (_, _, stderr))) ->
             { model with IsDockerBusy = false; ErrorMessage = Some ($"コンテナ コマンド '{action}' エラー: {stderr}") }, Cmd.ofMsg CheckDockerStatus
-        | DockerCommandCompleted (action, Error (DockerError (_, _, stderr))) ->
-            { model with IsDockerBusy = false; ErrorMessage = Some ($"コンテナ コマンド '{action}' エラー: {stderr}") }, Cmd.ofMsg CheckDockerStatus
         | DockerCommandCompleted (action, Error (TimeoutError cmd)) ->
             { model with IsDockerBusy = false; ErrorMessage = Some ($"コンテナ コマンド '{cmd}' がタイムアウトしました。") }, Cmd.ofMsg CheckDockerStatus
 

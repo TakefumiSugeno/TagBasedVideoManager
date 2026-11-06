@@ -283,3 +283,144 @@ Task 1.1 は先行 Red テスト実装タスク（checklist_apply_test.md 適用
 - **保留指摘（申し送り）**: 指摘1（Suggestion: `DockerCommandCompleted` テストにおける `Cmd` 検証の粒度）
 - **承認者**: QA Reviewer Agent
 - **次のアクション**: 次タスクへ
+
+---
+
+# レビュー記録: remove-obsolete-docker-compose / apply / Task 1.2 (pg-review)
+
+- **日時**: 2026-11-06
+- **フェーズ**: apply
+- **タスク**: Task 1.2 (不要な Docker Compose 関連資産の廃止・エラー型統一・ドキュメント更新)
+- **レビュアー**: PG Reviewer Agent (pg)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `Dockerfile`, `README.md`, `docker-compose.yml` (削除), `src/TagBasedVideoManager.Renamer/DockerController.fs` (削除), `src/TagBasedVideoManager.Renamer/Domain.fs`, `src/TagBasedVideoManager.Renamer/State.fs`, `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj`, `test/TagBasedVideoManager.Renamer.Tests/DockerControllerTests.fs` (削除), `test/TagBasedVideoManager.Renamer.Tests/TagBasedVideoManager.Tests.fsproj`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: 暗黙の前提（都合の良い思い込み）の告発
+
+- **確認内容・回答**:
+  1. **`ContainerController.parseContainerPsOutput` における旧 Compose 命名の暗黙の仮定**: `ContainerController.fs` の L131-132 に `elif el.TryGetProperty("Service", ...)`、および L183 に `|| names.IndexOf("video-manager", StringComparison.OrdinalIgnoreCase) >= 0` が残存している。将来的なリファクタ候補として申し送る。
+  2. **`State.update` の `DockerCommandCompleted` における `ValidationError` 文字列化**: `ValidationError msg` はワイルドカード分岐 `DockerCommandCompleted (_, Error other)`（`State.fs` L615-616）で処理され `$"Docker エラー: {other}"` として表示される。
+- **確認根拠**: `src/TagBasedVideoManager.Renamer/ContainerController.fs` (L131-132, L180-184)、`src/TagBasedVideoManager.Renamer/State.fs` (L608-616)
+
+### 設問2: 例外の握りつぶし・根拠のないフォールバックの告発
+
+- **確認内容・回答**:
+  - 今回の変更箇所（`Domain.fs` / `State.fs` の `DockerError` 削除）自体には、新規の例外握りつぶしや根拠のないフォールバックは存在しない。なお既存の `ExecuteUndo`（`State.fs` L571）における再起動戻り値の破棄は技術的負債として `handover.md` に記録する。
+- **確認根拠**: `src/TagBasedVideoManager.Renamer/State.fs` (L532-538, L568-575, L608-616)
+
+### 設問3: 30%コード削減・過剰抽象化の告発（YAGNI検証）
+
+- **確認内容・回答**:
+  - `State.fs` L608-616 の `DockerCommandCompleted` では各 `Error` パターンごとに `{ model with IsDockerBusy = false; ErrorMessage = Some ... }, Cmd.ofMsg CheckDockerStatus` が繰り返されているため、エラーメッセージの組み立てのみを内部 `match` に分離するリファクタ案（9行→6行、約30%削減）を将来の改善候補として提示した。
+  - 今回の実装では不要な `DockerController.fs`（173行）、`DockerControllerTests.fs`（115行）、`docker-compose.yml`（98行）の計386行が完全に削除され、デッドコードが大幅に削減されている。
+- **確認根拠**: `src/TagBasedVideoManager.Renamer/State.fs` (L608-616)、`git diff` 全量
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）※Apply実装レビュー時のみ
+
+- **対象関数/モジュール**: `TagBasedVideoManager.Renamer.State.update` / `Domain.RenamerError`
+- **破壊テストコード名**: `QA Reviewer Agent 実行結果を参照`
+- **実行コマンド**: `QA Reviewer Agent 実行結果を参照`
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+- **実行ログ要約**:
+
+```text
+PG Reviewer Agent は checklist_apply_impl.md セクション 2・3 を担当。破壊テストの作成・実行は下記の QA Reviewer Agent 記録を参照。
+```
+
+---
+
+## 3. 指摘事項
+
+### 指摘1
+
+- **内容**: `State.fs` L608-616 の `DockerCommandCompleted` において、エラー種別ごとの状態更新レコード生成の重複削減および `ValidationError` 表示文言の改善余地がある。
+- **重要度**: Suggestion
+- **対応方針**: 保留
+- **理由**: 既存の全テストおよび仕様要件を満たしており機能上の不具合はないため、将来のリファクタリング候補として `handover.md` へ申し送る。
+- **対応コミット**: Archive 時 `handover.md` へ転記
+
+### 指摘2
+
+- **内容**: `State.fs` L571 の `ExecuteUndo` 内の再起動エラー通知、および `ContainerController.fs` L131-132 / L183 の旧 `"Service"` / `"video-manager"` フォールバック分岐の整理。
+- **重要度**: Minor
+- **対応方針**: 保留
+- **理由**: 今回の変更前から存在する既存コードであり、本変更のスコープ外であるため `handover.md` に記録して申し送る。
+- **対応コミット**: Archive 時 `handover.md` へ転記
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: 指摘1、指摘2（Archive 時に `handover.md` へ転記）
+- **次のアクション**: 次タスクへ
+
+---
+
+# レビュー記録: remove-obsolete-docker-compose / apply / Task 1.2 (qa-review)
+
+- **日時**: 2026-11-06
+- **フェーズ**: apply
+- **タスク**: Task 1.2 (`pg-implementer`: 不要な Docker Compose 関連資産の削除・エラー型統一・ドキュメント更新)
+- **レビュアー**: QA Reviewer Agent (qa)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `Dockerfile`, `README.md`, `src/TagBasedVideoManager.Renamer/Domain.fs`, `src/TagBasedVideoManager.Renamer/State.fs`, `src/TagBasedVideoManager.Renamer/ContainerController.fs`, `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj`, `test/TagBasedVideoManager.Renamer.Tests/TagBasedVideoManager.Tests.fsproj`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: Adversarial QA（破壊テストの作成と実行による境界・異常入力耐性の実証）
+
+- **確認内容・回答**:
+  `DockerError` 廃止および `DockerController.fs` 削除後の `Domain.fs`・`State.fs`・`ContainerController.fs` に対し、リフレクション検査およびファジング入力（`null`、空文字、空白、100KB 超長文、制御文字・ANSI エスケープシーケンス `\0\t\r\n\u001b[31m`、フォーマット指定子 `%s %d {0} {{}}`、サロゲートペア・シェルメタ文字、極端な終了コード `Int32.MinValue`〜`Int32.MaxValue`、奇形・巨大 NDJSON 5,000 行）を注入する破壊テストスクリプト `adversarial_qa_task1_2.fsx` を作成し、`dotnet fsi` で実行した。
+  全 460 パターン以上の異常入力に対して未捕捉例外は 0 件であり、全ケースで確実に `IsDockerBusy = false`（ロック解除）・`ErrorMessage = Some ...`・`CheckDockerStatus` コマンド発行が行われることを確認した。
+- **確認根拠**:
+  - `src/TagBasedVideoManager.Renamer/Domain.fs` (L118-L125)
+  - `src/TagBasedVideoManager.Renamer/State.fs` (L608-L616)
+  - `src/TagBasedVideoManager.Renamer/ContainerController.fs` (L114-L201, L253-L285)
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）※Apply実装レビュー時のみ
+
+- **対象関数/モジュール**: `TagBasedVideoManager.Renamer.RenamerError`, `State.update` (`DockerCommandCompleted`), `ContainerController.parseContainerPsOutput`, `ContainerController.executeActionWithTimeout`
+- **破壊テストコード名**: `adversarial_qa_task1_2.fsx`（スクラッチで実行、`git status` クリーン維持確認済み）
+- **実行コマンド**: `dotnet fsi adversarial_qa_task1_2.fsx`
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+- **実行ログ要約**:
+
+```text
+=== Adversarial QA Test Suite for Task 1.2 (remove-obsolete-docker-compose) ===
+[PASS] RenamerError does not contain DockerError
+[PASS] RenamerError contains ContainerError
+[PASS] Assembly does not contain DockerController module
+[PASS] State.update (DockerCommandCompleted with adversarial ContainerError matrix: 7x7x9 = 441 cases) never throws and always unlocks IsDockerBusy
+[PASS] TimeoutError("") / ("   ") / ("null") / ("long") unlocks IsDockerBusy and sets ErrorMessage
+[PASS] Other RenamerError ("IoError" / "SettingsError" / "OpenRouterError" / "ValidationError" / "UndoConflictError") unlocks IsDockerBusy and sets ErrorMessage
+[PASS] parseContainerPsOutput survived malformed & 5000-line NDJSON inputs (len=220073) -> (Running, Some "target-5000")
+[PASS] executeActionWithTimeout(None, act="" / "start" / "stop" / "restart" / shell metacharacters / <null>) returns ValidationError
+=== Total Failures: 0 ===
+```
+
+---
+
+## 3. 指摘事項
+
+なし（理由: 堅牢性確認済み。460 パターン以上の境界・異常値・奇形 JSON 注入テストに対して未捕捉例外 0 件、`IsDockerBusy` 状態ロック残留 0 件を確認）
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 次タスクへ

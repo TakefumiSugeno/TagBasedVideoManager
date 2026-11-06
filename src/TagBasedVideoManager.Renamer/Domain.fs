@@ -120,7 +120,6 @@ type RenamerError =
     | SettingsError of message: string
     | OpenRouterError of statusCode: int * message: string
     | ContainerError of command: string * exitCode: int * stderr: string
-    | DockerError of command: string * exitCode: int * stderr: string
     | TimeoutError of command: string
     | ValidationError of message: string
     | UndoConflictError of path: string * message: string
