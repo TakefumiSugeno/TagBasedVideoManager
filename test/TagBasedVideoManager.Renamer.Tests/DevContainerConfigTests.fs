@@ -86,6 +86,14 @@ module DevContainerConfigTests =
         | _ -> failwith "forwardPorts が配列として定義されていません"
 
     [<Fact>]
+    let ``IT-DEV-01: appPort に "5621:5621" を含む（Docker ポートバインドによるホスト疎通保証）`` () =
+        use doc = parseJsonc (RepoLayout.readTextOrFail devcontainerJsonPath)
+
+        match tryPath doc.RootElement [ "appPort" ] with
+        | Some ports when ports.ValueKind = JsonValueKind.Array -> stringsOf ports |> should contain "5621:5621"
+        | _ -> failwith "appPort が配列として定義されていません"
+
+    [<Fact>]
     let ``IT-DEV-01: forwardPorts に 本番ポート 5620 を含まない（競合防止）`` () =
         use doc = parseJsonc (RepoLayout.readTextOrFail devcontainerJsonPath)
 
