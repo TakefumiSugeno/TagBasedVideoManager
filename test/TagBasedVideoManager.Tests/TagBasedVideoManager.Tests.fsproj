@@ -13,6 +13,7 @@
     <Compile Include="Unit\SearchDslTests.fs" />
     <Compile Include="Unit\DbInitTests.fs" />
     <Compile Include="Unit\DbTests.fs" />
+    <Compile Include="Unit\VideoDirsTests.fs" />
     <Compile Include="Unit\ScannerTests.fs" />
     <Compile Include="Unit\MediaTests.fs" />
     <Compile Include="Unit\HttpHandlersTests.fs" />

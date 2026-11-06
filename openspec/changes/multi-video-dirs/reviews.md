@@ -64,3 +64,47 @@
 - **SE Reviewer**: LGTM: true
 - **LGTM**: true
 - **合意状況**: 全ロール承認済み
+
+---
+
+## Apply タスクレビュー結果: Task 1.3 (VideoDirs モジュール)
+
+- **日時**: 2026-11-07
+- **フェーズ**: apply
+- **タスク**: Task 1.3: VideoDirs モジュールのレビュー・破壊テスト
+- **レビュアー**: `qa-reviewer`, `pg-reviewer`
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md` / `checklist_apply_impl.md`
+- **対象成果物**:
+  - `src/TagBasedVideoManager/VideoDirs.fs`
+  - `test/TagBasedVideoManager.Tests/Unit/VideoDirsTests.fs`
+
+### 1. 挑戦的設問への回答サマリ
+
+#### 1.1 qa-reviewer（Adversarial QA / トートロジー検証）
+
+- **トートロジー・甘いアサーションの検証**:
+  - 期待値は固定リテラル値でアサートされており、トートロジーは皆無。
+  - UT-12 のアサーションに含まれていた甘い条件（`|| msg.Contains("VIDEO_DIRS")`）を告発し、ドライブ直下専用メッセージのみを判定するよう厳格化修正済み。
+- **Adversarial QA（破壊テスト実行結果）**:
+  - スクラッチスクリプトにて `null`、1万件の連続セミコロン、DoS 入力、多種多様なルートパス（`C:\`, `C:`, `c:/`, `/`, `\\` 等）と通常パスの混在、Unicode 絵文字パス等、全 42 パターンの破壊テストを作成・実行。
+  - 例外終了せず全て適切な `Result.Ok` / `Result.Error` を返却し、**堅牢性を確認（Green / 落とせず）**。
+
+#### 1.2 pg-reviewer（コードシンプルさ / 暗黙の仮定検証）
+
+- **暗黙の仮定・例外握りつぶし**:
+  - 純粋関数かつ ROP（`Result` 型）で例外握りつぶしは皆無。健全なエラーハンドリングを確認。
+  - 末尾スラッシュ付きパスの正規化差異は後続タスク（Scanner の `Path.GetFullPath`）で吸収することを合意。
+- **30% コード削減リファクタ**:
+  - `deduplicate` を `List.distinctBy` に簡素化、`StringSplitOptions.RemoveEmptyEntries ||| StringSplitOptions.TrimEntries` の活用、ブール論理式の単純化により、83 行から 56 行へ**約 32.5% のコード削減**を達成・反映済み。
+
+### 2. 指摘事項（保留・申し送り）
+
+| ID        | 種別  | 対象           | 内容                                                                                     | 対応方針                 |
+| :-------- | :---- | :------------- | :--------------------------------------------------------------------------------------- | :----------------------- |
+| **Min-2** | Minor | `VideoDirs.fs` | 末尾区切り付きパス（`D:\A\` と `D:\A`）の同一視は Scanner 側の `Path.GetFullPath` で担保 | 後続 Task 2.1/2.2 で検証 |
+
+### 3. 総合判定
+
+- **qa-reviewer**: LGTM: true
+- **pg-reviewer**: LGTM: true
+- **LGTM**: true

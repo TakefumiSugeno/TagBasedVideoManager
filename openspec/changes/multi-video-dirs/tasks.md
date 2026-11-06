@@ -1,8 +1,8 @@
 ## 1. 設定解析 `VideoDirs.parse` / `fromEnvironment`
 
-- [ ] 1.1 [qa-tester] `VideoDirs.parse` および `fromEnvironment` の Red テスト作成・失敗確認（UT-01〜UT-10, UT-12, UT-08a/b、test_plan.md 3.1）
-- [ ] 1.2 [pg-implementer] `VideoDirs` モジュールの Green 実装・Refactor（純粋 `parse` と環境変数読み込みの分離、`Result` 型、イミュータブル）
-- [ ] 1.3 [qa-reviewer / pg-reviewer] レビュー・破壊テスト、`reviews.md` 追記、`verify-gate.ps1 -Gate apply`
+- [x] 1.1 [qa-tester] `VideoDirs.parse` および `fromEnvironment` の Red テスト作成・失敗確認（UT-01〜UT-10, UT-12, UT-08a/b、test_plan.md 3.1）
+- [x] 1.2 [pg-implementer] `VideoDirs` モジュールの Green 実装・Refactor（純粋 `parse` と環境変数読み込みの分離、`Result` 型、イミュータブル）
+- [x] 1.3 [qa-reviewer / pg-reviewer] レビュー・破壊テスト、`reviews.md` 追記、`verify-gate.ps1 -Gate apply`
 
 ## 2. Scanner の複数ルート走査・パス正規化・タグ導出
 
