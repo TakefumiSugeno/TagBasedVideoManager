@@ -84,3 +84,6 @@ companion-settings.json
 
 # Test evidence & coverage (openspec-kit)
 test/TestResults/
+
+# Avalonia Linux build cache
+.avalonia-build-tasks/

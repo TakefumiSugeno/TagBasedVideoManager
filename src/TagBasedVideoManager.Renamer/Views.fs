@@ -92,6 +92,8 @@ module Views =
                 "RESTARTING", textAiComment, "🔄 RESTARTING", bgAiComment, borderAiComment, textAiComment
             | Unhealthy ->
                 "UNHEALTHY", textBeforeLabel, "▲ UNHEALTHY (マウント不可: パス長超過を検出)", badgeBgBefore, borderBefore, textBeforeLabel
+            | NotInstalled ->
+                "NOT INSTALLED", textBeforeLabel, "✕ NO RUNTIME (WSL3 または Docker が必要です)", badgeBgBefore, borderBefore, textBeforeLabel
             | NotFound ->
                 "NOT FOUND", textBeforeLabel, "✕ NOT FOUND", badgeBgBefore, borderBefore, textBeforeLabel
 
@@ -115,7 +117,7 @@ module Views =
                             StackPanel.margin (0.0, 0.0, 16.0, 4.0)
                             StackPanel.children [
                                 TextBlock.create [
-                                    TextBlock.text "🐳 Docker:"
+                                    TextBlock.text "🐳 Container:"
                                     TextBlock.foreground (SolidColorBrush textSub)
                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                     TextBlock.fontWeight FontWeight.SemiBold
@@ -156,7 +158,7 @@ module Views =
                             StackPanel.children [
                                 Button.create [
                                     Button.content "▶ Start"
-                                    Button.isEnabled (not model.IsDockerBusy && model.Docker.State <> Running)
+                                    Button.isEnabled (not model.IsDockerBusy && model.Docker.State <> Running && model.Docker.State <> NotInstalled)
                                     Button.background (SolidColorBrush btnDark)
                                     Button.foreground (SolidColorBrush textWhite)
                                     Button.borderBrush (SolidColorBrush borderFluent)
@@ -165,7 +167,7 @@ module Views =
                                     Button.padding (10.0, 4.0)
                                     Button.fontSize 11.0
                                     Button.fontWeight FontWeight.Medium
-                                    Button.onClick (fun _ -> dispatch (ExecuteDockerAction "up -d"))
+                                    Button.onClick (fun _ -> dispatch (ExecuteDockerAction "start"))
                                 ]
                                 Button.create [
                                     Button.content "■ Stop"
@@ -182,14 +184,14 @@ module Views =
                                 ]
                                 Button.create [
                                     Button.content "🔄 Restart"
-                                    Button.isEnabled (not model.IsDockerBusy)
+                                    Button.isEnabled (not model.IsDockerBusy && model.Docker.State <> NotInstalled)
                                     Button.background (SolidColorBrush accentBlue)
                                     Button.foreground (SolidColorBrush textWhite)
                                     Button.cornerRadius 4.0
                                     Button.padding (12.0, 4.0)
                                     Button.fontSize 11.0
                                     Button.fontWeight FontWeight.Bold
-                                    Button.onClick (fun _ -> dispatch (ExecuteDockerAction "restart tag-based-video-manager"))
+                                    Button.onClick (fun _ -> dispatch (ExecuteDockerAction "restart"))
                                 ]
                             ]
                         ]

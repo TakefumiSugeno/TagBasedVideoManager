@@ -69,13 +69,20 @@ type UndoRecord = {
     RenamedFullPath: string
 }
 
-/// Dockerコンテナ稼働ステータス
+/// コンテナランタイム種別
+type ContainerRuntime =
+    | Wslc
+    | Docker
+    | Podman
+
+/// コンテナ稼働ステータス
 type ContainerState =
     | Running
     | Stopped
     | Restarting
     | Unhealthy
     | NotFound
+    | NotInstalled
 
 type DockerStatus = {
     State: ContainerState
@@ -112,6 +119,8 @@ type RenamerError =
     | IoError of message: string * ex: exn option
     | SettingsError of message: string
     | OpenRouterError of statusCode: int * message: string
+    | ContainerError of command: string * exitCode: int * stderr: string
     | DockerError of command: string * exitCode: int * stderr: string
+    | TimeoutError of command: string
     | ValidationError of message: string
     | UndoConflictError of path: string * message: string

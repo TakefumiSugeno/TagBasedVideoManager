@@ -1,0 +1,30 @@
+{
+  "name": "TagBasedVideoManager DevContainer",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  // 本番コンテナ (5620) との競合を防ぐため開発用ポート 5621 をバインド・フォワード
+  "appPort": ["5621:5621"],
+  "forwardPorts": [5621],
+  // Windows バインドマウント (DrvFs / root:root) 上での MSBuild タイムスタンプ更新エラー (MSB3374) を防ぐため root で実行
+  "remoteUser": "root",
+  // ホストの動画ディレクトリを読み取り専用でコンテナ内の /app/videos にマウント
+  "mounts": ["source=E:/e,target=/app/videos,type=bind,readonly"],
+  "containerEnv": {
+    "PORT": "5621"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Ionide.Ionide-fsharp",
+        "ms-dotnettools.csdevkit",
+        "ms-dotnettools.csharp",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "dotnet.defaultSolution": "TagBasedVideoManager.slnx"
+      }
+    }
+  },
+  "postCreateCommand": "dotnet restore"
+}
