@@ -183,7 +183,11 @@ cd TagBasedVideoManager
 
 ### 2. 環境変数の設定
 
-プロジェクトルートに `.env` ファイルを作成し、以下の変数を定義します（Webアプリ・デスクトップアプリ共通）。
+プロジェクトルートの `.env.sample` をコピーして `.env` ファイルを作成し、ご利用の環境（Windows / Linux / DevContainer）に合わせて変数を定義します（Webアプリ・デスクトップアプリ共通）。
+
+```bash
+cp .env.sample .env
+```
 
 ```env
 PORT=5620
