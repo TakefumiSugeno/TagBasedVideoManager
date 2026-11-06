@@ -424,3 +424,304 @@ PG Reviewer Agent は checklist_apply_impl.md セクション 2・3 を担当。
 - **条件付きLGTM**: なし
 - **保留指摘（申し送り）**: なし
 - **次のアクション**: 次タスクへ
+
+---
+
+# レビュー記録: remove-obsolete-docker-compose / archive / 総括レビュー (user-review)
+
+- **日時**: 2026-11-06
+- **フェーズ**: archive
+- **タスク**: Archive総括レビュー（初見エンジニア視点でのドキュメント検証・Whyの欠落告発・トラブルシューティング手順の十分性）
+- **レビュアー**: user (User Reviewer Agent)
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: `openspec/changes/remove-obsolete-docker-compose/proposal.md`, `openspec/changes/remove-obsolete-docker-compose/design.md`, `openspec/changes/remove-obsolete-docker-compose/specs/docker-infrastructure/spec.md`, `openspec/changes/remove-obsolete-docker-compose/specs/companion-docker-control/spec.md`, `openspec/changes/remove-obsolete-docker-compose/handover.md`, `openspec/changes/remove-obsolete-docker-compose/reviews.md`, `README.md`, `Dockerfile`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: 設計の背景（Why）の追跡可能性（初見エンジニア視点でのドキュメント検証）
+
+- **確認内容・回答**:
+  - **設計の背景（Why）・ボツ案・トレードオフの明確性**:
+    1. 明日からこのリポジトリを一人で引き継ぐ初見の新人エンジニアの視点で `README.md`、`Dockerfile`、`proposal.md`、`design.md`、および `handover.md` を通読し、「なぜ `docker-compose.yml` と `DockerController.fs` / `RenamerError.DockerError` を廃止し、デプロイスクリプト（`scripts/deploy.ps1` / `scripts/deploy.sh`）および `ContainerController.fs` へ一本化したのか」の背景（Why）がコードを読まずとも完全に追跡できることを確認した。
+    2. 具体的には、`design.md`（L5-16, L32-60, L94-98）および `handover.md`（L10-23）において、① WSL 3.0 (`wslc.exe`) と Linux (`docker` / `podman`) のマルチランタイム単一コンテナ運用への移行完了に伴い、`docker-compose.yml` がマウントパスや GPU 設定の二重管理を引き起こしていたこと、② `DockerController.fs` と `RenamerError.DockerError` が本番コード（`State.fs`）から一切参照されないデッドコード・到達不能バリアントとなりカバレッジ母数を歪めていたこと、③ 段階的廃止（残置）というボツ案を採らず物理削除した判断根拠と、Linux ホスト利用者の利便性を損なわないためのトレードオフ解消策（`scripts/deploy.sh` による GPU 自動検出・ヘルスチェック内蔵）が明快に文書化されている。
+  - **暗黙の前提・ドキュメント不整合の排除確認**:
+    1. `Dockerfile`（L4-11）のヘッダーコメントから旧 `docker-compose.yml` への参照が完全に除去され、CPU / AMD GPU (`scripts/deploy.sh` による `/dev/dri` 自動付与) / NVIDIA GPU (`scripts/deploy.ps1` または `scripts/deploy.sh` による `--gpus all` 自動付与) の仕組みが明記されている。
+    2. `README.md`（L158-164, L204-225）において、Propose レビュー時に指摘した旧「(B) Docker Compose を使用する場合」の削除だけでなく、対になっていた「(A)」の見出し番号や実在しない `-EnableGpu` オプション記述も綺麗に整理され、Windows 11 (`pwsh ./scripts/deploy.ps1`) と Linux (`./scripts/deploy.sh`) の単一コンテナ起動手順に迷いなく到達できる構成となっている。
+    3. Propose / Apply 各フェーズで保留とした全 4 件の指摘（`companion-docker-control/spec.md` の Purpose 更新、`StateTests.fs` の `Cmd` 検証粒度、`State.fs` `DockerCommandCompleted` の重複削減・終了コード表示、`ExecuteUndo` 再起動エラー通知と `ContainerController` の旧フォールバック整理）が、`handover.md` のセクション 3「保留指摘・技術的負債」（L37-43）およびセクション 4「将来の改善・リファクタ候補」（L48-50）に漏れなく転記されている。
+- **確認根拠**:
+  - `openspec/changes/remove-obsolete-docker-compose/proposal.md` (L6-18, L30-50)
+  - `openspec/changes/remove-obsolete-docker-compose/design.md` (L3-16, L32-86, L94-98)
+  - `openspec/changes/remove-obsolete-docker-compose/handover.md` (L10-23, L35-51)
+  - `Dockerfile` (L1-11)
+  - `README.md` (L158-164, L204-225)
+
+### 設問2: トラブルシューティング手順の十分性
+
+- **確認内容・回答**:
+  - **本番・運用時の原因特定・切り分け・ログ確認導線**:
+    1. `README.md`（L209-225）および `handover.md`（L54-62）において、Windows (`pwsh ./scripts/deploy.ps1`) と Linux (`./scripts/deploy.sh`) の具体的な起動コマンド・引数（動画ディレクトリ指定や GPU 指定）が明記されている。さらに、デプロイ時のポート 5620 事前競合チェックや、ヘルスチェック失敗時に自動でコンテナログ（`<runtime> logs --tail 50 tag-based-video-manager`）が出力される仕組みが案内されており、コンテナ起動失敗時に運用者が即座に原因を特定できる。
+    2. デスクトップコンパニオンアプリ（`TagBasedVideoManager.Renamer`）においても、ランタイム未導入時は `"✕ NO RUNTIME"` 表示と `ValidationError`、コマンド失敗時は `ContainerError`（標準エラー出力表示）、ハング時は 10 秒での `TimeoutError` と `IsDockerBusy = false` への自動ロック解除が働いた上で再試行可能な状態に復帰することが仕様書（`specs/companion-docker-control/spec.md` L5-18）とテスト（`StateTests.fs` `UT-STATE-ERR-01`〜`03`）の双方で保証されている。
+    3. Windows 環境で開発・運用する初見エンジニアが踏み抜きやすい「`scripts/deploy.sh` の改行コード（CRLF 混入による Linux 実行エラーおよび `IT-SCRIPT-02` 失敗）」の注意点と、万が一の際の安全なロールバック手順（DB や永続化データ `./data` に非破壊であり `git revert` のみで即座に復元可能であること）が `handover.md` セクション 5（L59-62）に明記されている。
+- **確認根拠**:
+  - `README.md` (L204-225, L297-317)
+  - `openspec/changes/remove-obsolete-docker-compose/handover.md` (L54-62)
+  - `openspec/changes/remove-obsolete-docker-compose/specs/docker-infrastructure/spec.md` (L5-38)
+  - `openspec/changes/remove-obsolete-docker-compose/specs/companion-docker-control/spec.md` (L5-23)
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）※Apply実装レビュー時のみ
+
+- **対象関数/モジュール**: `対象外（Archive総括レビューのため。Apply Task 1.2 にて 460 パターン以上の破壊テスト Green を確認済み）`
+- **破壊テストコード名**: `対象外（reviews.md Task 1.2 qa-review の adversarial_qa_task1_2.fsx 記録を参照）`
+- **実行コマンド**: `対象外`
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+- **実行ログ要約**:
+
+```text
+Archiveフェーズの総括レビュー（ドキュメントWhy欠落・引き継ぎ検証）のため新規破壊テスト実行は対象外。Applyフェーズ Task 1.2 の Adversarial QA にて 460 パターン以上の異常入力に対する堅牢性およびテスト全件 Pass（Renamer 295件、Web 65件）を確認済み。
+```
+
+---
+
+## 3. 指摘事項
+
+なし（理由: 堅牢性確認済み。`README.md`・`Dockerfile`・`handover.md`・仕様書間で設計の背景（Why）および単一コンテナ起動・トラブルシューティング手順が一貫しており、Propose / Apply フェーズでの保留事項も全件 `handover.md` に漏れなく引き継がれているため）
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: handover.md に全ての負債・申し送りが記録済み
+- **リリース可否**: 即時リリース可
+- **保留指摘（申し送り）**: なし（全件 `handover.md` へ転記完了を確認済み）
+- **承認者**: User Reviewer Agent
+- **次のアクション**: Archive実行
+
+---
+
+# レビュー記録: remove-obsolete-docker-compose / archive / 総括レビュー (se-review)
+
+- **日時**: 2026-11-06
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー（隠された技術的負債・妥協点の自白、およびロールバック・安全性の最終検証）
+- **レビュアー**: se (SE Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+- **対象成果物**: `openspec/changes/remove-obsolete-docker-compose/proposal.md`, `openspec/changes/remove-obsolete-docker-compose/design.md`, `openspec/changes/remove-obsolete-docker-compose/handover.md`, `openspec/changes/remove-obsolete-docker-compose/reviews.md`, `src/TagBasedVideoManager.Renamer/Domain.fs`, `src/TagBasedVideoManager.Renamer/State.fs`, `src/TagBasedVideoManager.Renamer/ContainerController.fs`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: 隠された技術的負債・妥協点の自白（悪魔の代弁者）
+
+- **確認内容・回答**:
+  1. **今回あえて残した技術的負債と `handover.md` への記録状況**:
+     - **負債①（`State.fs` L608-616 `DockerCommandCompleted` における `ContainerError` 終了コード非表示とワイルドカードエラー文言）**: `ContainerError (cmd, exitCode, stderr)` のパターンマッチで `exitCode` を破棄し `stderr` のみを UI 表示しているため、外部 CLI が `stderr` 空文字かつ非ゼロ終了コードで異常終了した場合に UI メッセージ単体では終了コードを判別できない。また、ワイルドカード分岐（L615-616）のプレフィックスが `"Docker エラー: {other}"` のまま残っている。既存テスト期待値との互換性維持およびスコープ集中のため今回は据え置いたが、`handover.md` のセクション 3（L41）およびセクション 4（L48）に具体的な改善案（状態更新レコード生成の共通化による約 30% コード削減と `exitCode` 併記）とともに漏れなく記録されている。
+     - **負債②（`State.fs` L568-575 `ExecuteUndo` におけるコンテナ再起動エラーの握りつぶし）**: リネーム本体の `RenameCompleted`（L532-538）では `ContainerController.executeAction ... "restart"` の結果を `DockerCommandCompleted` にディスパッチしてエラー通知するのに対し、`ExecuteUndo`（L571）では `let! _ = ContainerController.executeAction ... "restart"` で戻り値を破棄して常に `Ok ()` を返している。直後の `UndoCompleted (Ok ())`（L581）が `Cmd.ofMsg CheckDockerStatus` を発行するためステータスバー表示の不整合は起きないものの、再起動失敗自体の警告通知が欠落している。この点も `handover.md` のセクション 3（L42）およびセクション 4（L49）に明記されている。
+     - **負債③（`ContainerController.fs` L131-132, L183 に残る旧 Docker Compose 互換フォールバック）**: `parseContainerPsOutput` 内に旧 `docker compose ps --format json` 向けの `"Service"` プロパティ抽出（L131-132）およびサービス名 `"video-manager"` 部分一致判定（L183）が残存している。単一コンテナ名 `"tag-based-video-manager"` にも `"video-manager"` が含まれるため実害はないが、将来的に別コンテナ名へ変更したり同一ホスト上で `"*video-manager*"` を含む別コンテナを稼働させたりした際に誤マッチする潜在リスクがある。この負債も `handover.md` のセクション 3（L42）およびセクション 4（L50）に具体的に記録されている。
+  2. **将来の機能追加で踏み抜く可能性が高い罠**:
+     - **罠①（`RenamerError` 新規ケース追加時のワイルドカード吸収）**: `State.fs` L615 の `DockerCommandCompleted (_, Error other)` がワイルドカードで全エラーを受け止める構造のため、将来 `Domain.fs` の `RenamerError` に新しいコンテナ関連エラーケースを追加してもコンパイラの網羅性警告（FS0025）が発生せず、生の判別共用体文字列表現（`$"Docker エラー: {other}"`）がそのまま UI に露出する罠がある。
+     - **罠②（Windows 環境での `scripts/deploy.sh` 改行コード汚染）**: `DeployScriptTests.fs` の `IT-SCRIPT-02` が `scripts/deploy.sh` に `\r`（CR）が 1 バイトでも混入すると失敗する設計となっているため、Windows 環境で Git の `core.autocrlf=true` 設定のまま編集・保存すると Gate テストが即座に Red になる。これについても `handover.md` セクション 5（L59-60）に運用上の注意事項として明記されている。
+- **確認根拠**:
+  - `src/TagBasedVideoManager.Renamer/Domain.fs` (L118-125)
+  - `src/TagBasedVideoManager.Renamer/State.fs` (L532-538, L568-586, L608-616)
+  - `src/TagBasedVideoManager.Renamer/ContainerController.fs` (L131-132, L180-185)
+  - `openspec/changes/remove-obsolete-docker-compose/handover.md` (L35-62)
+
+### 設問2: ロールバック・安全性の最終検証
+
+- **確認内容・回答**:
+  1. **ロールバック（Revert）手順の検証**:
+     - 本変更は不要となった `docker-compose.yml`、`DockerController.fs`、`DockerControllerTests.fs`、および到達不能ケース `RenamerError.DockerError` の削除とドキュメント・仕様書の更新のみで構成されている。
+     - SQLite データベーススキーマ、マイグレーション、永続化データディレクトリ（`./data`）、設定ファイル（`appsettings.json` / `.env`）の構造に対する破壊的変更は一切存在しない。
+     - 万が一マージ後に問題が発覚した場合でも、`git revert` によるコミット取り消しのみで即座かつ安全に直前の安定状態へ完全復元可能であることが `design.md`（L98）および `handover.md`（L61-62）に明記されている。
+  2. **保留指摘の全件引き継ぎ確認**:
+     - Propose フェーズおよび Apply フェーズの全レビュー記録（`reviews.md`）で「保留（Minor / Suggestion）」と判定された全 4 件の指摘が、欠落なく `handover.md` の「3. 保留指摘・技術的負債」（L37-43）および「4. 将来の改善・リファクタ候補」（L46-50）へ正確に転記されていることを確認した。
+- **確認根拠**:
+  - `openspec/changes/remove-obsolete-docker-compose/proposal.md` (L51-66)
+  - `openspec/changes/remove-obsolete-docker-compose/design.md` (L95-98)
+  - `openspec/changes/remove-obsolete-docker-compose/reviews.md` (L74-89, L182-205, L267-285, L340-363)
+  - `openspec/changes/remove-obsolete-docker-compose/handover.md` (L35-62)
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）※Apply実装レビュー時のみ
+
+- **対象関数/モジュール**: `対象外（Archive 総括レビューのため。Apply Task 1.2 にて 460 パターン以上の破壊テスト実行・全件 Green 確認済み）`
+- **破壊テストコード名**: `対象外（Apply Task 1.2 の adversarial_qa_task1_2.fsx 記録を参照）`
+- **実行コマンド**: `対象外`
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+- **実行ログ要約**:
+
+```text
+Archive フェーズの総括レビューのため新規の破壊テスト実行は対象外。Apply Task 1.2 レビューにて 460 パターン以上の異常入力テストで未捕捉例外 0 件・状態ロック残留 0 件を実証済み。
+```
+
+---
+
+## 3. 指摘事項
+
+なし（理由: 堅牢性確認済み。今回スコープ外として据え置いた既存の技術的負債および Propose/Apply フェーズの全保留指摘が漏れなく `handover.md` に記録されており、`git revert` による即時ロールバック安全性も確認済みのため）
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: handover.md に全ての負債・申し送りが記録済み
+- **リリース可否**: 即時リリース可
+- **保留指摘（申し送り）**: なし（全件 `handover.md` へ転記完了確認済み）
+- **承認者**: SE Reviewer Agent
+- **次のアクション**: Archive実行
+
+---
+
+# レビュー記録: remove-obsolete-docker-compose / archive / 総括レビュー (pg-review)
+
+- **日時**: 2026-11-06
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー（隠された技術的負債・妥協点の自白・申し送り完全性検証）
+- **レビュアー**: PG Reviewer Agent (pg)
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+- **対象成果物**: `openspec/changes/remove-obsolete-docker-compose/handover.md`, `openspec/changes/remove-obsolete-docker-compose/reviews.md`, `src/TagBasedVideoManager.Renamer/Domain.fs`, `src/TagBasedVideoManager.Renamer/State.fs`, `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj`, `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs`, `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: 今回あえて残した技術的負債の自白と `handover.md` への記録確認
+
+- **確認内容・回答**:
+  1. **`State.fs` の `DockerCommandCompleted` におけるレコード生成の重複・終了コード非表示・プレフィックス混在**:
+     - `src/TagBasedVideoManager.Renamer/State.fs` L608-616 において、各 `Error` 分岐で状態更新レコードを個別に記述している点、`ContainerError (_, _, stderr)` で `exitCode` を破棄している点、およびワイルドカード分岐のプレフィックスが `"Docker エラー: {other}"` のまま残っている点は、既存テストとの互換性および変更スコープ最小化のためにあえて残した妥協点であり、`handover.md` の L41 および L48 に具体的に記録されていることを確認した。
+  2. **`State.fs` の `ExecuteUndo` におけるコンテナ再起動結果の握りつぶし**:
+     - `State.fs` L571 において `ContainerController.executeAction ... "restart"` の戻り値を `_` で破棄している点は本変更前からの既存実装であり、`handover.md` L42 および L49 に明記されていることを確認した。
+  3. **`ContainerController.fs` に残存する旧 Compose 命名フォールバック**:
+     - `ContainerController.fs` L131-132 の `"Service"` プロパティ参照および L183 の `"video-manager"` 部分一致フォールバックが `handover.md` L42 および L50 に具体的に記録されていることを確認した。
+  4. **Propose / Apply フェーズの全保留指摘の転記漏れチェック**:
+     - `reviews.md` に記録された全保留指摘（計4件）が漏れなく `handover.md` の「3. 保留指摘・技術的負債」（L37-43）に転記されていることを確認した。
+- **確認根拠**:
+  - `openspec/changes/remove-obsolete-docker-compose/handover.md` (L35-51)
+  - `openspec/changes/remove-obsolete-docker-compose/reviews.md` (L74-81, L182-189, L267-274, L338-355)
+  - `src/TagBasedVideoManager.Renamer/State.fs` (L532-540, L568-582, L608-616)
+  - `src/TagBasedVideoManager.Renamer/ContainerController.fs` (L131-132, L180-184)
+
+### 設問2: 将来の機能追加で踏み抜く可能性が高い罠（暗黙の前提・結合箇所）の特定
+
+- **確認内容・回答**:
+  1. **`RenamerError` への新規エラーケース追加時のワイルドカード吸収の罠**:
+     - `State.fs` の各完了ハンドラ末尾に `Error other` ワイルドカードが存在するため、将来 `RenamerError` に新ケースを追加した際は専用ハンドリングを明示的に追加する必要がある。
+  2. **`DeployScriptTests.fs` のリポジトリ横断静的検査（`IT-CLEAN-01`〜`04`, `IT-SCRIPT-02`）との結合**:
+     - `IT-CLEAN-03` が `README.md` 内の `docker compose` / `docker-compose.yml` 不在を検証し、`IT-SCRIPT-02` が `scripts/deploy.sh` の LF 改行を検証している（`handover.md` L59-60 に明記済み）。
+- **確認根拠**:
+  - `src/TagBasedVideoManager.Renamer/Domain.fs` (L118-125)
+  - `src/TagBasedVideoManager.Renamer/State.fs` (L347-350, L418-430, L542-545, L583-586, L608-616)
+  - `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs` (L221-229, L475-510)
+  - `openspec/changes/remove-obsolete-docker-compose/handover.md` (L59-60)
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）※Apply実装レビュー時のみ
+
+- **対象関数/モジュール**: `対象外（Archive総括レビューのため。Apply Task 1.2 にて 460 パターン以上の破壊テスト実行・Green 確認済み）`
+- **破壊テストコード名**: `対象外`
+- **実行コマンド**: `対象外`
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+- **実行ログ要約**:
+
+```text
+Archive フェーズ総括レビューのため新規破壊テスト実行は対象外。Apply Task 1.2 の QA レビュー記録および単体・結合テスト全 360 件 Pass により堅牢性を確認済み。
+```
+
+---
+
+## 3. 指摘事項
+
+なし（理由: 今回の変更で意図的にスコープ外とした技術的負債・妥協点、および Propose/Apply フェーズでの保留指摘全4件が `handover.md` に漏れなく具体的なファイル名・行番号付きで記録されており、386行の旧 Compose デッドコード削除と `ContainerError` への統一がクリーンに完了していることを確認済み）
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし（全件 `handover.md` L37-50 へ転記完了を確認済み）
+- **承認者**: PG Reviewer Agent
+- **次のアクション**: Archive実行
+
+---
+
+# レビュー記録: remove-obsolete-docker-compose / archive / 総括レビュー (qa-review)
+
+- **日時**: 2026-11-06
+- **フェーズ**: archive
+- **タスク**: 総括レビュー（ロールバック・安全性の最終検証および保留指摘の全件引き継ぎ確認）
+- **レビュアー**: QA Reviewer Agent (qa)
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+- **対象成果物**: `openspec/changes/remove-obsolete-docker-compose/test_plan.md`, `openspec/changes/remove-obsolete-docker-compose/tasks.md`, `openspec/changes/remove-obsolete-docker-compose/handover.md`, `openspec/changes/remove-obsolete-docker-compose/reviews.md`, `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs`, `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: ロールバック（Revert）手順の検証（`checklist_archive.md` セクション 3.1）
+
+- **確認内容・回答**:
+  1. **`git revert` による即時巻き戻し可否**:
+     - 本変更は不要となった `docker-compose.yml`、`DockerController.fs`、`DockerControllerTests.fs` の削除、`Domain.fs`・`State.fs` からの `RenamerError.DockerError` 除去、およびドキュメント更新と回帰テスト追加のみで構成されており、`git revert` 1回で直前の安定状態へ安全に巻き戻せることを確認した。
+  2. **後戻り不能な破壊的変更の不在確認**:
+     - SQLite DB スキーマ、永続化設定ファイル、ボリューム構造、環境変数契約への変更は一切なく、後戻り不能な破壊的変更はゼロである。
+- **確認根拠**:
+  - `openspec/changes/remove-obsolete-docker-compose/handover.md` (L18-23, L54-62)
+  - `src/TagBasedVideoManager.Renamer/Domain.fs` (L118-125)
+  - `src/TagBasedVideoManager.Renamer/State.fs` (L608-616)
+
+### 設問2: 保留指摘の全件引き継ぎ確認およびテスト計画網羅性の最終検証（`checklist_archive.md` セクション 3.2）
+
+- **確認内容・回答**:
+  1. **Propose / Apply フェーズの保留指摘（Minor / Suggestion）全件転記突合**:
+     - `reviews.md` に記録された全保留指摘（計 4 件）と `handover.md` セクション 3（L37-43）・セクション 4（L48-50）を突合し、漏れなく全件引き継がれていることを確認した。
+  2. **`test_plan.md` の全テストケース実装・エビデンス確認**:
+     - `test_plan.md` の全テストケース（`IT-CLEAN-01`〜`04`, `UT-STATE-ERR-01`〜`03` 等）がすべて実装され、Renamer テスト全 295 件 Pass、Web テスト全 65 件 Pass、C0 カバレッジ 84.61%（目標 80%+ 達成）のエビデンスが `handover.md` に正確に記録されていることを確認した。
+- **確認根拠**:
+  - `openspec/changes/remove-obsolete-docker-compose/reviews.md` (L74-89, L182-205, L267-285, L340-363, L367-426)
+  - `openspec/changes/remove-obsolete-docker-compose/handover.md` (L26-51)
+  - `openspec/changes/remove-obsolete-docker-compose/test_plan.md` (L26-110)
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）※Apply実装レビュー時のみ
+
+- **対象関数/モジュール**: `TagBasedVideoManager.Renamer.RenamerError`, `State.update` (`DockerCommandCompleted`), `ContainerController`
+- **破壊テストコード名**: `adversarial_qa_task1_2.fsx`（Apply Task 1.2 レビュー記録 `reviews.md` L390-411 参照）
+- **実行コマンド**: `dotnet fsi adversarial_qa_task1_2.fsx`
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+- **実行ログ要約**:
+
+```text
+Archive フェーズ総括レビューのため、Apply Task 1.2 で実施した Adversarial QA（460 パターン以上の異常値・境界値・奇形 NDJSON 注入テストで未捕捉例外 0 件・IsDockerBusy ロック残留 0 件）および単体・結合テスト全 360 件 Pass のエビデンスを最終確認し、未検証の死角がないことを確認した。
+```
+
+---
+
+## 3. 指摘事項
+
+なし（理由: ロールバック安全性、テスト計画の全ケース網羅、および Propose / Apply フェーズにおける全保留指摘の `handover.md` への完全転記を確認済み）
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: handover.md に全ての負債・申し送りが記録済み
+- **リリース可否**: 即時リリース可
+- **承認者**: QA Reviewer Agent
+- **保留指摘（申し送り）**: なし（全件 `handover.md` へ転記完了済み）
+- **次のアクション**: Archive実行
