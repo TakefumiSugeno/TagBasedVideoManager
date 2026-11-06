@@ -157,10 +157,10 @@ CREATE TABLE ErrorLogs (
 
 ## 動作環境 (Requirements)
 
-- **OS**: Windows 11 / Linux (Docker)
+- **OS**: Windows 11 / Linux
 - **ランタイム**: .NET 10 SDK (ローカル開発時)
 - **データベース**: SQLite 3
-- **コンテナ環境**: Docker, Docker Compose
+- **コンテナ環境**: WSL 3.0 (wslc) / Docker / Podman
 
 ### GPUアクセラレーション対応
 
@@ -203,42 +203,24 @@ PATH_LENGTH_THRESHOLD=240
 
 ### 3. コンテナ起動 (Web アプリ)
 
-本アプリは単一コンテナ構成であり、Docker Compose なしで直接 OCI ランタイムから起動できます。
-Windows 11（WSL 3.0 / Docker Desktop）および Linux（Docker / Podman）向けに、ワンクリックでビルド・再起動・ヘルスチェックを行うデプロイスクリプトを用意しています。
-
-#### (A) デプロイスクリプトを使用する場合 (推奨)
+本アプリは単一コンテナ構成であり、直接 OCI ランタイムから起動できます。
+Windows 11（WSL 3.0 / Docker Desktop）および Linux（Docker / Podman）向けに、ワンクリックでビルド・再起動・ヘルスチェックおよび GPU アクセラレーション自動設定を行うデプロイスクリプトを用意しています。
 
 - **Windows 11 (WSL 3.0 または Docker Desktop)**:
-  PowerShell で以下を実行します。WSL 3.0 (`wslc`) または `docker` を自動検出し、ポート 5620 の事前チェック、旧コンテナの安全な停止・削除、イメージビルド、コンテナ再起動、およびヘルスチェック（失敗時は自動で `logs` を表示）を実行します。
+  PowerShell で以下を実行します。WSL 3.0 (`wslc`) または `docker` を自動検出し、ポート 5620 の事前チェック、旧コンテナの安全な停止・削除、イメージビルド、コンテナ再起動（NVIDIA GPU 検出時は `--gpus all` を自動付与）、およびヘルスチェック（失敗時は自動で `logs` を表示）を実行します。
 
   ```powershell
   pwsh ./scripts/deploy.ps1
   ```
 
-  ※WSL 3.0 (`wslc`) 利用時は Docker Desktop なしで直接コンテナを稼働できます。AMD GPU をパススルーする場合は `-EnableGpu` オプションを指定できます。
+  ※WSL 3.0 (`wslc`) 利用時は Docker Desktop なしで直接コンテナを稼働できます。
 
 - **Linux (Docker または Podman)**:
-  Bash で以下を実行します。`docker` または `podman` を自動検出してデプロイします。
+  Bash で以下を実行します。`docker` または `podman` を自動検出し、NVIDIA GPU（`--gpus all`）または AMD GPU（`/dev/dri`）の自動パススルーを含めてデプロイします。
+
   ```bash
   ./scripts/deploy.sh
   ```
-
-#### (B) Docker Compose を使用する場合
-
-`docker-compose.yml` で利用するデバイス（GPU）に合わせて以下の設定変更を行います。
-
-- **CPUのみ (デフォルト)**:
-  `docker-compose.yml` のGPU専用セクション（`devices` または `deploy.resources`）がコメントアウトされていることを確認します。
-- **AMD GPUを利用する場合**:
-  `devices:` および `/dev/dri` のコメントアウトを解除します。
-- **NVIDIA GPUを利用する場合**:
-  `deploy.resources.reservations.devices` セクションのコメントアウトを解除します。
-
-起動コマンドを実行します：
-
-```bash
-docker compose up -d --build
-```
 
 ブラウザから `http://localhost:5620` にアクセスします。
 

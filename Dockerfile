@@ -3,11 +3,11 @@
 # =============================================================================
 # ffmpegのGPUアクセラレーション対応について:
 #   - CPU処理 (デフォルト): 変更不要。このファイルをそのまま使用してください。
-#   - AMD GPU (ROCm/VAAPI): 変更不要。docker-compose.yml のコメントを参照してください。
-#   - NVIDIA GPU (CUDA): 変更不要。docker-compose.yml のコメントを参照してください。
+#   - AMD GPU (ROCm/VAAPI): 変更不要。scripts/deploy.sh により /dev/dri が自動付与されます。
+#   - NVIDIA GPU (CUDA): 変更不要。scripts/deploy.ps1 または scripts/deploy.sh により --gpus all が自動付与されます。
 #
 # ※ ffmpeg のハードウェアデコードオプション (-hwaccel auto) はアプリ内で
-#    自動設定されます。GPUリソースの付与は docker-compose.yml 側で行います。
+#    自動設定されます。GPUリソースの付与はデプロイスクリプト (scripts/deploy.ps1 / scripts/deploy.sh) で行います。
 # =============================================================================
 
 # 1. ビルドステージ

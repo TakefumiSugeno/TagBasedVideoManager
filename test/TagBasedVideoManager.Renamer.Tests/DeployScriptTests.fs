@@ -470,3 +470,41 @@ module RunArgumentsScriptTests =
     let ``UT-RUN-ARGS: コンテナ名は引数どおりに反映される`` () =
         let args = build "custom-name-1" 5620 "/v" "/d" false false false
         hasPair "--name" "custom-name-1" args |> should equal true
+
+/// 不要な Docker Compose 関連資産の廃止および単一コンテナ構成への整合検証 (IT-CLEAN-01〜04)
+module ObsoleteDockerComposeRemovalTests =
+
+    [<Fact>]
+    let ``IT-CLEAN-01: リポジトリルートに docker-compose.yml が存在しない`` () =
+        File.Exists(RepoLayout.pathOf "docker-compose.yml") |> should equal false
+
+    [<Fact>]
+    let ``IT-CLEAN-02: Dockerfile が存在し docker-compose.yml への言及を含まず deploy.ps1 および deploy.sh への案内コメントを含む`` () =
+        let dockerfilePath = RepoLayout.pathOf "Dockerfile"
+        File.Exists dockerfilePath |> should equal true
+        let content = RepoLayout.readTextOrFail "Dockerfile"
+        content.Contains("docker-compose.yml", StringComparison.OrdinalIgnoreCase) |> should equal false
+        content |> should contain "deploy.ps1"
+        content |> should contain "deploy.sh"
+
+    [<Fact>]
+    let ``IT-CLEAN-03: README.md に docker-compose.yml や docker compose や -EnableGpu が存在せず単一コンテナ起動手順が記載されている`` () =
+        let content = RepoLayout.readTextOrFail "README.md"
+        content.Contains("docker-compose.yml", StringComparison.OrdinalIgnoreCase) |> should equal false
+        Regex.IsMatch(content, @"(?i)\bdocker[\s-]+compose\b") |> should equal false
+        content.Contains("-EnableGpu", StringComparison.OrdinalIgnoreCase) |> should equal false
+        content |> should contain "scripts/deploy.ps1"
+        content |> should contain "scripts/deploy.sh"
+
+    [<Fact>]
+    let ``IT-CLEAN-04: DockerController.fs と DockerControllerTests.fs が存在せず RenamerError に DockerError が存在しない`` () =
+        File.Exists(RepoLayout.pathOf "src/TagBasedVideoManager.Renamer/DockerController.fs") |> should equal false
+        File.Exists(RepoLayout.pathOf "test/TagBasedVideoManager.Renamer.Tests/DockerControllerTests.fs") |> should equal false
+
+        let unionCaseNames =
+            Microsoft.FSharp.Reflection.FSharpType.GetUnionCases typeof<TagBasedVideoManager.Renamer.RenamerError>
+            |> Array.map (fun c -> c.Name)
+
+        unionCaseNames |> Array.contains "DockerError" |> should equal false
+        unionCaseNames |> Array.contains "ContainerError" |> should equal true
+

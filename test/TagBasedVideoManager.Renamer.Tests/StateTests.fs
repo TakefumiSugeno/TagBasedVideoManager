@@ -625,4 +625,45 @@ module StateTests =
         let modelFalse, _ = State.update (ToggleFilterNonJapaneseOnly false) modelTrue
         modelFalse.FilterNonJapaneseOnly |> should equal false
 
+    [<Fact>]
+    let ``UT-STATE-ERR-01: DockerCommandCompleted 成功時は ErrorMessage を None のまま維持しステータス確認コマンドを発行する`` () =
+        let initialModel, _ = State.init ()
+        let busyModel = { initialModel with IsDockerBusy = true; ErrorMessage = None }
+        let updatedModel, cmd = State.update (DockerCommandCompleted ("restart", Ok "tag-based-video-manager")) busyModel
+
+        updatedModel.ErrorMessage |> should equal None
+        cmd.IsEmpty |> should equal false
+
+    [<Fact>]
+    let ``UT-STATE-ERR-02: DockerCommandCompleted で ContainerError 発生時は IsDockerBusy を解除しエラーメッセージを設定する`` () =
+        let initialModel, _ = State.init ()
+        let busyModel = { initialModel with IsDockerBusy = true; ErrorMessage = None }
+        let updatedModel, cmd =
+            State.update (DockerCommandCompleted ("restart", Error (ContainerError ("restart", 1, "daemon error")))) busyModel
+
+        updatedModel.IsDockerBusy |> should equal false
+        updatedModel.ErrorMessage |> should equal (Some "コンテナ コマンド 'restart' エラー: daemon error")
+        cmd.IsEmpty |> should equal false
+
+    [<Fact>]
+    let ``UT-STATE-ERR-03: DockerCommandCompleted で TimeoutError および ValidationError 発生時は IsDockerBusy を解除しエラーメッセージを設定する`` () =
+        let initialModel, _ = State.init ()
+        let busyModel = { initialModel with IsDockerBusy = true; ErrorMessage = None }
+
+        let timeoutModel, timeoutCmd =
+            State.update (DockerCommandCompleted ("start", Error (TimeoutError "start"))) busyModel
+
+        timeoutModel.IsDockerBusy |> should equal false
+        timeoutModel.ErrorMessage |> should equal (Some "コンテナ コマンド 'start' がタイムアウトしました。")
+        timeoutCmd.IsEmpty |> should equal false
+
+        let validationModel, validationCmd =
+            State.update (DockerCommandCompleted ("start", Error (ValidationError "No runtime"))) busyModel
+
+        validationModel.IsDockerBusy |> should equal false
+        validationModel.ErrorMessage |> should not' (equal None)
+        validationModel.ErrorMessage.Value |> should contain "No runtime"
+        validationCmd.IsEmpty |> should equal false
+
+
 
