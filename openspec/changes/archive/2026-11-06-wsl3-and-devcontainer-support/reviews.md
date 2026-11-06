@@ -89,16 +89,47 @@
    - 判定: **落とせなかった（Green / 堅牢性を確認）**
    - 不正入力やタイムアウトに対しても例外でクラッシュすることなく、適切に `Result.Error` / 警告ログ出力 / 安全なフォールバックが行われることを確認した。
 3. **テスト品質・C0/C1/C2 網羅**:
-   - `TagBasedVideoManager.Renamer.Tests`: 292 件成功（失敗 0 / スキップ 0）
+   - `TagBasedVideoManager.Renamer.Tests`: 294 件成功（失敗 0 / スキップ 0）
    - `TagBasedVideoManager.Tests`: 83 件成功（失敗 0 / スキップ 0）
-   - 全体計 375 件の自動テストがすべて PASS。トートロジーや無断 skip は皆無であることを確認。
+   - 全体計 377 件の自動テストがすべて PASS。トートロジーや無断 skip は皆無であることを確認。
 
 ---
 
-## 5. 総合判定
+## 5. Archive 総括レビュー結果（Archive フェーズ）
+
+- **レビュアー**: 全役割（User / SE / PG / QA Reviewer Agent）
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`（技術的負債自白・初見エンジニア視点・ロールバック検証）
+- **判定**: **LGTM: true**
+
+### 1. 隠された技術的負債・妥協点の自白（SE Reviewer & PG Reviewer）
+
+1. **今回あえて残した技術的負債**:
+   - WSL 3.0 (`wslc`) が現時点で `--device` フラグに非対応であるため、Windows + WSL 3.0 環境下の AMD GPU は CPU ソフトウェアデコードにフォールバックする仕様としている（Linux Docker のみ `/dev/dri` パススルー対応）。この制限と将来の拡張箇所（`scripts/common.ps1` の `New-RunArguments`）は `handover.md` の「4. 将来の改善・リファクタ候補」に明記済みである。
+2. **将来の機能追加で踏み抜く可能性が高い罠**:
+   - DevContainer（Linux）と Windows ホスト間で `.env` のファイルパス体系（`/workspaces/...` vs `D:\...`）が異なる点。これについては `.env.sample` に 3 パターン（Windows / Linux / DevContainer）を明記し、DevContainer 内での MSBuild `MSB3374` 権限エラー対策（`remoteUser: "root"`）およびホストポートバインド（`appPort: ["5621:5621"]`）を自動テスト `IT-DEV-01` で保護した。
+
+### 2. 初見エンジニア視点でのドキュメント検証（User Reviewer）
+
+1. **設計の背景（Why）の追跡可能性**:
+   - `design.md`、`README.md`、`.env.sample`、および `handover.md` において、「なぜ Docker Compose ではなく単一コンテナ OCI CLI に抽象化したのか」「なぜ DevContainer のポートを 5621 に分離し `remoteUser: "root"` としたのか」の背景（Why）が明確に文書化されている。
+2. **トラブルシューティング手順の十分性**:
+   - デプロイスクリプトのヘルスチェック失敗時には自動で直近 50 行のコンテナログ（`logs --tail 50`）が出力され、ランタイム未導入時には `wsl --update` の具体的コマンドが案内されるため、初見の運用者でも即座に原因切り分けが可能である。
+
+### 3. ロールバック・安全性の最終検証（SE Reviewer & QA Reviewer）
+
+1. **ロールバック（Revert）手順の検証**:
+   - データベーススキーマの破壊的変更はなく、既存の `docker-compose.yml` も維持されているため、万が一問題が発生した場合でも `git revert` または `docker compose up -d` により即座に従来環境へロールバック可能である。
+2. **保留指摘の全件引き継ぎ確認**:
+   - 未解決の保留指摘は 0 件であり、将来の拡張候補および運用上の注意事項はすべて `handover.md` に記録済みである。
+
+---
+
+## 6. 総合判定
 
 - **LGTM**: true
 - **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: `handover.md` に全ての負債・申し送りが記録済み
+- **リリース可否**: 即時リリース可
 - **指摘サマリ**:
   - `Critical`: 0 件
   - `Major`: 0 件
