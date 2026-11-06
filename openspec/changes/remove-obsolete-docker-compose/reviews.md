@@ -203,3 +203,83 @@ Proposeフェーズの設計・仕様・テスト計画・タスクリストに�
 - **条件付きLGTM**: なし
 - **保留指摘（申し送り）**: 指摘1（`State.fs` の `ContainerError` 終了コード表示およびフォールバック文言統一の将来検討を Archive 時に `handover.md` へ転記）
 - **次のアクション**: 次フェーズへ
+
+---
+
+# レビュー記録: remove-obsolete-docker-compose / apply / Task 1.1
+
+- **日時**: 2026-11-06
+- **フェーズ**: apply
+- **タスク**: Task 1.1: 廃止資産の不在・ドキュメント整合・`ContainerError` ハンドリングを検証する Red テストの追加
+- **レビュアー**: QA Reviewer Agent (qa)
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md`
+- **対象成果物**: `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs`, `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: トートロジーテスト（実装式のコピペ）の告発
+
+- **確認内容・回答**:
+  1. **期待値計算のコピペ検証**: テストコードの期待値にプロダクションコードの計算式や正規表現をコピペしている箇所は存在しない。すべてのアサーションが具体的な固定リテラル値（文字列・真偽値・`Option` リテラル）で検証されている。
+  2. **アサーションなし・形式的テストの告発**: 「例外が出ないことだけを確認するテスト」は 0 件。全 7 件のテスト（`IT-CLEAN-01`〜`04`, `UT-STATE-ERR-01`〜`03`）すべてにおいて、実ファイル存在有無・ファイル内容・判別共用体メタデータ・Elmish `Model` の状態フィールド（`IsDockerBusy`, `ErrorMessage`）および `Cmd` の発行有無を具体的にアサートしている。
+- **確認根拠**: `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs` L475-510、`test/TagBasedVideoManager.Renamer.Tests/StateTests.fs` L628-667。
+
+### 設問2: 甘いアサーション・無意味なモックの告発
+
+- **確認内容・回答**:
+  1. **モック過多による空洞化**: モックは一切使用されていない。`ObsoleteDockerComposeRemovalTests` は `RepoLayout.pathOf` / `RepoLayout.readTextOrFail` を通じてリポジトリの実ファイルと実型定義（`typeof<RenamerError>`）を直接検証しており、`StateTests` は実物の `State.init` / `State.update` を直接呼び出して状態遷移を検証している。
+  2. **あいまいアサーションの排除**: `IT-CLEAN-01`〜`04` および `UT-STATE-ERR-01`〜`02` は `should equal` による厳密一致アサーションを行っている。`UT-STATE-ERR-03` の `ValidationError "No runtime"` ケース（L664-665）では `should not' (equal None)` に加えて `validationModel.ErrorMessage.Value |> should contain "No runtime"` で具体的なエラーペイロード文字列が含まれることを検証している。
+- **確認根拠**: `DeployScriptTests.fs` L475-510、`StateTests.fs` L628-667。
+
+### 設問3: ミューテーション思考（バグのすり抜け検証）
+
+- **確認内容・回答**:
+  - `docker-compose.yml`、`DockerController.fs`、`DockerControllerTests.fs` の削除漏れ、または `Domain.fs` の `DockerError` 削除漏れがあった場合、`IT-CLEAN-01` / `IT-CLEAN-04` が確実に失敗（Red）する（現在先行テストとして 4 件すべて意図通り Red となる構造）。
+  - `State.fs` L610-618 の `DockerCommandCompleted` において、`IsDockerBusy` を `false` に戻し忘れた場合や、`ContainerError` / `TimeoutError` のエラーメッセージ文字列を改変した場合、`UT-STATE-ERR-02` / `UT-STATE-ERR-03` が確実に失敗（Red）する。
+  - **特定した死角（すり抜け箇所）**: `StateTests.fs` L635, L646, L658, L666 において発行された Elmish コマンドを `cmd.IsEmpty |> should equal false` で検証しているため、もし `State.fs` の `Cmd.ofMsg CheckDockerStatus` が別のメッセージに書き換えられた場合、`cmd.IsEmpty` は `false` のままとなる（Elmish `Cmd<'Msg>` の構造上の制約によるもので、`Suggestion` として記録）。
+- **確認根拠**: `StateTests.fs` L635, L646, L658, L666 および `src/TagBasedVideoManager.Renamer/State.fs` L608-618。
+
+### 設問4: フレーキー要因・環境依存の摘出
+
+- **確認内容・回答**: 追加された全テストにおいて、`Thread.Sleep` / `Async.Sleep`、テスト間の可変状態共有、テスト実行順序依存、`DateTime.Now` の直参照、外部ネットワーク通信は一切存在せず、完全に決定論的（Deterministic）である。
+- **確認根拠**: `DeployScriptTests.fs` L475-510、`StateTests.fs` L628-667。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）※Apply実装レビュー時のみ
+
+- **対象関数/モジュール**: 対象外（Task 1.1 は TDD 先行テスト作成タスクであり、Apply テストレビュープロトコル適用のため）
+- **破壊テストコード名**: 対象外
+- **実行コマンド**: 対象外
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+- **実行ログ要約**:
+
+```text
+Task 1.1 は先行 Red テスト実装タスク（checklist_apply_test.md 適用）のため Adversarial QA は対象外。Task 1.2（プロダクションコード実装）完了後の実装レビューにて実施する。
+```
+
+---
+
+## 3. 指摘事項
+
+### 指摘1
+
+- **内容**: `StateTests.fs` L635, L646, L658, L666 の `UT-STATE-ERR-01`〜`03` では、返却された `Cmd<Msg>` に対して `cmd.IsEmpty |> should equal false` のみを検証しており、実際にディスパッチされるメッセージが `CheckDockerStatus` であることまでは検証していない（ミューテーション思考による死角）。
+- **重要度**: Suggestion
+- **対応方針**: 保留
+- **理由**: Elmish の `Cmd<'Msg>` 型は内部が関数リスト `(Dispatch<'Msg> -> unit) list` であり、非空チェック（`cmd.IsEmpty |> should equal false`）でコマンド発行の有無を担保する現在の設計が適切であるため。
+- **対応コミット**: 保留（Archive 時に `handover.md` へ転記）
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **テスト品質評価**: 堅牢（合格）
+- **要修正事項**: なし
+- **保留指摘（申し送り）**: 指摘1（Suggestion: `DockerCommandCompleted` テストにおける `Cmd` 検証の粒度）
+- **承認者**: QA Reviewer Agent
+- **次のアクション**: 次タスクへ
