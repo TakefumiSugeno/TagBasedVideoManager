@@ -105,6 +105,16 @@ module DevContainerConfigTests =
         | None -> failwith "containerEnv.PORT が定義されていません"
 
     [<Fact>]
+    let ``IT-DEV-01: remoteUser は "root"（Windows バインドマウント上の MSB3374 権限エラー防止）`` () =
+        use doc = parseJsonc (RepoLayout.readTextOrFail devcontainerJsonPath)
+
+        match tryPath doc.RootElement [ "remoteUser" ] with
+        | Some user ->
+            user.ValueKind |> should equal JsonValueKind.String
+            user.GetString() |> should equal "root"
+        | None -> failwith "remoteUser が定義されていません"
+
+    [<Fact>]
     let ``IT-DEV-01: customizations.vscode.extensions に Ionide と C# DevKit を含む`` () =
         use doc = parseJsonc (RepoLayout.readTextOrFail devcontainerJsonPath)
 

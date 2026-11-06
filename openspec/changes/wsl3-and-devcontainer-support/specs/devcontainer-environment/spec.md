@@ -13,7 +13,7 @@
 #### Scenario: DevContainer 環境の起動とツール確認
 
 - **WHEN** 開発者が VS Code で「Reopen in Container」を実行したとき
-- **THEN** コンテナが正常にビルド・起動し、コンテナ内ターミナルで `dotnet --version`（.NET 10 系）および `ffmpeg -version` が利用可能であること
+- **THEN** コンテナが `root` ユーザー（Windows バインドマウント上の権限不一致防止）で正常にビルド・起動し、コンテナ内ターミナルで `dotnet --version`（.NET 10 系）、`dotnet build`、および `ffmpeg -version` が権限エラーなく利用可能であること
 
 ### Requirement: 開発環境専用ポートによる競合防止
 

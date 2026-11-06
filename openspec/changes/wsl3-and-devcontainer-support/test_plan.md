@@ -99,14 +99,14 @@
 
 ### 5.1 インターフェース契約・異常系注入（Fault Injection）
 
-| ケースID       | 連携対象             | シナリオ・注入する異常                                                  | 期待される振る舞い                                                                   |
-| :------------- | :------------------- | :---------------------------------------------------------------------- | :----------------------------------------------------------------------------------- |
-| `IT-CC-01`     | CLI プロセス         | `restart` コマンド実行時に終了コード 1（エラー）                        | `Error (ContainerError ("restart", 1, "failed"))` が返りアプリがクラッシュしない     |
-| `IT-CC-02`     | HTTP ヘルスチェック  | ポート 5620 接続タイムアウト（2秒経過）                                 | 即座に false が返り UI がブロックされない                                            |
-| `IT-DEV-01`    | DevContainer 設定    | `.devcontainer/devcontainer.json` の構文妥当性検証                      | JSON スキーマ検証および必須キー（`forwardPorts: [5621]`, `PORT=5621`）の存在確認     |
-| `IT-SCRIPT-01` | `scripts/deploy.ps1` | PowerShell 構文解析（`[System.Management.Automation.Language.Parser]`） | スクリプト構文エラーが 0 件であり、AST に危険な構文が存在しないこと                  |
-| `IT-SCRIPT-02` | `scripts/deploy.sh`  | ShellCheck または Bash 静的解析                                         | 構文エラーが 0 件であり、未定義変数展開防止（`set -euo pipefail`）がなされていること |
-| `IT-DOCKER-02` | ボリュームマウント   | `./data:/app/data` バインドマウント                                     | コンテナ再起動後も SQLite DB ファイルの更新が保持されること                          |
+| ケースID       | 連携対象             | シナリオ・注入する異常                                                  | 期待される振る舞い                                                                                     |
+| :------------- | :------------------- | :---------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------- |
+| `IT-CC-01`     | CLI プロセス         | `restart` コマンド実行時に終了コード 1（エラー）                        | `Error (ContainerError ("restart", 1, "failed"))` が返りアプリがクラッシュしない                       |
+| `IT-CC-02`     | HTTP ヘルスチェック  | ポート 5620 接続タイムアウト（2秒経過）                                 | 即座に false が返り UI がブロックされない                                                              |
+| `IT-DEV-01`    | DevContainer 設定    | `.devcontainer/devcontainer.json` の構文妥当性検証                      | JSON スキーマ検証および必須キー（`forwardPorts: [5621]`, `PORT=5621`, `remoteUser: "root"`）の存在確認 |
+| `IT-SCRIPT-01` | `scripts/deploy.ps1` | PowerShell 構文解析（`[System.Management.Automation.Language.Parser]`） | スクリプト構文エラーが 0 件であり、AST に危険な構文が存在しないこと                                    |
+| `IT-SCRIPT-02` | `scripts/deploy.sh`  | ShellCheck または Bash 静的解析                                         | 構文エラーが 0 件であり、未定義変数展開防止（`set -euo pipefail`）がなされていること                   |
+| `IT-DOCKER-02` | ボリュームマウント   | `./data:/app/data` バインドマウント                                     | コンテナ再起動後も SQLite DB ファイルの更新が保持されること                                            |
 
 ### 5.2 状態遷移網羅
 

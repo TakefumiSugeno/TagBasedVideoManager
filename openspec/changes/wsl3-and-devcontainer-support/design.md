@@ -88,12 +88,15 @@ Windows Subsystem for Linux 3.0（WSL 3.0）の GA により、Windows 標準の
   - バックスラッシュ（`\`）をスラッシュ（`/`）に置換。
   - 末尾スラッシュを正規化して削除。
 
-### Decision 4: DevContainer のポート分離（5621 vs 5620）
+### Decision 4: DevContainer のポート分離（5621 vs 5620）および実行ユーザー設定
 
-- **選択**: 本番コンテナの待ち受けポート `5620` に対し、DevContainer 内の環境変数に `PORT=5621` を注入し、ホスト側へのフォワードポートを `5621` とする。
+- **選択**:
+  - 本番コンテナの待ち受けポート `5620` に対し、DevContainer 内の環境変数に `PORT=5621` を注入し、ホスト側へのフォワードポートを `5621` とする。
+  - `.devcontainer/devcontainer.json` に `"remoteUser": "root"` を指定する。
 - **理由**:
   - 常用コンテナをバックグラウンドで動かしたまま、開発者が VS Code で DevContainer を開き、`dotnet run` やデバッグ実行を衝突なく行えるようにするため。
   - Companion アプリが DevContainer の起動を本番コンテナと誤認する事故を構造的に防ぐため。
+  - Windows バインドマウント（DrvFs / 9p）ではマウント領域の所有者が強制的に `root:root`（UID 0）となるため、非 root ユーザー（`vscode` 等）で MSBuild を実行すると `obj/` 配下ファイルのタイムスタンプ更新（`utimensat`）が `MSB3374`（Permission denied）で失敗する問題を構造的に防ぐため。
 
 ## Risks / Trade-offs
 

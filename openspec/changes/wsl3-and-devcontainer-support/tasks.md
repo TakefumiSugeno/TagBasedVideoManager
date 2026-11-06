@@ -3,8 +3,8 @@
 ## 1. DevContainer 環境の構築 (devcontainer-environment)
 
 - [x] 1.1 `.devcontainer/Dockerfile` を作成し、.NET 10 SDK、FFmpeg、SQLite3、curl を導入する定義を記述する
-- [x] 1.2 `.devcontainer/devcontainer.json` を作成し、開発用ポート 5621 のフォワード、環境変数 `PORT=5621` の設定、および F# (Ionide) / C# DevKit 拡張機能の自動導入を定義する
-- [x] 1.3 DevContainer 設定の構文妥当性検証テスト（`IT-DEV-01`）を作成し、`forwardPorts` に 5621 が含まれ、`PORT` 環境変数が 5621 に設定されていることを検証する
+- [x] 1.2 `.devcontainer/devcontainer.json` を作成し、開発用ポート 5621 のフォワード、環境変数 `PORT=5621`、`remoteUser: "root"`（Windows バインドマウント権限エラー防止）の設定、および F# (Ionide) / C# DevKit 拡張機能の自動導入を定義する
+- [x] 1.3 DevContainer 設定の構文妥当性検証テスト（`IT-DEV-01`）を作成し、`forwardPorts` に 5621 が含まれ、`PORT` 環境変数が 5621、`remoteUser` が `root` に設定されていることを検証する
 
 ## 2. デプロイスクリプトの構築 (container-deployment-scripts)
 
