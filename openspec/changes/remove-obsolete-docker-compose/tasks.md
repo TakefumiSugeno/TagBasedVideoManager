@@ -7,4 +7,4 @@
 
 ## 2. 品質検証・カバレッジ確認・フェーズゲート検証
 
-- [ ] 2.1 全テスト・C0/C1/C2 カバレッジ・エビデンス出力（`pwsh ./test/TagBasedVideoManager.Renamer.Tests/run_tests_with_coverage.ps1` および Web アプリテスト）、自動フォーマット、サブエージェント批判的レビュー（`pg-reviewer` / `qa-reviewer`）、および `pwsh ./openspec/scripts/verify-gate.ps1 -Gate apply -ChangeName remove-obsolete-docker-compose` の PASS を確認する
+- [x] 2.1 全テスト・C0/C1/C2 カバレッジ・エビデンス出力（`pwsh ./test/TagBasedVideoManager.Renamer.Tests/run_tests_with_coverage.ps1` および Web アプリテスト）、自動フォーマット、サブエージェント批判的レビュー（`pg-reviewer` / `qa-reviewer`）、および `pwsh ./openspec/scripts/verify-gate.ps1 -Gate apply -ChangeName remove-obsolete-docker-compose` の PASS を確認する
