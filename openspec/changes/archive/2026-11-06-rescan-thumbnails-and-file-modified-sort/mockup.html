@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="ja" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      UI Mockup: サムネイル再生成 & 更新日時ソート - TagBasedVideoManager
+    </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              slate: {
+                850: "#151f32",
+                900: "#0f172a",
+                950: "#020617",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/lucide-static@0.321.0/font/lucide.min.css"
+    />
+    <style>
+      [x-cloak] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-indigo-500 selection:text-white"
+    x-data="mockApp()"
+    x-cloak
+  >
+    <!-- ヘッダー -->
+    <header
+      class="sticky top-0 z-30 bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-3 flex items-center justify-between"
+    >
+      <div class="flex items-center space-x-3">
+        <div
+          class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20"
+        >
+          ▶
+        </div>
+        <div>
+          <h1 class="font-bold text-sm tracking-wide text-slate-100">
+            TagBasedVideoManager
+          </h1>
+          <p class="text-xs text-slate-400">UI Mockup: Issue #14 & #15</p>
+        </div>
+      </div>
+
+      <!-- 右側アクション -->
+      <div class="flex items-center space-x-2">
+        <!-- 同期ボタン（Issue #14検証用） -->
+        <button
+          @click="triggerScan()"
+          :disabled="isScanning"
+          class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 active:scale-95 transition-all"
+        >
+          <span :class="isScanning ? 'animate-spin inline-block' : ''">🔄</span>
+          <span
+            x-text="isScanning ? '同期中 (サムネイル生成)...' : 'ディレクトリ同期'"
+          ></span>
+        </button>
+
+        <!-- モバイル設定シートトグル (md:hidden) -->
+        <button
+          @click="mobileSheetOpen = true"
+          class="md:hidden p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white border border-slate-700"
+        >
+          ⚙️
+        </button>
+      </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="max-w-7xl mx-auto px-4 py-6">
+      <!-- デスクトップ用ツールバー (md:flex) -->
+      <div
+        class="hidden md:flex items-center justify-between bg-slate-900/60 p-3 rounded-xl border border-slate-800 mb-6"
+      >
+        <div class="flex items-center space-x-4">
+          <!-- ソート選択 (Issue #15: 更新日時追加) -->
+          <div class="flex items-center space-x-2 text-xs">
+            <span class="text-slate-400">並び替え:</span>
+            <select
+              x-model="sortBy"
+              class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
+            >
+              <option value="fileModifiedAt">ファイル更新日 (新規)</option>
+              <option value="createdAt">TBVM登録日</option>
+              <option value="fileName">ファイル名</option>
+              <option value="fileSize">ファイルサイズ</option>
+              <option value="accessCount">再生回数</option>
+              <option value="duration">再生時間</option>
+            </select>
+          </div>
+
+          <!-- 昇順・降順 -->
+          <button
+            @click="sortOrder = (sortOrder === 'desc' ? 'asc' : 'desc')"
+            class="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-indigo-400 hover:text-indigo-300 transition-colors flex items-center space-x-1"
+          >
+            <span x-text="sortOrder === 'desc' ? '⬇ 降順' : '⬆ 昇順'"></span>
+          </button>
+        </div>
+
+        <div class="text-xs text-slate-400">
+          全
+          <span class="font-bold text-slate-200" x-text="videos.length"></span>
+          件の動画
+          <span
+            class="ml-2 px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20"
+            x-show="pendingThumbCount > 0"
+            x-text="'サムネイル未生成: ' + pendingThumbCount + ' 件'"
+          ></span>
+        </div>
+      </div>
+
+      <!-- 動画カードグリッド -->
+      <div
+        class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
+      >
+        <template x-for="video in sortedVideos" :key="video.id">
+          <div
+            class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-slate-700 transition-all flex flex-col"
+          >
+            <!-- サムネイルエリア -->
+            <div
+              class="aspect-video bg-slate-950 relative flex items-center justify-center overflow-hidden border-b border-slate-800/80"
+            >
+              <template x-if="video.thumbnailPath">
+                <div
+                  class="w-full h-full bg-cover bg-center"
+                  :style="'background-image: url(' + video.thumbnailPath + ');'"
+                ></div>
+              </template>
+              <template x-if="!video.thumbnailPath">
+                <div
+                  class="flex flex-col items-center justify-center p-4 text-center"
+                >
+                  <span class="text-2xl mb-1 text-slate-600">🖼️</span>
+                  <span
+                    class="text-[10px] text-amber-400/90 font-medium bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/40"
+                  >
+                    サムネイル未生成
+                  </span>
+                  <span class="text-[9px] text-slate-500 mt-1"
+                    >Duration: <span x-text="video.duration"></span>s
+                    (取得済)</span
+                  >
+                </div>
+              </template>
+              <div
+                class="absolute bottom-1.5 right-1.5 bg-black/80 px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-300"
+              >
+                <span x-text="formatDuration(video.duration)"></span>
+              </div>
+            </div>
+
+            <!-- メタデータエリア -->
+            <div class="p-3 flex-1 flex flex-col justify-between">
+              <div>
+                <h3
+                  class="font-semibold text-xs text-slate-200 line-clamp-1"
+                  :title="video.fileName"
+                  x-text="video.fileName"
+                ></h3>
+
+                <!-- 日時情報の表示 (Issue #15 の検証) -->
+                <div class="mt-2 space-y-0.5 text-[10px] text-slate-400">
+                  <div class="flex justify-between items-center">
+                    <span class="text-indigo-400 font-medium"
+                      >ファイル更新日:</span
+                    >
+                    <span
+                      class="font-mono text-slate-300"
+                      x-text="formatDate(video.fileModifiedAt)"
+                    ></span>
+                  </div>
+                  <div class="flex justify-between items-center text-slate-500">
+                    <span>TBVM登録日:</span>
+                    <span
+                      class="font-mono"
+                      x-text="formatDate(video.createdAt)"
+                    ></span>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                class="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-slate-500"
+              >
+                <span x-text="formatSize(video.fileSize)"></span>
+                <span
+                  class="text-slate-400"
+                  x-text="video.accessCount + ' 回再生'"
+                ></span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </main>
+
+    <!-- モバイル用ソート設定シート (Issue #15: モバイル対応) -->
+    <div
+      x-show="mobileSheetOpen"
+      class="fixed inset-0 z-50 md:hidden bg-black/60 backdrop-blur-sm flex flex-col justify-end"
+      @click.self="mobileSheetOpen = false"
+    >
+      <div
+        class="bg-slate-900 border-t border-slate-800 rounded-t-2xl p-5 space-y-4"
+      >
+        <div
+          class="flex items-center justify-between border-b border-slate-800 pb-3"
+        >
+          <h2 class="font-bold text-sm text-slate-100">
+            表示・ソート設定 (モバイル)
+          </h2>
+          <button
+            @click="mobileSheetOpen = false"
+            class="text-slate-400 hover:text-slate-200 text-lg"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1.5"
+              >並び替え基準</label
+            >
+            <select
+              x-model="sortBy"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
+            >
+              <option value="fileModifiedAt">ファイル更新日 (新規)</option>
+              <option value="createdAt">TBVM登録日</option>
+              <option value="fileName">ファイル名</option>
+              <option value="fileSize">ファイルサイズ</option>
+              <option value="accessCount">再生回数</option>
+              <option value="duration">再生時間</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-400 mb-1.5">順序</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                @click="sortOrder = 'desc'"
+                :class="sortOrder === 'desc' ? 'bg-indigo-600 text-white font-medium' : 'bg-slate-950 text-slate-400 border border-slate-800'"
+                class="py-2 rounded-xl text-xs transition-colors"
+              >
+                降順 (新しい順)
+              </button>
+              <button
+                @click="sortOrder = 'asc'"
+                :class="sortOrder === 'asc' ? 'bg-indigo-600 text-white font-medium' : 'bg-slate-950 text-slate-400 border border-slate-800'"
+                class="py-2 rounded-xl text-xs transition-colors"
+              >
+                昇順 (古い順)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-2">
+          <button
+            @click="mobileSheetOpen = false"
+            class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700"
+          >
+            閉じる
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function mockApp() {
+        return {
+          sortBy: "fileModifiedAt", // デフォルト更新日時
+          sortOrder: "desc",
+          mobileSheetOpen: false,
+          isScanning: false,
+
+          // モックデータ: 過去動画、最近インポートされた動画、サムネイル未生成動画
+          videos: [
+            {
+              id: "v_001",
+              fileName: "2021_Summer_Camp_01.mp4",
+              fileModifiedAt: "2021-08-15T14:22:00Z", // 過去の撮影日時
+              createdAt: "2026-11-06T00:00:00Z", // システム一括登録日（今日）
+              duration: 184,
+              fileSize: 450000000,
+              thumbnailPath:
+                "https://images.unsplash.com/photo-1510312305653-8ed496efae75?w=500&auto=format&fit=crop&q=60",
+              accessCount: 12,
+            },
+            {
+              id: "v_002",
+              fileName: "2024_Drone_Footage_Tokyo.mp4",
+              fileModifiedAt: "2024-04-10T09:15:30Z",
+              createdAt: "2026-11-06T00:00:00Z",
+              duration: 320,
+              fileSize: 890000000,
+              thumbnailPath:
+                "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?w=500&auto=format&fit=crop&q=60",
+              accessCount: 5,
+            },
+            {
+              id: "v_003",
+              fileName: "2019_Old_Family_Video.mp4",
+              fileModifiedAt: "2019-12-24T18:00:00Z", // 最も古い動画
+              createdAt: "2026-11-06T00:00:00Z", // 登録日は同じ
+              duration: 95,
+              fileSize: 120000000,
+              thumbnailPath: null, // Issue #14: サムネイル未生成ゾンビ
+              accessCount: 1,
+            },
+            {
+              id: "v_004",
+              fileName: "2026_Recent_Project_Presentation.mp4",
+              fileModifiedAt: "2026-11-05T18:30:00Z", // 最も新しい動画
+              createdAt: "2026-11-06T00:00:00Z",
+              duration: 540,
+              fileSize: 1200000000,
+              thumbnailPath:
+                "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500&auto=format&fit=crop&q=60",
+              accessCount: 28,
+            },
+          ],
+
+          get pendingThumbCount() {
+            return this.videos.filter((v) => !v.thumbnailPath).length;
+          },
+
+          get sortedVideos() {
+            return [...this.videos].sort((a, b) => {
+              let valA = a[this.sortBy];
+              let valB = b[this.sortBy];
+
+              if (
+                this.sortBy === "fileModifiedAt" ||
+                this.sortBy === "createdAt"
+              ) {
+                valA = new Date(valA || a.createdAt).getTime();
+                valB = new Date(valB || b.createdAt).getTime();
+              }
+
+              if (typeof valA === "string") {
+                return this.sortOrder === "asc"
+                  ? valA.localeCompare(valB)
+                  : valB.localeCompare(valA);
+              }
+              return this.sortOrder === "asc" ? valA - valB : valB - valA;
+            });
+          },
+
+          // Issue #14: ディレクトリ同期による自動サムネイル復旧シミュレーション
+          triggerScan() {
+            this.isScanning = true;
+            setTimeout(() => {
+              this.videos.forEach((v) => {
+                if (!v.thumbnailPath) {
+                  // サムネイル復旧
+                  v.thumbnailPath =
+                    "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=500&auto=format&fit=crop&q=60";
+                }
+              });
+              this.isScanning = false;
+            }, 1200);
+          },
+
+          formatDate(isoStr) {
+            if (!isoStr) return "-";
+            const d = new Date(isoStr);
+            return (
+              d.getFullYear() +
+              "/" +
+              String(d.getMonth() + 1).padStart(2, "0") +
+              "/" +
+              String(d.getDate()).padStart(2, "0") +
+              " " +
+              String(d.getHours()).padStart(2, "0") +
+              ":" +
+              String(d.getMinutes()).padStart(2, "0")
+            );
+          },
+
+          formatDuration(sec) {
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return `${m}:${s.toString().padStart(2, "0")}`;
+          },
+
+          formatSize(bytes) {
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+            if (bytes < 1024 * 1024 * 1024)
+              return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+            return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+          },
+        };
+      }
+    </script>
+  </body>
+</html>

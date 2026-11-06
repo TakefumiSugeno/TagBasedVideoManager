@@ -49,6 +49,7 @@ CodeCoverage/
 
 # MSTest test Results
 [Tt]est[Rr]esult*/
+test-results/
 [Bb]uild[Ll]og.*
 
 # NUnit
@@ -64,16 +65,25 @@ nunit-*.xml
 *.userosscache
 *.sln.docstates
  
-# Temporary development documents
-doc/work/
-
 # Local database and media files
 *.db
-test/videos/
-test/thumbnails/
+*.db-shm
+*.db-wal
+test/**/videos/
+test/**/thumbnails/
 
 # Editor and LSP directories
 .vscode/
 .lsp/
 .clj-kondo/
 
+# Renamer local settings (contains API key)
+companion-settings.json
+**/appsettings.Development.json
+
+
+# Test evidence & coverage (openspec-kit)
+test/TestResults/
+
+# Avalonia Linux build cache
+.avalonia-build-tasks/

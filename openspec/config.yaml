@@ -1,0 +1,154 @@
+schema: spec-driven
+
+# ---------------------------------------------------------------------------
+# openspec-kit 汎用設定（TagBasedVideoManager 固有設定統合版）
+# ---------------------------------------------------------------------------
+
+reviews:
+  required_phases: [propose, apply, archive]
+  max_review_cycles: 3
+  levels:
+    L1: "軽微変更（typo・設定微調整・局所バグ修正）: skip_specs可、Proposeはse-reviewerのみ可"
+    L2: "通常変更（機能追加・仕様変更・UI変更・通常バグ修正）: 全成果物＋test_plan.md必須、Tester/PG/Reviewer完全分業"
+    L3: "大規模変更（アーキテクチャ変更・破壊的変更・DB変更）: L2＋移行/ロールバック計画、Apply中もse-reviewer必須"
+  roles:
+    - name: qa-tester
+      file: "openspec/agents/qa-tester.md"
+      perspective: "テスト計画（test_plan.md）策定・TDD Red先行テスト実装・結合/E2Eテスト実装（本実装の編集禁止）"
+      phases: [propose, apply]
+    - name: pg-implementer
+      file: "openspec/agents/pg-implementer.md"
+      perspective: "TDD Green実装・Refactor（既存Redテストの無断改ざん・skip化禁止、ハリボテ実装禁止）"
+      phases: [apply]
+    - name: user-reviewer
+      file: "openspec/agents/user-reviewer.md"
+      perspective: "ブラインド仕様比較（異常系・境界条件の先出し突合）・せっかち初心者視点でのZero-State/Error-State体験・ドキュメントWhy欠落の批判的レビュー"
+      phases: [propose, archive]
+    - name: se-reviewer
+      file: "openspec/agents/se-reviewer.md"
+      perspective: "外部依存ハング・通信瞬断時の故障シミュレーション（連鎖崩壊追及）・状態不整合・可観測性・隠された技術的負債の批判的レビュー"
+      phases: [propose, apply, archive]
+    - name: pg-reviewer
+      file: "openspec/agents/pg-reviewer.md"
+      perspective: "コード潔癖症視点で暗黙の仮定（思い込み）・例外握りつぶしを告発し、過剰な抽象化を削る30%コード削減リファクタを提案する批判的レビュー"
+      phases: [apply, archive]
+    - name: qa-reviewer
+      file: "openspec/agents/qa-reviewer.md"
+      perspective: "敵対的QAとして対象コードを例外終了させる破壊テストの作成・実行（Adversarial QA）、テストコードのトートロジー（実装式コピペ）・甘いアサーションの批判的レビュー"
+      phases: [apply, archive]
+
+  gate_script: "openspec/scripts/verify-gate.ps1"
+  workflows:
+    propose: ".agents/workflows/sdd-propose.md"
+    apply: ".agents/workflows/sdd-apply.md"
+    archive: ".agents/workflows/sdd-archive.md"
+
+  templates:
+    review_record: "openspec/templates/review_record.md"
+    test_plan: "openspec/templates/test_plan.md"
+    handover: "openspec/templates/handover.md"
+    pr_body: "openspec/templates/pr_body.md"
+    checklist:
+      propose: "openspec/templates/checklist_propose.md"
+      apply_impl: "openspec/templates/checklist_apply_impl.md"
+      apply_test: "openspec/templates/checklist_apply_test.md"
+      archive: "openspec/templates/checklist_archive.md"
+
+context: |
+  Language: Japanese
+  All artifacts must be written in Japanese.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  # プロジェクト共通コンテキスト
+  - アーキテクチャ: 仕様書駆動開発 (SDD) × テスト駆動開発 (TDD) with OpenSpec
+  - 開発フロー: Explore → Gate 0 → Propose → Gate 1 → Apply (Red → Green → Refactor → Review → Gate 2) → Gate 3 → Archive
+  - ベースブランチ: develop
+  - 技術スタック:
+    - バックエンド: F# (.NET 10) + Giraffe, SQLite (Microsoft.Data.Sqlite + Dapper), FFmpeg
+    - フロントエンド (Web): HTML5 + Alpine.js (CDN) + Tailwind CSS (CDN)（Node.js/ビルドツールなし）
+    - デスクトップアプリ: Avalonia.FuncUI (Elmish MVU), FluentTheme ダークモード
+    - テストフレームワーク: xUnit + FsUnit (Unit/Integration), Playwright (Web E2E), RenderTargetBitmap (GUI Visual E2E)
+  - テストエビデンス出力先: test/TestResults/（TRXレポート、HTMLカバレッジ、画面キャプチャPNG、Git管理外）
+
+  # 適用規模レベル（L1 / L2 / L3）
+  - L1（軽微: typo・設定微修正・1ファイル内の局所修正）: skip_specs: true 可、Proposeレビューは se-reviewer のみ可
+  - L2（通常: 機能追加・仕様変更・UI変更・通常バグ修正）: 標準フルフロー（test_plan.md 必須、Tester/PG/Reviewer サブエージェント分業）
+  - L3（大規模: アーキテクチャ変更・破壊的変更・DB変更）: L2 ＋ 移行/ロールバック計画必須、Apply中も se-reviewer 参加
+
+  # サブエージェント6ロール分業（TDD 3権分立）
+  - 同一エージェントによる「自作自演TDD（甘いテスト作成・実装都合でのテスト書き換え）」を防ぐため、役割を分離する（プロンプト定義は openspec/agents/*.md）:
+    1. qa-tester: specs/ と test_plan.md のみから先行失敗テスト（Red）および結合/E2Eテストを実装（プロダクションコード編集禁止）
+    2. pg-implementer: Red テストを一切改ざんせずにプロダクションコードを実装（Green）し Refactor する
+    3. user-reviewer / se-reviewer / pg-reviewer / qa-reviewer: 作成者とは独立したコンテキストで批判的レビューを実施（最大3サイクルで解決しなければユーザーへエスカレーション）
+
+  # テスト網羅性基準（C0 / C1 / C2・結合・E2E）と完了基準（DoD）
+  - 単体テスト網羅性:
+    - C0（命令網羅 / Line）: 全体 80%以上、新規・変更差分 90%以上
+    - C1（分岐網羅 / Branch）: 全体 80%以上、新規・変更差分 85%以上（if/else, switch/match, ガード節, 例外経路の真偽両方）
+    - C2（条件網羅 / Condition）: 複合条件式（権限・計算・日時・状態判定等）は test_plan.md のデシジョンテーブルで 100% 網羅
+    - 同値分割・境界値分析: 数値（min-1, min, max, max+1, 0, 負数）、文字列（空, 空白, 1文字, 上限±1, 特殊文字）、コレクション（空, 1件, 複数, 上限±1）、日時（境界時刻, タイムゾーン, うるう日）を必須化
+    - モック最小化原則: 外部I/O（API/DB/ファイル/時刻/乱数）のみモック可。対象ドメインロジックのモック化やトートロジーアサーションを禁止
+  - 結合テスト網羅性:
+    - モジュール間・DB・外部APIとの正常往復、異常応答注入（4xx/5xx/Timeout/切断/DB制約違反とロールバック）、状態遷移網羅（0-switch 正常遷移 ＋ 1-switch 不正遷移拒否・冪等性）
+  - E2Eテスト網羅性:
+    - specs/ の全 Scenario 網羅率 100%、① Happy Path、② Zero-State/初回起動 Path（データ0件・未設定・未ログイン）、③ Negative/Recovery Path（エラー表示→修正→再試行成功）、実画面キャプチャ（PNG）による視覚検証
+  - プロジェクト固有制約:
+    - ソースコードとテストコードは 1:1 のファイル構成で作成する
+    - 機密情報・環境依存設定は .env で管理し、ソースコードに含めない（PORT, VIDEO_DIR, THUMBNAIL_DIR, DATABASE_PATH）
+    - UI変更時は必ず Tailwind CSS + Alpine.js による HTML モックアップ（openspec/changes/<name>/mockup.html）を作成する
+
+  # AIガードレール（厳守事項）と機械的フェーズゲート
+  - テスト無断改ざん禁止: Green化の過程で既存のテストの期待値・アサーションを緩めたり削除・skip化して通す行為を厳禁とする
+  - ハリボテ実装・サイレント縮小禁止: TODO残し、テスト入力値のハードコード分岐、空catchによる例外握りつぶし、仕様の無断省略を厳禁とする
+  - 各フェーズ移行時は必ず機械的ゲート検証スクリプト（pwsh ./openspec/scripts/verify-gate.ps1 -Gate <pre-propose|propose|apply|archive>）を実行し、PASSED を確認してから次へ進む
+
+rules:
+  # プロポーザル作成時のルール
+  proposal:
+    - "Propose開始（openspec new change）直前に Gate 0（作業ツリー確認・stash退避・develop最新化・マージ済みブランチ一括削除・feature/またはfix/またはchore/ブランチ作成・verify-gate.ps1 -Gate pre-propose）を必ず実行する"
+    - "変更の適用規模レベル（L1 / L2 / L3）と変更種別（feat / fix / refactor / chore）を明記する"
+    - "変更の「What & Why」（不具合修正時は根本原因 Root Cause を含む）を簡潔に記述（500語以内推奨）"
+    - "Non-goals（やらないこと）と、検証可能な受け入れ基準（Given/When/Then）を含める"
+    - "Propose完了時: user-reviewer・se-reviewer による批判的レビュー（checklist_propose.md）を実施し、verify-gate.ps1 -Gate propose が PASS してからユーザー合意を得る"
+
+  # デルタ仕様作成時のルール
+  specs:
+    - "システムが「何をすべきか」を外部観測可能な振る舞いとして記述し、既存仕様（openspec/specs/）との矛盾がないか確認する"
+    - "各要件に検証可能な Scenario（正常系・境界/空状態・異常系）を付与し、test_plan.md のトレーサビリティマトリクスの原典とする"
+
+  # 設計書作成時のルール
+  design:
+    - "アーキテクチャ・責務分離・データフロー・インターフェース・エラーハンドリング方針を記述する"
+    - "L2/L3 では openspec/templates/test_plan.md に基づき openspec/changes/<name>/test_plan.md を作成し、C0/C1/C2目標・同値分割/境界値ケース・デシジョンテーブル・結合/E2Eケース・モック境界を定義する"
+    - "UI/UX変更を伴う場合は、必ず単一ファイルのHTMLモックアップ（openspec/changes/<name>/mockup.html）を作成し、初期/空状態/正常/エラーの状態変化をブラウザで検証可能にする"
+    - "実装タスクへの分解粒度は「2時間以内（変更3〜5ファイル以内）」を目安にする"
+
+  # タスクリスト作成時のルール
+  tasks:
+    - "各タスクにチェックボックス（`- [ ]`）を付与し、依存関係順に並べる"
+    - "不具合修正（fix）の場合、最初のタスクは必ず「根本原因（Root Cause）の特定と、不具合を再現する失敗テスト（Red）の作成」とする"
+    - "各機能・モジュールごとに「① qa-tester による先行 Red テスト作成・失敗確認」→「② pg-implementer による Green 実装・Refactor」→「③ 結合/E2Eテスト・カバレッジ確認」のタスクを分ける"
+    - "最終段に「全テスト・C0/C1/C2カバレッジ・エビデンス確認と verify-gate.ps1 検証」のタスクを含める"
+
+operations:
+  apply:
+    guidance:
+      - "作業開始前に verify-gate.ps1 -Gate propose -ChangeName <name> が PASS していることを確認する"
+      - "フォーマット差分・静的解析エラー・既存テスト合否・skip放置等の機械的検証は verify-gate.ps1 に委譲し、LLMレビューから除外する"
+      - "L2/L3 では TDD 3権分立を実践する: ① qa-tester サブエージェントが Red テストを先行作成し失敗を確認 → ② pg-implementer サブエージェントがテストを改ざんせずに Green 実装＆Refactor → ③ pg-reviewer / qa-reviewer サブエージェントが挑戦的レビュー（破壊テスト実行・悪魔の代弁者）"
+      - "実装コードレビューは、Adversarial QA（例外を吐かせる破壊テストの作成・実行による客観的判定）および30%コード削減リファクタ提案により実施する（非コードタスクはスキップ可）"
+      - "テストコードレビューは、トートロジーアサーション（実装式のコピペ）および甘いアサーション・無意味なモックの告発により実施する"
+      - "単体テストは test_plan.md の境界値・デシジョンテーブルを全て実装し、C0（80%+/差分90%+）・C1（80%+/差分85%+）・C2（100%）を満たすことを確認する"
+      - "結合/E2Eテストは仕様の全 Scenario（Happy / Zero-State / Recovery Path）を検証し、GUI/Web は実画面キャプチャ（PNG）を出力して mockup.html との整合を確認する"
+      - "実装中に既存のテストが落ちた場合、テストの期待値やアサーションを勝手に書き換えて通すこと（テスト改ざん）や skip 化を厳禁とする"
+      - "タスク完了前に自動フォーマット・静的解析・テスト・カバレッジ出力を実行する（エビデンスは Git 管理外）"
+      - "レビューは最大 3 サイクルまでとし、3 サイクルで Critical/Major 指摘が解消しない場合はユーザーへエスカレーションする"
+      - "tasks.md のチェックを [x] に更新する直前に verify-gate.ps1 -Gate apply -ChangeName <name> を実行し、PASSED を確認してからタスク単位で commit する"
+
+  archive:
+    guidance:
+      - "全テスト 100% Pass（Skip放置 0件）、C0/C1/C2 カバレッジ基準達成、ビルド・静的解析エラー 0件、フォーマット差分 0件（Definition of Done）を verify-gate.ps1 -Gate archive で最終確認する"
+      - "関連ドキュメント（README等）を同期更新し、handover.md（テンプレート準拠）に変更サマリ・テスト/カバレッジ結果・保留指摘・改善候補を記録する"
+      - "Archive前: 全4ロール（user/se/pg/qa-reviewer）による総括レビュー（checklist_archive.md: 隠された技術的負債の自白・初見エンジニア視点のWhy検証）を実施し、全ロール LGTM を取得する"
+      - "verify-gate.ps1 -Gate archive -ChangeName <name> が PASS することを確認してから openspec archive を実行する"
+      - "アーカイブ完了コミットを作成し、トピックブランチをリモートへ push した後、gh pr create で develop 向け Pull Request（pr_body.md 準拠）を自動作成して PR の URL を提示する（ローカルブランチはトピックブランチのままでセッション完了とし、人間レビューは PR 上で実施。ユーザー承認後に gh pr merge --merge で統合する）"

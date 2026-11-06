@@ -15,12 +15,12 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # プロジェクトファイルをコピーして復元 (レイヤーキャッシュ最適化)
-COPY ["src/TagBasedVideoManager.fsproj", "./src/"]
-RUN dotnet restore "./src/TagBasedVideoManager.fsproj"
+COPY ["src/TagBasedVideoManager/TagBasedVideoManager.fsproj", "./src/TagBasedVideoManager/"]
+RUN dotnet restore "./src/TagBasedVideoManager/TagBasedVideoManager.fsproj"
 
 # ソースコードをコピーしてパブリッシュ
-COPY src/ ./src/
-WORKDIR /src/src
+COPY src/TagBasedVideoManager/ ./src/TagBasedVideoManager/
+WORKDIR /src/src/TagBasedVideoManager
 RUN dotnet publish "TagBasedVideoManager.fsproj" -c Release -o /app/publish /p:UseAppHost=false
 
 # 2. ランタイムステージ

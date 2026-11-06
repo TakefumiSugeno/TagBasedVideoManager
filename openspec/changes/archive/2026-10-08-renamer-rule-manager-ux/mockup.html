@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      命名規則マネージャー UI モックアップ - TagBasedVideoManager.Renamer
+    </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <style>
+      body {
+        background-color: #09090b;
+        color: #f4f4f5;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #18181b;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #3f3f46;
+        border-radius: 3px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #52525b;
+      }
+      @keyframes highlightPulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+        }
+        70% {
+          box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+        }
+      }
+      .animate-highlight {
+        animation: highlightPulse 0.8s ease-out;
+      }
+    </style>
+  </head>
+  <body
+    class="h-screen w-screen flex flex-col overflow-hidden select-none"
+    x-data="renamerApp()"
+  >
+    <!-- メイン画面背景 (薄暗く表示) -->
+    <div class="flex-1 flex flex-col p-4 opacity-40 pointer-events-none">
+      <div
+        class="flex justify-between items-center bg-zinc-900 border border-zinc-800 p-3 rounded-lg mb-4"
+      >
+        <div class="flex items-center space-x-3">
+          <span class="text-lg font-bold text-blue-400"
+            >⚡ TagBasedVideoManager Renamer</span
+          >
+          <span class="text-xs bg-zinc-800 px-2 py-1 rounded text-zinc-400"
+            >E:\videos</span
+          >
+        </div>
+        <button class="bg-blue-600 px-4 py-1.5 rounded text-sm font-semibold">
+          ⚙ 命名規則
+        </button>
+      </div>
+      <div class="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
+        <div class="text-sm text-zinc-400">候補ファイル一覧...</div>
+      </div>
+    </div>
+
+    <!-- 命名規則マネージャー モーダル (左右2ペイン) -->
+    <div
+      class="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-40"
+    >
+      <div
+        class="bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl w-[960px] max-w-full h-[680px] max-h-full flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+      >
+        <!-- モーダルヘッダー -->
+        <div
+          class="flex justify-between items-center px-6 py-4 border-b border-zinc-800 bg-zinc-900/90"
+        >
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="text-lg font-bold text-white"
+                >⚙ 命名規則マネージャー</span
+              >
+              <span
+                class="text-xs bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded font-medium"
+                >左右2ペイン構成</span
+              >
+            </div>
+            <p class="text-xs text-zinc-400 mt-0.5">
+              AIが使用する命名プロンプト規則の並び替え・追加・編集を行います。先頭のルールが既定値になります。
+            </p>
+          </div>
+          <button
+            class="text-zinc-400 hover:text-white text-xl p-1 hover:bg-zinc-800 rounded transition"
+            title="閉じる"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- モーダルボディ (左右2ペイン) -->
+        <div class="flex-1 flex overflow-hidden">
+          <!-- 左ペイン: ルール一覧 (幅 360px) -->
+          <div
+            class="w-[360px] border-r border-zinc-800 flex flex-col bg-zinc-950/40"
+          >
+            <div
+              class="p-3 border-b border-zinc-800/80 flex justify-between items-center bg-zinc-900/50"
+            >
+              <span class="text-xs font-semibold text-zinc-300"
+                >登録済みルール (<span x-text="rules.length"></span>件)</span
+              >
+              <span class="text-[11px] text-zinc-500">▲▼で優先度変更</span>
+            </div>
+
+            <!-- スクロール可能なカードリスト -->
+            <div
+              class="flex-1 overflow-y-auto p-3 space-y-2.5 custom-scrollbar"
+            >
+              <template x-for="(rule, index) in rules" :key="rule.id">
+                <div
+                  class="border rounded-lg p-3 transition duration-150 cursor-pointer"
+                  :class="editingId === rule.id ? 'bg-blue-950/30 border-blue-500 shadow-md ring-1 ring-blue-500/50' : 'bg-zinc-900/90 border-zinc-800 hover:border-zinc-700'"
+                  @click="startEdit(rule)"
+                >
+                  <!-- カードヘッダー -->
+                  <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0 pr-2">
+                      <div class="flex items-center space-x-1.5 mb-1">
+                        <span
+                          x-show="index === 0"
+                          class="text-[10px] bg-blue-900/60 text-blue-300 border border-blue-700/60 px-1.5 py-0.2 rounded font-bold"
+                          >★既定</span
+                        >
+                        <span
+                          x-show="editingId === rule.id"
+                          class="text-[10px] bg-amber-900/60 text-amber-300 border border-amber-700/60 px-1.5 py-0.2 rounded font-bold animate-pulse"
+                          >✏️ 編集中</span
+                        >
+                        <h4
+                          class="text-xs font-bold text-white truncate"
+                          x-text="rule.name"
+                        ></h4>
+                      </div>
+                      <div
+                        class="text-[11px] font-mono text-blue-400/90 truncate"
+                        x-text="'パターン: ' + rule.pattern"
+                      ></div>
+                    </div>
+
+                    <!-- 操作ボタン群: ▲ ▼ ✏️ 🗑 -->
+                    <div
+                      class="flex items-center space-x-1 shrink-0"
+                      @click.stop
+                    >
+                      <button
+                        class="px-1.5 py-0.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700 disabled:opacity-30 disabled:pointer-events-none"
+                        :disabled="index === 0"
+                        @click="moveRule(index, -1)"
+                        title="上へ移動"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        class="px-1.5 py-0.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700 disabled:opacity-30 disabled:pointer-events-none"
+                        :disabled="index === rules.length - 1"
+                        @click="moveRule(index, 1)"
+                        title="下へ移動"
+                      >
+                        ▼
+                      </button>
+                      <button
+                        class="px-1.5 py-0.5 text-[11px] rounded border transition"
+                        :class="editingId === rule.id ? 'bg-amber-600 border-amber-500 text-white' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'"
+                        @click="startEdit(rule)"
+                        title="このルールを編集"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        class="px-1.5 py-0.5 text-[11px] bg-red-950/40 hover:bg-red-900/60 text-red-300 rounded border border-red-900/50 disabled:opacity-30 disabled:pointer-events-none transition"
+                        :disabled="rules.length <= 1"
+                        @click="requestDelete(rule)"
+                        title="削除確認を開く"
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- バッジ & 指示文抜粋 -->
+                  <div
+                    class="mt-2 flex items-center justify-between text-[10px]"
+                  >
+                    <span
+                      x-show="rule.enableWebSearch"
+                      class="bg-blue-950 text-blue-300 border border-blue-800 px-1.5 py-0.2 rounded font-medium flex items-center space-x-1"
+                    >
+                      <span>🌐</span><span>Web検索有効</span>
+                    </span>
+                    <span x-show="!rule.enableWebSearch" class="text-zinc-500"
+                      >検索無効</span
+                    >
+                    <span
+                      class="text-zinc-500 truncate max-w-[150px]"
+                      x-text="rule.promptInstruction"
+                    ></span>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <!-- 新規作成ボタン (常時配置・クリックイベントでフォーカス＆フラッシュ) -->
+            <div class="p-3 border-t border-zinc-800 bg-zinc-900/70">
+              <button
+                class="w-full py-2.5 px-3 text-xs font-semibold rounded-lg border flex items-center justify-center space-x-1.5 transition shadow-sm active:scale-98"
+                :class="!isEditing ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-500 ring-2 ring-blue-500/30' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'"
+                @click="startNew()"
+              >
+                <span>➕</span>
+                <span
+                  x-text="!isEditing ? '新規ルールを作成中' : '新規ルールを作成'"
+                ></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 右ペイン: ルール詳細・編集フォーム (可変幅・広々スペース) -->
+          <div
+            class="flex-1 flex flex-col bg-zinc-900 p-6 overflow-hidden transition-all duration-300"
+            :class="isFlashing ? 'animate-highlight bg-zinc-900/90 ring-2 ring-blue-500/40 rounded-r-xl' : ''"
+          >
+            <!-- フォームヘッダー -->
+            <div
+              class="flex items-center justify-between pb-3 mb-4 border-b border-zinc-800"
+            >
+              <div class="flex items-center space-x-2">
+                <span
+                  class="text-base font-bold text-white"
+                  x-text="isEditing ? '✏️ ルールの編集' : '➕ 新規ルールの作成'"
+                ></span>
+                <span
+                  class="text-xs px-2 py-0.5 rounded font-medium transition"
+                  :class="isEditing ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'bg-blue-950 text-blue-300 border border-blue-800'"
+                  x-text="isEditing ? '既存ルール更新モード: ' + (rules.find(r => r.id === editingId)?.name || '') : '新規追加モード (入力後に保存してください)'"
+                ></span>
+              </div>
+              <button
+                x-show="isEditing"
+                class="text-xs text-zinc-400 hover:text-white px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 transition"
+                @click="cancelEdit()"
+              >
+                ✕ 編集をキャンセル
+              </button>
+            </div>
+
+            <!-- 編集フォーム内容 -->
+            <div class="flex-1 flex flex-col space-y-4 overflow-hidden">
+              <!-- ルール名 & 命名パターン (2列) -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label
+                    class="block text-xs font-semibold text-zinc-300 mb-1.5"
+                    >ルール名 <span class="text-red-400">*</span></label
+                  >
+                  <input
+                    type="text"
+                    x-ref="nameInput"
+                    x-model="form.name"
+                    placeholder="例: 品番_要約_出演者(推奨)"
+                    class="w-full bg-zinc-950 border border-zinc-700 focus:border-blue-500 rounded px-3 py-1.5 text-xs text-white outline-none transition"
+                  />
+                </div>
+                <div>
+                  <label
+                    class="block text-xs font-semibold text-zinc-300 mb-1.5"
+                    >命名パターン (テンプレート)
+                    <span class="text-zinc-500 font-normal"
+                      >※拡張子は自動付与のため不要</span
+                    ></label
+                  >
+                  <input
+                    type="text"
+                    x-model="form.pattern"
+                    placeholder="例: {Code}_{Summary}_{Actor}"
+                    class="w-full bg-zinc-950 border border-zinc-700 focus:border-blue-500 font-mono rounded px-3 py-1.5 text-xs text-blue-400 outline-none transition"
+                  />
+                </div>
+              </div>
+
+              <!-- Web検索トグル -->
+              <div class="flex items-center space-x-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="webSearchCheck"
+                  x-model="form.enableWebSearch"
+                  class="rounded bg-zinc-800 border-zinc-700 text-blue-600 focus:ring-0 w-4 h-4 cursor-pointer"
+                />
+                <label
+                  for="webSearchCheck"
+                  class="text-xs text-zinc-200 cursor-pointer flex items-center space-x-1.5 font-medium"
+                >
+                  <span>🌐</span>
+                  <span>DuckDuckGo Web検索 (ddgs) を有効にする</span>
+                  <span class="text-[11px] text-zinc-500 font-normal"
+                    >(作品タイトルや出演者をWebから取得してプロンプトに注入します)</span
+                  >
+                </label>
+              </div>
+
+              <!-- プロンプト指示文 (広々テキストエリア) -->
+              <div class="flex-1 flex flex-col min-h-0 pt-1">
+                <div class="flex justify-between items-center mb-1.5">
+                  <label class="text-xs font-semibold text-zinc-300">
+                    プロンプト指示文 (AIへの詳細命名指示)
+                    <span class="text-red-400">*</span>
+                  </label>
+                  <span class="text-[11px] text-zinc-500"
+                    >※縦領域を広く活用して長文も確認・編集可能です</span
+                  >
+                </div>
+                <textarea
+                  x-model="form.promptInstruction"
+                  placeholder="既存のファイル名から品番、タイトルの要約、出演者を抽出しアンダースコア繋ぎで命名（短すぎても内容が把握しずらくなるので日本語で200文字前後となるように）してください。日本語タイトルや出演者が不明な場合は品番をWeb検索してそれぞれFANZAから日本語を取得してください。"
+                  class="flex-1 w-full bg-zinc-950 border border-zinc-700 focus:border-blue-500 rounded-lg p-3 text-xs text-zinc-200 font-sans leading-relaxed outline-none resize-none custom-scrollbar transition"
+                ></textarea>
+              </div>
+
+              <!-- フォームフッター (アクションボタン) -->
+              <div
+                class="flex justify-between items-center pt-3 border-t border-zinc-800"
+              >
+                <span
+                  class="text-xs text-zinc-500"
+                  x-text="form.name ? '「' + form.name + '」を保存します' : 'ルール名を入力してください'"
+                ></span>
+                <div class="flex space-x-3">
+                  <button
+                    x-show="isEditing"
+                    class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold rounded-lg border border-zinc-700 transition"
+                    @click="cancelEdit()"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition disabled:opacity-40 disabled:pointer-events-none flex items-center space-x-1.5"
+                    :disabled="!form.name.trim()"
+                    @click="saveRule()"
+                  >
+                    <span>💾</span>
+                    <span
+                      x-text="isEditing ? 'この内容で更新・保存' : 'この命名規則を追加する'"
+                    ></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- モーダルフッター -->
+        <div
+          class="px-6 py-3 border-t border-zinc-800 bg-zinc-900/90 flex justify-end"
+        >
+          <button
+            class="px-5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold rounded-lg border border-zinc-700 transition"
+          >
+            閉じる
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🗑 ルール削除確認ダイアログ (オーバーレイ) -->
+    <div
+      x-show="showDeleteConfirm"
+      x-transition.opacity
+      class="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50"
+      style="display: none"
+    >
+      <div
+        class="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-[440px] max-w-full p-6 animate-in fade-in zoom-in-95 duration-150"
+        @click.outside="cancelDelete()"
+      >
+        <div class="flex items-center space-x-3 mb-3">
+          <div
+            class="w-10 h-10 rounded-full bg-red-950/60 border border-red-800 flex items-center justify-center text-red-400 text-lg"
+          >
+            🗑
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">命名規則の削除</h3>
+            <p class="text-xs text-zinc-400">削除確認</p>
+          </div>
+        </div>
+
+        <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-3 my-4">
+          <p class="text-xs text-zinc-300 leading-relaxed">
+            命名規則「<span
+              class="font-bold text-white text-sm"
+              x-text="deleteTarget?.name"
+            ></span
+            >」を削除しますか？
+          </p>
+          <p
+            class="text-[11px] text-red-400/90 mt-1.5 flex items-center space-x-1"
+          >
+            <span>⚠️</span>
+            <span
+              >この操作は取り消せません。設定ファイルからも削除されます。</span
+            >
+          </p>
+        </div>
+
+        <div class="flex justify-end space-x-3 pt-2">
+          <button
+            class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold rounded-lg border border-zinc-700 transition"
+            @click="cancelDelete()"
+          >
+            キャンセル
+          </button>
+          <button
+            class="px-5 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1.5"
+            @click="confirmDelete()"
+          >
+            <span>🗑</span>
+            <span>削除する</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function renamerApp() {
+        return {
+          rules: [
+            {
+              id: "rule-code-name-actor",
+              name: "品番_要約_出演者(推奨)",
+              pattern: "{Code}_{Summary}_{Actor}",
+              promptInstruction:
+                "既存のファイル名から品番、タイトルの要約、出演者を抽出しアンダースコア繋ぎで命名（短すぎても内容が把握しずらくなるので日本語で200文字前後となるように）してください。日本語タイトルや出演者が不明な場合は品番をWeb検索してそれぞれFANZAから日本語を取得してください。",
+              order: 0,
+              enableWebSearch: true,
+            },
+            {
+              id: "rule-compact",
+              name: "短縮",
+              pattern: "{ShortTitle}",
+              promptInstruction:
+                "既存のファイル名から動画の内容を表す最も重要で短いキーワード（200文字以内）で命名してください。",
+              order: 1,
+              enableWebSearch: false,
+            },
+          ],
+          editingId: null,
+          isFlashing: false,
+          showDeleteConfirm: false,
+          deleteTarget: null,
+          form: {
+            name: "",
+            pattern: "{Code}_{Summary}_{Actor}",
+            enableWebSearch: true,
+            promptInstruction: "",
+          },
+          get isEditing() {
+            return this.editingId !== null;
+          },
+          flashForm() {
+            this.isFlashing = true;
+            setTimeout(() => {
+              this.isFlashing = false;
+            }, 800);
+          },
+          startEdit(rule) {
+            this.editingId = rule.id;
+            this.form = {
+              name: rule.name,
+              pattern: rule.pattern,
+              enableWebSearch: rule.enableWebSearch,
+              promptInstruction: rule.promptInstruction,
+            };
+            this.flashForm();
+            this.$nextTick(() => {
+              if (this.$refs.nameInput) this.$refs.nameInput.focus();
+            });
+          },
+          startNew() {
+            this.editingId = null;
+            this.form = {
+              name: "",
+              pattern: "{Code}_{Summary}_{Actor}",
+              enableWebSearch: true,
+              promptInstruction: "",
+            };
+            this.flashForm();
+            this.$nextTick(() => {
+              if (this.$refs.nameInput) {
+                this.$refs.nameInput.focus();
+                this.$refs.nameInput.select();
+              }
+            });
+          },
+          cancelEdit() {
+            this.startNew();
+          },
+          saveRule() {
+            if (!this.form.name.trim()) return;
+
+            if (this.isEditing) {
+              const index = this.rules.findIndex(
+                (r) => r.id === this.editingId,
+              );
+              if (index !== -1) {
+                this.rules[index] = {
+                  ...this.rules[index],
+                  name: this.form.name.trim(),
+                  pattern: this.form.pattern.trim() || "{Title}",
+                  enableWebSearch: this.form.enableWebSearch,
+                  promptInstruction:
+                    this.form.promptInstruction.trim() ||
+                    "簡潔に命名してください。",
+                };
+              }
+            } else {
+              const newRule = {
+                id: "rule-" + Date.now(),
+                name: this.form.name.trim(),
+                pattern: this.form.pattern.trim() || "{Title}",
+                enableWebSearch: this.form.enableWebSearch,
+                promptInstruction:
+                  this.form.promptInstruction.trim() ||
+                  "簡潔に命名してください。",
+                order: this.rules.length,
+              };
+              this.rules.push(newRule);
+            }
+            this.startNew();
+          },
+          requestDelete(rule) {
+            if (this.rules.length <= 1) return;
+            this.deleteTarget = rule;
+            this.showDeleteConfirm = true;
+          },
+          confirmDelete() {
+            if (!this.deleteTarget) return;
+            const id = this.deleteTarget.id;
+            this.rules = this.rules.filter((r) => r.id !== id);
+            this.rules.forEach((r, idx) => (r.order = idx));
+            if (this.editingId === id) {
+              this.startNew();
+            }
+            this.cancelDelete();
+          },
+          cancelDelete() {
+            this.showDeleteConfirm = false;
+            this.deleteTarget = null;
+          },
+          moveRule(index, delta) {
+            const targetIndex = index + delta;
+            if (targetIndex < 0 || targetIndex >= this.rules.length) return;
+            const temp = this.rules[index];
+            this.rules[index] = this.rules[targetIndex];
+            this.rules[targetIndex] = temp;
+            this.rules.forEach((r, idx) => (r.order = idx));
+          },
+        };
+      }
+    </script>
+  </body>
+</html>
