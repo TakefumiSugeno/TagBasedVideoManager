@@ -15,9 +15,9 @@
   // ホストの動画ディレクトリを読み取り専用でコンテナ内の /app/videos にマウント
   "mounts": [
     "source=E:/e,target=/app/videos/e,type=bind,readonly",
-    "source=D:/e,target=/app/videos/d,type=bind,readonly",
-    "source=F:/e,target=/app/videos/f,type=bind,readonly",
-    "source=C:/Users/spjao/Videos/c,target=/app/videos/c,type=bind,readonly"
+    "source=D:/e_d,target=/app/videos/d,type=bind,readonly",
+    "source=F:/e_f,target=/app/videos/f,type=bind,readonly",
+    "source=C:/Users/spjao/Videos/e_c,target=/app/videos/c,type=bind,readonly"
   ],
   "containerEnv": {
     "PORT": "5621"
