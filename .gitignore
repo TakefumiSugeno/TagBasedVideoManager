@@ -87,3 +87,5 @@ test/TestResults/
 
 # Avalonia Linux build cache
 .avalonia-build-tasks/
+
+.devcontainer/devcontainer.json.original
