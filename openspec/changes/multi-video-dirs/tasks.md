@@ -38,7 +38,7 @@
 
 ## 7. 最終検証と Gate 2 通過
 
-- [ ] 7.1 全テスト 100% Pass、C0/C1/C2 カバレッジ・TRX・CoverageReport 出力の確認
-- [ ] 7.2 Prettier / `dotnet format` 差分 0 の確認
-- [ ] 7.3 `pwsh ./openspec/scripts/verify-gate.ps1 -Gate apply -ChangeName multi-video-dirs`
-- [ ] 7.4 保留指摘（Minor/Suggestion）の `handover.md` 転記準備
+- [x] 7.1 全テスト 100% Pass、C0/C1/C2 カバレッジ・TRX・CoverageReport 出力の確認
+- [x] 7.2 Prettier / `dotnet format` 差分 0 の確認
+- [x] 7.3 `pwsh ./openspec/scripts/verify-gate.ps1 -Gate apply -ChangeName multi-video-dirs`
+- [x] 7.4 保留指摘（Minor/Suggestion）の `handover.md` 転記準備

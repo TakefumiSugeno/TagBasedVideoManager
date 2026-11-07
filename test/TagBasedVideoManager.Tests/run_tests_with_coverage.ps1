@@ -57,7 +57,8 @@ dotnet exec $dllPath --results-directory $integrationDir --report-xunit-trx --re
 
 Write-Host "Running E2E tests with coverage..." -ForegroundColor Green
 $e2eFilter = @(
-    "--filter-class", "TagBasedVideoManager.Tests.E2ETests"
+    "--filter-class", "TagBasedVideoManager.Tests.E2ETests",
+    "--filter-class", "TagBasedVideoManager.Tests.MultiVideoDirsE2ETests"
 )
 $e2eDir = Join-Path $testRunDir "E2E"
 dotnet exec $dllPath --results-directory $e2eDir --report-xunit-trx --report-xunit-trx-filename "E2E_net10.0.trx" --coverlet --coverlet-output-format cobertura --coverlet-include "[TagBasedVideoManager]*" --parallel none @e2eFilter
