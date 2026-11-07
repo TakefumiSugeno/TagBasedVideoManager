@@ -864,6 +864,26 @@ if ($newRunArgsCmd) {{
         use doc = JsonDocument.Parse r.StdOut
         doc.RootElement.GetProperty("HasRuntime").GetBoolean() |> should equal true
 
+    [<Fact>]
+    let ``IT-SCRIPT-04: deploy.ps1 は IPv4 ループバック 127.0.0.1 を用いてヘルスチェックを行っている (AST)`` () =
+        let full = RepoLayout.pathOf "scripts/deploy.ps1"
+        let script =
+            $"""
+$t = $null; $e = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile({psq full}, [ref]$t, [ref]$e)
+$assignments = $ast.FindAll({{ param($a) $a -is [System.Management.Automation.Language.AssignmentStatementAst] }}, $true)
+$healthUrlAssign = $assignments | Where-Object {{ $_.Left.Extent.Text -eq '$healthUrl' }} | Select-Object -First 1
+$usesIpv4Loopback = $false
+if ($healthUrlAssign) {{
+    $usesIpv4Loopback = $healthUrlAssign.Right.Extent.Text -match '127\.0\.0\.1'
+}}
+[PSCustomObject]@{{ UsesIpv4Loopback = $usesIpv4Loopback }} | ConvertTo-Json -Compress
+"""
+        let r = runPwsh script
+        Assert.True((r.ExitCode = 0), $"pwsh 実行失敗: {r.StdErr}")
+        use doc = JsonDocument.Parse r.StdOut
+        doc.RootElement.GetProperty("UsesIpv4Loopback").GetBoolean() |> should equal true
+
 /// scripts/deploy.sh の .env 安全読み込み (IT-15)
 module DeployScriptEnvParsingTests =
 
