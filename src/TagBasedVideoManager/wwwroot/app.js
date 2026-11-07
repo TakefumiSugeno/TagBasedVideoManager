@@ -182,16 +182,25 @@ function videoManager() {
       activeLogId: null,
     },
 
+    _lucideTimer: null,
+
+    /// Lucide アイコン変換を 1 フレーム (16ms) 内で debounce 集約し、不要な全画面 DOM 再走査を抑制する
+    refreshIcons() {
+      if (typeof lucide === "undefined") return;
+      if (this._lucideTimer) clearTimeout(this._lucideTimer);
+      this._lucideTimer = setTimeout(() => {
+        lucide.createIcons();
+        this._lucideTimer = null;
+      }, 16);
+    },
+
     init() {
       if (typeof window !== "undefined" && window.innerWidth < 768) {
         this.sidebarOpen = false;
       }
 
       // Lucideアイコンの初期描画
-
-      setTimeout(() => {
-        lucide.createIcons();
-      }, 100);
+      this.refreshIcons();
 
       // 初期データロード
 
@@ -209,11 +218,11 @@ function videoManager() {
         this.fetchVideos();
       });
 
-      // 描画される動画が更新されたら自動的にLucideアイコンを生成する
+      // 描画される動画が更新されたら自動的にLucideアイコンを生成する (debounce最適化)
 
       this.$watch("pagedVideos", () => {
         this.$nextTick(() => {
-          lucide.createIcons();
+          this.refreshIcons();
         });
       });
 
@@ -221,19 +230,19 @@ function videoManager() {
 
       this.$watch("sortedTagTree", () => {
         this.$nextTick(() => {
-          lucide.createIcons();
+          this.refreshIcons();
         });
       });
 
       this.$watch("rules", () => {
         this.$nextTick(() => {
-          lucide.createIcons();
+          this.refreshIcons();
         });
       });
 
       this.$watch("smartFolders", () => {
         this.$nextTick(() => {
-          lucide.createIcons();
+          this.refreshIcons();
         });
       });
     },
@@ -413,9 +422,7 @@ function videoManager() {
             this.videos,
           );
 
-          setTimeout(() => {
-            lucide.createIcons();
-          }, 50);
+          this.refreshIcons();
 
           // 初回アクセス時に登録動画が0件で、まだ自動スキャンを行っていない場合
 
