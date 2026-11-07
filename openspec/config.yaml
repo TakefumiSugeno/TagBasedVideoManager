@@ -94,7 +94,7 @@ context: |
     - specs/ の全 Scenario 網羅率 100%、① Happy Path、② Zero-State/初回起動 Path（データ0件・未設定・未ログイン）、③ Negative/Recovery Path（エラー表示→修正→再試行成功）、実画面キャプチャ（PNG）による視覚検証
   - プロジェクト固有制約:
     - ソースコードとテストコードは 1:1 のファイル構成で作成する
-    - 機密情報・環境依存設定は .env で管理し、ソースコードに含めない（PORT, VIDEO_DIR, THUMBNAIL_DIR, DATABASE_PATH）
+    - 機密情報・環境依存設定は .env で管理し、ソースコードに含めない（PORT, VIDEO_DIRS, THUMBNAIL_DIR, DATABASE_PATH、Renamer は VIDEO_DIR）
     - UI変更時は必ず Tailwind CSS + Alpine.js による HTML モックアップ（openspec/changes/<name>/mockup.html）を作成する
 
   # AIガードレール（厳守事項）と機械的フェーズゲート

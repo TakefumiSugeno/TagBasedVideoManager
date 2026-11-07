@@ -32,9 +32,9 @@
 
 ## 6. ドキュメント・設定の同期
 
-- [ ] 6.1 `README.md` の環境変数表・`.env` 例・移行手順・Docker での `FilePath` 変更警告・同名ルート時の挙動を更新
-- [ ] 6.2 `AGENTS.md` の必須環境変数（本体: `VIDEO_DIRS`、Renamer: `VIDEO_DIR`）と `openspec/config.yaml` の context 内記述を同期更新
-- [ ] 6.3 `.env` サンプル更新（`VIDEO_DIR`＝Renamer 用、`VIDEO_DIRS`＝本体用の役割明記）
+- [x] 6.1 `README.md` の環境変数表・`.env` 例・移行手順・Docker での `FilePath` 変更警告・同名ルート時の挙動を更新
+- [x] 6.2 `AGENTS.md` の必須環境変数（本体: `VIDEO_DIRS`、Renamer: `VIDEO_DIR`）と `openspec/config.yaml` の context 内記述を同期更新
+- [x] 6.3 `.env` サンプル更新（`VIDEO_DIR`＝Renamer 用、`VIDEO_DIRS`＝本体用の役割明記）
 
 ## 7. 最終検証と Gate 2 通過
 
