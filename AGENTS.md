@@ -93,7 +93,9 @@ TagBasedVideoManager は、タグベースの動画管理システムです。�
     - E2Eテスト時、NGケースは画面キャプチャも取得する。
 - **Environment Variables**:
   - 機密情報および環境依存の設定は `.env` で管理し、絶対にソースコードに含めない。
-  - 必須環境変数: `PORT`, `VIDEO_DIR`, `THUMBNAIL_DIR`, `DATABASE_PATH`
+  - 必須環境変数:
+    - 本体 (Web / Docker): `PORT`, `VIDEO_DIRS`（複数フォルダを `;` 区切りで指定）, `THUMBNAIL_DIR`, `DATABASE_PATH`
+    - AI File Renamer (デスクトップアプリ): `VIDEO_DIR`（単一フォルダ指定）
 - **コメント**:
   - ソースコード内のコメントは日本語で記載し、XMLドキュメントコメント形式（`///`）とする。
 - **プロジェクト・依存関係管理**:

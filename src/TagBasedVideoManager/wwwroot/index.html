@@ -3662,11 +3662,11 @@
       x-transition:leave="transition ease-in duration-200"
       x-transition:leave-start="opacity-100"
       x-transition:leave-end="opacity-0"
-      class="fixed top-5 right-5 z-50 max-w-sm w-full bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-2xl backdrop-blur-md flex items-center space-x-3"
+      class="fixed top-5 right-5 z-50 max-w-md w-full bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-2xl backdrop-blur-md flex items-start space-x-3"
       style="display: none"
     >
       <div
-        class="p-2 rounded-xl"
+        class="p-2 rounded-xl flex-shrink-0"
         :class="toast.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'"
       >
         <span x-show="toast.type === 'success'" class="inline-flex">
@@ -3705,11 +3705,17 @@
           class="text-xs font-medium text-slate-200"
           x-text="toast.message"
         ></p>
+        <template x-if="toast.detail">
+          <div
+            class="mt-1 text-xs text-slate-300 font-mono bg-black/40 p-2 rounded border border-white/10 break-all leading-relaxed whitespace-pre-wrap"
+            x-text="toast.detail"
+          ></div>
+        </template>
       </div>
 
       <button
         @click="toast.show = false"
-        class="text-slate-500 hover:text-slate-400"
+        class="text-slate-500 hover:text-slate-400 flex-shrink-0"
       >
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>

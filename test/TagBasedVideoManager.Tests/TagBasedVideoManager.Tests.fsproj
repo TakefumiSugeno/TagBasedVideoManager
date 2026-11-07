@@ -13,6 +13,7 @@
     <Compile Include="Unit\SearchDslTests.fs" />
     <Compile Include="Unit\DbInitTests.fs" />
     <Compile Include="Unit\DbTests.fs" />
+    <Compile Include="Unit\VideoDirsTests.fs" />
     <Compile Include="Unit\ScannerTests.fs" />
     <Compile Include="Unit\MediaTests.fs" />
     <Compile Include="Unit\HttpHandlersTests.fs" />
@@ -25,6 +26,7 @@
     <Compile Include="Integration\PortTests.fs" />
     <Compile Include="E2E\E2ETests.fs" />
     <Compile Include="E2E\MobileE2ETests.fs" />
+    <Compile Include="E2E\MultiVideoDirsE2ETests.fs" />
     <Compile Include="Tests.fs" />
   </ItemGroup>
 

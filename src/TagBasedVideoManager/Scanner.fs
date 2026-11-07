@@ -6,6 +6,7 @@ open System.Data
 open System.Collections.Concurrent
 open System.Threading
 open System.Threading.Tasks
+open System.Runtime.InteropServices
 open Microsoft.Data.Sqlite
 open TagBasedVideoManager.Domain
 open TagBasedVideoManager.Infrastructure
@@ -84,57 +85,235 @@ module Scanner =
         with
         | _ -> []
 
-    /// スキャン処理のメインワークフロー
-    let syncVideoDirectory (videoDir: string) (thumbDir: string) (mediaProc: IMediaProcessor) (conn: IDbConnection) : Async<Result<int, DbError>> =
+    /// ルートディレクトリとファイルパスから付与すべきフォルダ名タグ（ルート名＋サブフォルダ名）を導出する。
+    /// ファイルがルート配下にない場合は空リストを返す（DT-01/DT-02）。
+    let deriveFolderTags (rootDir: string) (filePath: string) : string list =
+        try
+            if String.IsNullOrWhiteSpace(rootDir) || String.IsNullOrWhiteSpace(filePath) then
+                []
+            else
+                let normRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootDir))
+                let leaf = Path.GetFileName(normRoot)
+
+                if String.IsNullOrEmpty(leaf) then
+                    []
+                else
+                    let normFile = Path.GetFullPath(filePath)
+                    let fileDir = Path.GetDirectoryName(normFile)
+
+                    if String.IsNullOrEmpty(fileDir) then
+                        []
+                    else
+                        let checkRel (baseDir: string) =
+                            try
+                                let rel = Path.GetRelativePath(baseDir, fileDir)
+
+                                if rel = "." then
+                                    Some "."
+                                elif
+                                    rel = ".."
+                                    || rel.StartsWith(".." + string Path.DirectorySeparatorChar)
+                                    || rel.StartsWith(".." + string Path.AltDirectorySeparatorChar)
+                                    || Path.IsPathRooted(rel)
+                                then
+                                    None
+                                else
+                                    Some rel
+                            with _ ->
+                                None
+
+                        let relOpt =
+                            match checkRel normRoot with
+                            | Some r -> Some r
+                            | None ->
+                                let resolvedRoot =
+                                    Path.TrimEndingDirectorySeparator(
+                                        TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath normRoot
+                                    )
+
+                                if resolvedRoot <> normRoot then
+                                    checkRel resolvedRoot
+                                else
+                                    None
+
+                        match relOpt with
+                        | None -> []
+                        | Some "." -> [ leaf ]
+                        | Some rel ->
+                            let subFolders =
+                                rel.Split(
+                                    [| Path.DirectorySeparatorChar; Path.AltDirectorySeparatorChar |],
+                                    StringSplitOptions.RemoveEmptyEntries
+                                )
+                                |> Array.map (fun s -> s.Trim())
+                                |> Array.filter (fun s -> not (String.IsNullOrEmpty(s)))
+                                |> Array.toList
+
+                            let seen = System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                            (leaf :: subFolders) |> List.filter (fun s -> seen.Add(s))
+        with _ ->
+            []
+
+    /// 複数のルートディレクトリから、ファイルが所属するすべてのルートのタグを和集合（重複なし、順序安定）で導出する。
+    let deriveAllFolderTags (rootDirs: string list) (filePath: string) : string list =
+        let seen = System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        let result = System.Collections.Generic.List<string>()
+
+        for r in rootDirs do
+            let tags = deriveFolderTags r filePath
+
+            for t in tags do
+                if seen.Add(t) then
+                    result.Add(t)
+
+        result |> Seq.toList
+
+    /// 複数の動画ディレクトリを再帰走査し、正規化物理パスで重複を除去してDB同期を行う。
+    let syncVideoDirectories
+        (videoDirs: string list)
+        (thumbDir: string)
+        (mediaProc: IMediaProcessor)
+        (conn: IDbConnection)
+        : Async<Result<int, DbError>> =
         async {
             try
                 if not (String.IsNullOrEmpty(thumbDir)) && not (Directory.Exists(thumbDir)) then
-                    try Directory.CreateDirectory(thumbDir) |> ignore with _ -> ()
+                    try
+                        Directory.CreateDirectory(thumbDir) |> ignore
+                    with ex ->
+                        eprintfn $"[Scanner Warning] Failed to create thumbDir '%s{thumbDir}': %s{ex.Message}"
 
-                // 1. ディレクトリ内の全ファイルを再帰走査
-                if not (Directory.Exists(videoDir)) then
+                // 1. 存在するルートディレクトリのみを抽出（不在ルートは警告ログを出力してスキップ）
+                let existingRoots =
+                    videoDirs
+                    |> List.choose (fun dir ->
+                        if String.IsNullOrWhiteSpace(dir) then
+                            None
+                        else
+                            let trimmed = dir.Trim()
+
+                            if Directory.Exists(trimmed) then
+                                Some trimmed
+                            else
+                                eprintfn $"[Scanner Warning] Directory does not exist, skipping: %s{trimmed}"
+                                None)
+
+                if List.isEmpty existingRoots then
                     return Ok 0
                 else
-                    let allFiles = enumerateFiles videoDir |> List.toArray
-                    
-                    // 2. 対応拡張子（.mp4）のみにフィルタリング
-                    let videoFiles = 
-                        allFiles 
-                        |> Array.filter (fun file -> 
-                            let ext = Path.GetExtension(file).ToLower()
-                            Array.contains ext supportedExtensions
-                        )
+                    // 2. 全ルート配下のファイルを走査し、対応拡張子かつ物理パス正規化・重複排除
+                    let pathComparer =
+                        if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
+                            StringComparer.OrdinalIgnoreCase
+                        else
+                            StringComparer.Ordinal
 
-                    // 2.5 既存の動画一覧を取得して、FilePath -> Video のマップを作成
+                    let seenFiles = System.Collections.Generic.HashSet<string>(pathComparer)
+
+                    let uniqueFiles =
+                        [
+                            for root in existingRoots do
+                                for file in enumerateFiles root do
+                                    let ext = Path.GetExtension(file).ToLowerInvariant()
+
+                                    if Array.contains ext supportedExtensions then
+                                        let physical = TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath file
+                                        let norm = Path.GetFullPath(physical)
+
+                                        if seenFiles.Add(norm) then
+                                            yield norm
+                        ]
+
+                    // 3. 既存の動画一覧を取得して、正規化物理パス -> Video のディクショナリを作成
                     let! existingVideosResult = Db.getVideos conn None
-                    let existingVideoMap =
-                        match existingVideosResult with
-                        | Ok list -> list |> List.map (fun v -> v.FilePath, v) |> Map.ofList
-                        | Error _ -> Map.empty
 
-                    // 3. 自動タグ付けルール一覧を取得
+                    match existingVideosResult with
+                    | Error err -> return Error err
+                    | Ok existingVideosList ->
+
+                    let existingVideoDict = System.Collections.Generic.Dictionary<string, Video>(pathComparer)
+
+                    for v in existingVideosList do
+                        let normKey =
+                            Path.GetFullPath(TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath v.FilePath)
+
+                        existingVideoDict.[normKey] <- v
+
+                    // 4. 自動タグ付けルール一覧を取得
                     let! rulesResult = Db.getTaggingRules conn
-                    let rules = 
-                        match rulesResult with
-                        | Ok r -> r
-                        | Error _ -> []
 
-                    // 3.5 タグ一覧をキャッシュ化してフォルダタグ自動作成に備える
+                    match rulesResult with
+                    | Error err -> return Error err
+                    | Ok rules ->
+
+                    // 5. タグ一覧をキャッシュ化してフォルダタグ自動作成に備える
                     let! tagsResult = Db.getTags conn
+
+                    match tagsResult with
+                    | Error err -> return Error err
+                    | Ok tagsList ->
+
                     let mutable tagCache =
-                        match tagsResult with
-                        | Ok list -> list |> List.map (fun t -> t.Name.ToLower(), t.Id) |> Map.ofList
-                        | Error _ -> Map.empty
+                        tagsList
+                        |> List.map (fun t -> t.Name.ToLowerInvariant(), t.Id)
+                        |> Map.ofList
+
+                    let getOrCreateTagId (tagName: string) =
+                        async {
+                            let key = tagName.ToLowerInvariant()
+
+                            match tagCache |> Map.tryFind key with
+                            | Some id -> return id
+                            | None ->
+                                let guidStr = Guid.NewGuid().ToString("N")
+                                let newId = $"t_{guidStr.Substring(0, 8)}"
+
+                                let newTag = {
+                                    Tag.Id = newId
+                                    Name = tagName
+                                    ColorCode = "#64748b" // デフォルトのグレー
+                                    ParentId = None
+                                    VideoCount = 0
+                                }
+
+                                let! saveRes = Db.saveTag conn newTag
+
+                                match saveRes with
+                                | Ok () ->
+                                    tagCache <- tagCache |> Map.add key newId
+                                    return newId
+                                | Error _ ->
+                                    let! currentTagsRes = Db.getTags conn
+
+                                    match currentTagsRes with
+                                    | Ok currentTags ->
+                                        match
+                                            currentTags
+                                            |> List.tryFind (fun t ->
+                                                String.Equals(t.Name, tagName, StringComparison.OrdinalIgnoreCase))
+                                        with
+                                        | Some existingTag ->
+                                            tagCache <- tagCache |> Map.add key existingTag.Id
+                                            return existingTag.Id
+                                        | None ->
+                                            tagCache <- tagCache |> Map.add key newId
+                                            return newId
+                                    | Error _ -> return newId
+                        }
 
                     let mutable addedCount = 0
 
-                    for filePath in videoFiles do
-                        let fileName = Path.GetFileName filePath
-                        let fi = FileInfo(filePath)
+                    for normFilePath in uniqueFiles do
+                        let fileName = Path.GetFileName normFilePath
+                        let fi = FileInfo(normFilePath)
                         let fileSize = if fi.Exists then fi.Length else 0L
                         let fileModifiedAt = if fi.Exists then fi.LastWriteTimeUtc else DateTime.UtcNow
-                        
-                        let existingOpt = Map.tryFind filePath existingVideoMap
+
+                        let existingOpt =
+                            match existingVideoDict.TryGetValue(normFilePath) with
+                            | true, v -> Some v
+                            | false, _ -> None
+
                         let isNew, targetVideoId =
                             match existingOpt with
                             | Some v -> false, v.Id
@@ -148,7 +327,7 @@ module Scanner =
                             let newVideo = {
                                 Id = targetVideoId
                                 FileName = fileName
-                                FilePath = filePath
+                                FilePath = normFilePath
                                 Duration = 0L
                                 FileSize = fileSize
                                 ThumbnailPath = None
@@ -159,14 +338,17 @@ module Scanner =
                                 LastAccessedAt = None
                                 Tags = []
                             }
+
                             let! saveResult = Db.saveVideo conn newVideo
+
                             match saveResult with
                             | Ok rows when rows > 0 ->
                                 addedCount <- addedCount + 1
+                                existingVideoDict.[normFilePath] <- newVideo
                                 // 非同期バックグラウンドのサムネイル・メタデータ生成キューへ投入
                                 MediaQueue.enqueue {
                                     VideoId = targetVideoId
-                                    FilePath = filePath
+                                    FilePath = normFilePath
                                     ThumbDir = thumbDir
                                     MediaProc = mediaProc
                                     ConnectionString = conn.ConnectionString
@@ -176,82 +358,94 @@ module Scanner =
                             match existingOpt with
                             | Some v ->
                                 // 既存動画の場合でも、サムネイル画像が未作成・実ファイルが存在しない、またはメタデータが未取得 (Duration = 0L) の場合はキューへ再投入
-                                let thumbMissing = 
+                                let thumbMissing =
                                     match v.ThumbnailPath with
                                     | None -> true
                                     | Some path -> not (File.Exists(path))
+
                                 let durationMissing = v.Duration = 0L
+
                                 if thumbMissing || durationMissing then
                                     MediaQueue.enqueue {
                                         VideoId = targetVideoId
-                                        FilePath = filePath
+                                        FilePath = normFilePath
                                         ThumbDir = thumbDir
                                         MediaProc = mediaProc
                                         ConnectionString = conn.ConnectionString
                                     }
 
                                 // 既存動画の FileModifiedAt バックフィル（UTC基準で厳密に比較し無駄な更新を抑止）
-                                let diffSeconds = Math.Abs((v.FileModifiedAt.ToUniversalTime() - fileModifiedAt.ToUniversalTime()).TotalSeconds)
+                                let diffSeconds =
+                                    Math.Abs(
+                                        (v.FileModifiedAt.ToUniversalTime() - fileModifiedAt.ToUniversalTime())
+                                            .TotalSeconds
+                                    )
+
                                 if diffSeconds > 1.0 then
                                     let! _ = Db.updateVideoFileModifiedAt conn targetVideoId fileModifiedAt
                                     ()
                             | None -> ()
 
+                        // タグを動画に関連付け、インメモリ辞書も同期更新するヘルパー
+                        let attachTag (tagId: string) (tagName: string) =
+                            async {
+                                let alreadyHasTag =
+                                    match existingVideoDict.TryGetValue(normFilePath) with
+                                    | true, v -> v.Tags |> List.exists (fun t -> t.Id = tagId)
+                                    | false, _ -> false
 
-                        // フォルダ名からタグを自動作成・付与（階層構造は維持しない、全子フォルダ対象）
-                        let relativeDir = 
-                            try
-                                Path.GetRelativePath(videoDir, Path.GetDirectoryName(filePath))
-                            with
-                            | _ -> "."
-                        
-                        if relativeDir <> "." && relativeDir <> ".." && not (relativeDir.StartsWith(".." + string Path.DirectorySeparatorChar)) then
-                            let folders = relativeDir.Split([| Path.DirectorySeparatorChar; Path.AltDirectorySeparatorChar |], StringSplitOptions.RemoveEmptyEntries)
-                            for folderName in folders do
-                                let folderNameTrimmed = folderName.Trim()
-                                if not (String.IsNullOrEmpty(folderNameTrimmed)) then
-                                    let tagId =
-                                        match tagCache |> Map.tryFind (folderNameTrimmed.ToLower()) with
-                                        | Some id -> id
-                                        | None ->
-                                            let guidStr = Guid.NewGuid().ToString("N")
-                                            let newId = $"t_{guidStr.Substring(0, 8)}"
-                                            let newTag = {
-                                                Tag.Id = newId
-                                                Name = folderNameTrimmed
-                                                ColorCode = "#64748b" // デフォルトのグレー
-                                                ParentId = None
-                                                VideoCount = 0
-                                            }
-                                            match Db.saveTag conn newTag |> Async.RunSynchronously with
-                                            | Ok () ->
-                                                tagCache <- tagCache |> Map.add (folderNameTrimmed.ToLower()) newId
-                                                newId
-                                            | Error _ -> 
-                                                match Db.getTags conn |> Async.RunSynchronously with
-                                                | Ok currentTags ->
-                                                    match currentTags |> List.tryFind (fun t -> t.Name.ToLower() = folderNameTrimmed.ToLower()) with
-                                                    | Some existingTag -> 
-                                                        tagCache <- tagCache |> Map.add (folderNameTrimmed.ToLower()) existingTag.Id
-                                                        existingTag.Id
-                                                    | None -> newId
-                                                | Error _ -> newId
-
+                                if not alreadyHasTag then
                                     let! _ = Db.addTagToVideo conn targetVideoId tagId
-                                    ()
+
+                                    match existingVideoDict.TryGetValue(normFilePath) with
+                                    | true, v ->
+                                        let updated = {
+                                            v with
+                                                Tags = {
+                                                    Tag.Id = tagId
+                                                    Name = tagName
+                                                    ColorCode = "#64748b"
+                                                    ParentId = None
+                                                    VideoCount = 0
+                                                }
+                                                       :: v.Tags
+                                        }
+
+                                        existingVideoDict.[normFilePath] <- updated
+                                    | false, _ -> ()
+                            }
+
+                        // フォルダ名からタグを自動作成・付与（入れ子ルート対応・全所属ルートの和集合）
+                        let folderTags = deriveAllFolderTags videoDirs normFilePath
+
+                        for folderName in folderTags do
+                            let folderNameTrimmed = folderName.Trim()
+
+                            if not (String.IsNullOrEmpty(folderNameTrimmed)) then
+                                let! tagId = getOrCreateTagId folderNameTrimmed
+                                do! attachTag tagId folderNameTrimmed
 
                         // 自動タグ付けルールの評価と適用 (毎回 getVideos せず fileSize をそのまま利用)
-                        let autoTagIds = TaggingEngine.evaluateRulesFull rules fileName filePath fileSize
+                        let autoTagIds =
+                            TaggingEngine.evaluateRulesFull rules fileName normFilePath fileSize
+
                         for tagId in autoTagIds do
-                            let! _ = Db.addTagToVideo conn targetVideoId tagId
-                            ()
+                            do! attachTag tagId ""
 
                     return Ok addedCount
-            with
-            | ex ->
-                do! Db.saveErrorLog conn ex.Message (Some (ex.ToString()))
-                return Error (QueryError ex.Message)
+            with ex ->
+                do! Db.saveErrorLog conn ex.Message (Some(ex.ToString()))
+                return Error(QueryError ex.Message)
         }
+
+    /// スキャン処理のメインワークフロー (単一パス互換用)
+    let syncVideoDirectory
+        (videoDir: string)
+        (thumbDir: string)
+        (mediaProc: IMediaProcessor)
+        (conn: IDbConnection)
+        : Async<Result<int, DbError>> =
+        syncVideoDirectories [ videoDir ] thumbDir mediaProc conn
 
 
     /// 新規作成・更新された自動タグ付けルールを、既存のすべての登録済み動画に逶及適用する

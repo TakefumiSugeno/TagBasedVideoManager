@@ -191,15 +191,27 @@ cp .env.sample .env
 
 ```env
 PORT=5620
-VIDEO_DIR=C:\Users\YourUserName\Videos
+# Web アプリ / コンテナ用の動画ルートフォルダ（セミコロン ';' 区切りで複数指定可能）
+VIDEO_DIRS="C:\Users\YourUserName\Videos;D:\AnotherVideos"
 THUMBNAIL_DIR=C:\Users\YourUserName\TagBasedVideoManagerData\thumbnails
 DATABASE_PATH=C:\Users\YourUserName\TagBasedVideoManagerData\metadata.db
 
-# 以下は AI File Renamer (デスクトップアプリ) 用のオプション設定
+# 以下は AI File Renamer (デスクトップアプリ) 専用の設定
+VIDEO_DIR=C:\Users\YourUserName\Videos
 OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx
 OPENROUTER_MODEL=google/gemini-2.0-flash-lite-preview-02-05:free
 PATH_LENGTH_THRESHOLD=240
 ```
+
+> [!IMPORTANT]
+> **VIDEO_DIRS（複数フォルダ指定）に関する重要事項**:
+>
+> - **旧 `VIDEO_DIR` からの移行**: Web アプリ本体およびコンテナ環境では旧 `VIDEO_DIR` は廃止され、`VIDEO_DIRS` に一本化されました。未設定や旧変数の残存時は設定例付きエラーとなり起動・スキャンできません。
+> - **複数物理フォルダの指定**: セミコロン（`;`）で区切ることで、ドライブや物理パスの異なる複数の動画フォルダを同時に管理できます。
+> - **ルート名タグの自動導出**: 各フォルダのフォルダ名（Leaf 名）およびそのサブフォルダ名が、スキャン時に動画タグとして自動付与されます（重複タグは統合）。
+> - **ドライブ直下の禁止**: `D:\` や `/` などのルートパスは、コンテナマウント先フォルダ名を決定できないため指定できません。必ずサブフォルダを指定してください。
+> - **フォルダ名重複の禁止**: 指定する複数フォルダのフォルダ名（大文字小文字を区別せず）が重複している場合、マウント先衝突エラーとなります。異なるフォルダ名を指定してください。
+> - **Docker 環境での `FilePath` 変更に関する注意**: Docker / コンテナ環境では、各フォルダが `/app/videos/<フォルダ名>` に読み取り専用マウントされます。旧仕様の単一マウント（`/app/videos/...`）で既にデータベースに登録されている動画がある場合、マウントパスが変わるため初回スキャン時に新規動画として再登録されます（必要に応じて DB ファイルの再作成またはバックアップを推奨します）。
 
 ### 3. コンテナ起動 (Web アプリ)
 
@@ -281,14 +293,25 @@ AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベ�
 ※`NamingRules` の先頭に定義されたルールが起動時の既定ルールとして自動適用されます。
 ※`OpenRouterApiKey` が未設定または空文字の場合、AIファイル名の自動提案は行われず「未提案」状態（元のファイル名維持）で安全に起動します。
 
-#### (5) `.env` 環境変数との対応表
+#### (5) 環境変数対応表
 
-| 環境変数名              | appsettings.json キー | 既定値                                            | 説明                                         |
-| :---------------------- | :-------------------- | :------------------------------------------------ | :------------------------------------------- |
-| `VIDEO_DIR`             | `TargetDirectory`     | `""`                                              | 走査対象の動画フォルダパス                   |
-| `PATH_LENGTH_THRESHOLD` | `PathLengthThreshold` | `240`                                             | 長パス警告・抽出基準文字数                   |
-| `OPENROUTER_API_KEY`    | `OpenRouterApiKey`    | `""`                                              | OpenRouter APIキー（未設定時はAI未提案表示） |
-| `OPENROUTER_MODEL`      | `OpenRouterModel`     | `google/gemini-2.0-flash-lite-preview-02-05:free` | 短縮提案に使用するAIモデル                   |
+##### Web アプリケーション / コンテナ環境
+
+| 環境変数名      | 必須 | 既定値 (コンテナ内)     | 説明                                                                                    |
+| :-------------- | :--- | :---------------------- | :-------------------------------------------------------------------------------------- |
+| `PORT`          | 任意 | `5620`                  | アプリケーションがリッスンする HTTP ポート                                              |
+| `VIDEO_DIRS`    | 必須 | なし                    | 走査対象の動画ルートフォルダ群（セミコロン `;` 区切りで複数指定可能、ドライブ直下不可） |
+| `THUMBNAIL_DIR` | 任意 | `/app/data/thumbnails`  | 生成されたサムネイル画像の保存ディレクトリ                                              |
+| `DATABASE_PATH` | 任意 | `/app/data/metadata.db` | メタデータ SQLite データベースファイルのパス                                            |
+
+##### AI File Renamer (デスクトップアプリ)
+
+| 環境変数名              | appsettings.json キー | 既定値                                            | 説明                                           |
+| :---------------------- | :-------------------- | :------------------------------------------------ | :--------------------------------------------- |
+| `VIDEO_DIR`             | `TargetDirectory`     | `""`                                              | 走査対象の動画フォルダパス（単一フォルダ指定） |
+| `PATH_LENGTH_THRESHOLD` | `PathLengthThreshold` | `240`                                             | 長パス警告・抽出基準文字数                     |
+| `OPENROUTER_API_KEY`    | `OpenRouterApiKey`    | `""`                                              | OpenRouter APIキー（未設定時はAI未提案表示）   |
+| `OPENROUTER_MODEL`      | `OpenRouterModel`     | `google/gemini-2.0-flash-lite-preview-02-05:free` | 短縮提案に使用するAIモデル                     |
 
 ---
 

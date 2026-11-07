@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ja" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TagBasedVideoManager - スキャンエラー表示モック</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              brand: "#3b82f6",
+              surface: "#1e293b",
+              surfaceLight: "#334155",
+              background: "#0f172a",
+            },
+          },
+        },
+      };
+    </script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+  </head>
+  <body
+    class="bg-background text-slate-100 min-h-screen flex flex-col font-sans"
+    x-data="mockApp()"
+  >
+    <!-- ヘッダー -->
+    <header
+      class="bg-surface border-b border-surfaceLight px-6 py-4 flex items-center justify-between"
+    >
+      <div class="flex items-center space-x-3">
+        <div
+          class="w-8 h-8 rounded bg-blue-600 flex items-center justify-center font-bold text-white shadow"
+        >
+          VM
+        </div>
+        <h1 class="text-xl font-bold tracking-tight">TagBasedVideoManager</h1>
+        <span
+          class="text-xs px-2 py-0.5 rounded bg-blue-900/60 text-blue-300 border border-blue-700/50"
+          >UI Mockup (Issue #22)</span
+        >
+      </div>
+
+      <!-- スキャン実行ボタン -->
+      <div class="flex items-center space-x-3">
+        <button
+          @click="simulateSuccess()"
+          :disabled="isScanning"
+          class="px-3 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded text-slate-200 transition disabled:opacity-50"
+        >
+          正常スキャンシミュレート
+        </button>
+        <button
+          @click="simulateScanError('VIDEO_DIRS が未設定です。.env に VIDEO_DIRS=/path/to/vids1;/path/to/vids2 を設定してください。')"
+          :disabled="isScanning"
+          class="px-3 py-1.5 text-xs bg-amber-700 hover:bg-amber-600 rounded text-white transition disabled:opacity-50"
+        >
+          未設定エラーシミュレート
+        </button>
+        <button
+          @click="simulateScanError('旧 VIDEO_DIR は廃止されました。VIDEO_DIRS に移行してください (例: VIDEO_DIRS=D:\\Videos1;D:\\Videos2)。')"
+          :disabled="isScanning"
+          class="px-3 py-1.5 text-xs bg-rose-700 hover:bg-rose-600 rounded text-white transition disabled:opacity-50"
+        >
+          旧変数エラーシミュレート
+        </button>
+        <button
+          @click="triggerRealScan()"
+          :disabled="isScanning"
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded font-medium text-sm flex items-center space-x-2 shadow transition disabled:opacity-50"
+        >
+          <svg
+            x-show="isScanning"
+            class="animate-spin h-4 w-4 text-white"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          <span
+            x-text="isScanning ? 'スキャン同期中...' : '動画をスキャン'"
+          ></span>
+        </button>
+      </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="flex-1 p-6 max-w-7xl mx-auto w-full">
+      <div class="bg-surface rounded-lg p-6 border border-surfaceLight mb-6">
+        <h2 class="text-lg font-semibold mb-2">
+          検証シナリオ: スキャン失敗時のトースト・エラー詳細通知
+        </h2>
+        <p class="text-sm text-slate-400 mb-4">
+          従来はスキャン失敗時に固定文字列「スキャン同期に失敗しました。」しかトースト表示されず、設定不備（<code
+            >VIDEO_DIRS</code
+          >
+          未設定や旧 <code>VIDEO_DIR</code> 残存など）が UI
+          から判別不能でした。<br />
+          本改修では、API が返却する 500 エラーメッセージ（または JSON
+          形式のエラー詳細・対処法）をトースト内に明示し、ユーザーが即座に対処できるようにします。
+        </p>
+
+        <div
+          class="p-4 bg-slate-900/80 rounded border border-slate-700 font-mono text-xs text-slate-300"
+        >
+          <div class="font-bold text-slate-200 mb-1">現在のステータス:</div>
+          <div>
+            isScanning: <span class="text-blue-400" x-text="isScanning"></span>
+          </div>
+          <div>
+            toast.show: <span class="text-blue-400" x-text="toast.show"></span>
+          </div>
+          <div>
+            toast.type: <span class="text-blue-400" x-text="toast.type"></span>
+          </div>
+          <div>
+            toast.message:
+            <span class="text-emerald-400" x-text="toast.message"></span>
+          </div>
+          <div>
+            toast.detail:
+            <span
+              class="text-amber-400"
+              x-text="toast.detail || '(なし)'"
+            ></span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- トースト通知コンポーネント (拡張版) -->
+    <div
+      x-show="toast.show"
+      x-transition:enter="transition ease-out duration-300"
+      x-transition:enter-start="opacity-0 transform translate-y-4"
+      x-transition:enter-end="opacity-100 transform translate-y-0"
+      x-transition:leave="transition ease-in duration-200"
+      x-transition:leave-start="opacity-100 transform translate-y-0"
+      x-transition:leave-end="opacity-0 transform translate-y-4"
+      class="fixed bottom-6 right-6 z-50 max-w-md w-full shadow-2xl rounded-lg overflow-hidden border"
+      :class="{
+      'bg-slate-900/95 border-emerald-500/50 text-emerald-200': toast.type === 'success',
+      'bg-slate-900/95 border-rose-500/60 text-rose-200': toast.type === 'error',
+      'bg-slate-900/95 border-amber-500/50 text-amber-200': toast.type === 'warning'
+    }"
+      style="display: none"
+    >
+      <div class="p-4 flex items-start space-x-3">
+        <!-- アイコン -->
+        <div class="flex-shrink-0 mt-0.5">
+          <template x-if="toast.type === 'success'">
+            <svg
+              class="w-5 h-5 text-emerald-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              ></path>
+            </svg>
+          </template>
+          <template x-if="toast.type === 'error'">
+            <svg
+              class="w-5 h-5 text-rose-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
+            </svg>
+          </template>
+        </div>
+
+        <!-- 本文・詳細 -->
+        <div class="flex-1 text-sm">
+          <div
+            class="font-semibold text-slate-100"
+            x-text="toast.message"
+          ></div>
+          <template x-if="toast.detail">
+            <div
+              class="mt-1 text-xs text-slate-300 font-mono bg-black/40 p-2 rounded border border-white/10 break-all leading-relaxed whitespace-pre-wrap"
+              x-text="toast.detail"
+            ></div>
+          </template>
+        </div>
+
+        <!-- 閉じるボタン -->
+        <button
+          @click="toast.show = false"
+          class="text-slate-400 hover:text-slate-200 text-lg leading-none"
+        >
+          &times;
+        </button>
+      </div>
+    </div>
+
+    <script>
+      function mockApp() {
+        return {
+          isScanning: false,
+          toast: {
+            show: false,
+            type: "success",
+            message: "",
+            detail: "",
+          },
+          timeoutId: null,
+
+          showToast(message, type = "success", detail = "") {
+            this.toast.message = message;
+            this.toast.type = type;
+            this.toast.detail = detail;
+            this.toast.show = true;
+
+            if (this.timeoutId) clearTimeout(this.timeoutId);
+            // エラーの場合は詳細を読めるよう表示時間を7秒に延長
+            const duration = type === "error" ? 7000 : 3500;
+            this.timeoutId = setTimeout(() => {
+              this.toast.show = false;
+            }, duration);
+          },
+
+          simulateSuccess() {
+            this.isScanning = true;
+            setTimeout(() => {
+              this.isScanning = false;
+              this.showToast(
+                "同期完了: 5 件の新規動画が追加されました。",
+                "success",
+              );
+            }, 600);
+          },
+
+          simulateScanError(detailMessage) {
+            this.isScanning = true;
+            setTimeout(() => {
+              this.isScanning = false;
+              this.showToast(
+                "スキャン同期に失敗しました。",
+                "error",
+                detailMessage,
+              );
+            }, 600);
+          },
+
+          triggerRealScan() {
+            this.simulateScanError(
+              "VIDEO_DIRS が未設定です。環境変数または .env に VIDEO_DIRS を設定してください (例: VIDEO_DIRS=D:\\Anime;F:\\Movie)。",
+            );
+          },
+        };
+      }
+    </script>
+  </body>
+</html>

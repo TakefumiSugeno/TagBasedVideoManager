@@ -3,7 +3,7 @@
 # =============================================================================
 [CmdletBinding()]
 param(
-    [string]$VideoDir = $env:VIDEO_DIR,
+    [string]$VideoDirs = $env:VIDEO_DIRS,
     [string]$DataDir = $env:DATA_DIR,
     [string]$Port = $env:PORT
 )
@@ -26,7 +26,7 @@ if (Test-Path $envFile) {
             $parts = $line.Split('=', 2)
             if ($parts.Length -eq 2) {
                 $key = $parts[0].Trim()
-                $val = $parts[1].Trim()
+                $val = $parts[1].Trim().Trim('"', "'")
                 if (-not (Get-Item "env:$key" -ErrorAction SilentlyContinue)) {
                     Set-Item "env:$key" $val
                 }
@@ -35,14 +35,15 @@ if (Test-Path $envFile) {
     }
 }
 
+if ([string]::IsNullOrWhiteSpace($VideoDirs)) {
+    $VideoDirs = $env:VIDEO_DIRS
+}
+
+# 早期入力検証（イメージビルドおよび既存コンテナ停止より前に実行）
+$resolvedMounts = Resolve-VideoMounts -VideoDirs $VideoDirs -OldVideoDir $env:VIDEO_DIR -TargetIsWindows $true
+
 # デフォルト値の解決
 $resolvedPort = Resolve-WebPort ($Port ?? $env:PORT)
-if ([string]::IsNullOrWhiteSpace($VideoDir)) {
-    $VideoDir = $env:VIDEO_DIR
-}
-if ([string]::IsNullOrWhiteSpace($VideoDir)) {
-    $VideoDir = "C:\Users\Public\Videos"
-}
 
 if ([string]::IsNullOrWhiteSpace($DataDir)) {
     $DataDir = $env:DATA_DIR
@@ -61,7 +62,7 @@ $imageName = "tag-based-video-manager:latest"
 
 Write-Host "=== TagBasedVideoManager デプロイ開始 ===" -ForegroundColor Cyan
 Write-Host "ポート: $resolvedPort"
-Write-Host "動画フォルダ: $VideoDir"
+Write-Host "動画フォルダ: $VideoDirs"
 Write-Host "データフォルダ: $DataDir"
 
 # 1. ポート事前衝突チェック
@@ -80,7 +81,6 @@ if (-not $runtime) {
 Write-Host "検出されたランタイム: $runtime" -ForegroundColor Green
 
 # 3. パス変換 (WSL 形式へ)
-$wslVideoDir = ConvertTo-WslPath -Path $VideoDir
 $wslDataDir = ConvertTo-WslPath -Path $DataDir
 
 # 4. イメージビルド
@@ -106,7 +106,7 @@ catch {}
 
 # 7. 新コンテナ起動
 Write-Host "--- 新コンテナを起動中 ---" -ForegroundColor Cyan
-$runArgs = New-RunArguments -Name $containerName -Port $resolvedPort -VideoDir $wslVideoDir -DataDir $wslDataDir -HasNvidiaGpu $hasNvidia -IsLinux $false -HasDri $false
+$runArgs = New-RunArguments -Name $containerName -Port $resolvedPort -VideoMountArgs $resolvedMounts.VolumeArgs -ContainerVideoDirs $resolvedMounts.ContainerVideoDirs -DataDir $wslDataDir -HasNvidiaGpu $hasNvidia -IsLinux $false -HasDri $false
 $allArgs = @($runArgs) + @($imageName)
 & $runtime @allArgs
 if ($LASTEXITCODE -ne 0) {

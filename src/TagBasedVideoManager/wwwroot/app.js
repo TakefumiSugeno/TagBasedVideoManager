@@ -75,19 +75,31 @@ function videoManager() {
 
       message: "",
 
+      detail: "",
+
       type: "success",
     },
 
-    showToast(message, type = "success") {
+    toastTimeoutId: null,
+
+    showToast(message, type = "success", detail = "") {
       this.toast.message = message;
 
       this.toast.type = type;
 
+      this.toast.detail = detail;
+
       this.toast.show = true;
 
-      setTimeout(() => {
+      if (this.toastTimeoutId) {
+        clearTimeout(this.toastTimeoutId);
+      }
+
+      const duration = type === "error" ? 7000 : 3500;
+
+      this.toastTimeoutId = setTimeout(() => {
         this.toast.show = false;
-      }, 4000);
+      }, duration);
     },
 
     // モーダル用バインドデータ
@@ -873,7 +885,11 @@ function videoManager() {
 
           this.fetchVideos();
         } else {
-          this.showToast("スキャン同期に失敗しました。", "error");
+          let errorDetail = "";
+          try {
+            errorDetail = await res.text();
+          } catch (_) {}
+          this.showToast("スキャン同期に失敗しました。", "error", errorDetail);
         }
       } catch (e) {
         this.showToast("通信エラーが発生しました。", "error");

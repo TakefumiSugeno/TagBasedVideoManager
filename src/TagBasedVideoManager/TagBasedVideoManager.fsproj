@@ -10,6 +10,7 @@
     <Compile Include="TaggingEngine.fs" />
     <Compile Include="Media.fs" />
     <Compile Include="Db.fs" />
+    <Compile Include="VideoDirs.fs" />
     <Compile Include="Scanner.fs" />
     <Compile Include="HttpHandlers.fs" />
     <Compile Include="Program.fs" />

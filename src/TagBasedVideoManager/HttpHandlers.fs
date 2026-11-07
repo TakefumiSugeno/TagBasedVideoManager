@@ -131,19 +131,24 @@ module HttpHandlers =
     let triggerScan : HttpHandler =
         fun (next : HttpFunc) (ctx : HttpContext) ->
             task {
-                let conn = ctx.GetService<IDbConnection>()
-                let videoDir = 
-                    let env = Environment.GetEnvironmentVariable("VIDEO_DIR")
-                    if String.IsNullOrWhiteSpace(env) then "videos" else env
-                let thumbDir = 
-                    let env = Environment.GetEnvironmentVariable("THUMBNAIL_DIR")
-                    if String.IsNullOrWhiteSpace(env) then "thumbnails" else env
-                
-                let mediaProc = ctx.GetService<IMediaProcessor>()
-                let! result = Scanner.syncVideoDirectory videoDir thumbDir mediaProc conn
-                match result with
-                | Ok count -> return! json {| addedCount = count |} next ctx
-                | Error err -> return! ServerErrors.INTERNAL_ERROR (string err) next ctx
+                let getEnv key =
+                    let value = Environment.GetEnvironmentVariable(key)
+                    if isNull value then None else Some value
+
+                match VideoDirs.fromEnvironment getEnv with
+                | Error errMsg ->
+                    return! (setStatusCode 500 >=> text errMsg) next ctx
+                | Ok videoDirs ->
+                    let conn = ctx.GetService<IDbConnection>()
+                    let thumbDir = 
+                        let env = Environment.GetEnvironmentVariable("THUMBNAIL_DIR")
+                        if String.IsNullOrWhiteSpace(env) then "thumbnails" else env
+                    
+                    let mediaProc = ctx.GetService<IMediaProcessor>()
+                    let! result = Scanner.syncVideoDirectories videoDirs thumbDir mediaProc conn
+                    match result with
+                    | Ok count -> return! json {| addedCount = count |} next ctx
+                    | Error err -> return! ServerErrors.INTERNAL_ERROR (string err) next ctx
             }
 
     // --- 動画一覧・検索用ハンドラー ---
