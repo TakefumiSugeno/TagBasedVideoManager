@@ -159,3 +159,69 @@
 - **破壊テスト結果**: 堅牢性確認（Pass）
 - **テスト品質評価**: 堅牢（合格）
 - **承認者**: PG Reviewer Agent & QA Reviewer Agent
+
+---
+
+# レビュー記録: optimize-video-library-rendering / archive
+
+- **日時**: 2026-11-08
+- **フェーズ**: archive
+- **タスク**: 変更全体の成果物（実装・テスト・仕様・ドキュメント・申し送り事項・ゲート検証結果）
+- **レビュアー**: User Reviewer, SE Reviewer, PG Reviewer, QA Reviewer Agent
+- **使用プロトコル**: checklist_archive.md
+- **対象成果物**:
+  - `src/TagBasedVideoManager/Db.fs`
+  - `src/TagBasedVideoManager/wwwroot/index.html`
+  - `src/TagBasedVideoManager/wwwroot/app.js`
+  - `test/TagBasedVideoManager.Tests/Unit/DbTests.fs`
+  - `test/TagBasedVideoManager.Tests/Integration/SearchApiTests.fs`
+  - `test/TagBasedVideoManager.Tests/Integration/StaticFileTests.fs`
+  - `openspec/changes/optimize-video-library-rendering/specs/video-library/spec.md`
+  - `openspec/changes/optimize-video-library-rendering/handover.md`
+
+---
+
+## 1. 隠された技術的負債・妥協点の自白（悪魔の代弁者）
+
+**担当: SE Reviewer Agent ＆ PG Reviewer Agent**
+
+1. **今回あえて残した技術的負債**:
+   - **自白内容**: 2 万件規模に対応するための「サーバーサイド LIMIT/OFFSET ページネーションおよびサーバーサイドソート」は、API 契約と Alpine.js 状態管理の全面刷新が必要となるため、本変更では実施せずスコープ外とした。
+   - **記録の有無**: `handover.md` の「3. 保留指摘・技術的負債」および「4. 将来の改善・リファクタ候補」に明確に記録され、かつ GitHub Issue #28 として起票済みであることを確認。
+   - **チャンク分割の閾値**: `attachTagsBatch` のチャンクサイズを 500 件に固定している。SQLite のパラメータ上限（通常 999 件または 32766 件）に対して十分安全な値だが、より大規模なデータセットではパラメータ生成オーバーヘッドの観点で将来的な動的チューニングの余地がある。
+2. **将来の機能追加で踏み抜く可能性が高い罠**:
+   - 次に動画取得系の API やデータアクセス関数を追加する際、`attachTagsBatch` を通さずに `getTagsForVideo` を個別ループで呼んでしまうと、再び直列 N+1 クエリが発生するリスクがある。
+   - 対策として、新規の動画取得関数には `attachTagsBatch` をパイプラインで接続する設計パターンを `handover.md` およびドキュメントに明記済み。
+
+---
+
+## 2. 初見エンジニア視点でのドキュメント検証（Whyの欠落告発）
+
+**担当: User Reviewer Agent**
+
+1. **設計の背景（Why）の追跡可能性**:
+   - 初見のエンジニアがコードとドキュメントを読んだ際、なぜ `loading="lazy"` と `attachTagsBatch` を採用し、仮想スクロールやサーバーサイドページネーションを後回しにしたかのトレードオフ（既存互換性を破壊せずに即効性のある高速化を実現するため）が `proposal.md`、`design.md`、および `handover.md` から明確に追跡可能である。
+   - `index.html` の `loading="lazy"` / `decoding="async"` や `app.js` の `lucide.createIcons` debounce（16ms）についても、なぜその値や属性が付与されているかがコメントおよびテストコード（`StaticFileTests.fs`）で明示されている。
+2. **トラブルシューティング手順の十分性**:
+   - `Db.attachTagsBatch` でクエリ失敗が発生した際は、`QueryError` を通じて HTTP 500 とエラーメッセージが返却され、`ErrorLogs` テーブルに記録される仕組みとなっており、運用時のログ切り分けが可能である。
+
+---
+
+## 3. ロールバック・安全性の最終検証
+
+**担当: SE Reviewer Agent ＆ QA Reviewer Agent**
+
+1. **ロールバック（Revert）手順の検証**:
+   - 本変更では SQLite データベースのスキーマ変更（テーブル追加・列追加等）は一切行われていない。
+   - 万が一不具合が生じた場合でも、`git revert` のみで即座に直前の状態へ安全に巻き戻すことが可能であり、後戻り不能な破壊的変更は存在しない。
+2. **保留指摘の全件引き継ぎ確認**:
+   - Apply フェーズおよび本レビューで挙げられた保留指摘（サーバーサイドページネーションの導入、Linux カーネル NAME_MAX による長大ファイル名対策）は、すべて `handover.md` に転記され、GitHub Issue #28 および #27 として管理されていることを確認。
+
+---
+
+## 4. 総合判定
+
+- **LGTM**: true
+- **引き継ぎ完了確認**: handover.md に全ての負債・申し送りが記録済み
+- **リリース可否**: 即時リリース可
+- **承認者**: User Reviewer, SE Reviewer, PG Reviewer, QA Reviewer Agent
