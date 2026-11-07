@@ -27,8 +27,8 @@
 
 ## 5. E2E テストと画面検証
 
-- [ ] 5.1 [qa-tester] Playwright E2E テスト作成（E2E-01 Happy Path, E2E-02 Zero-State エラー詳細トースト表示, E2E-03 復帰 Path, E2E-04 `mockup.html` 整合検証）、PNG キャプチャ出力
-- [ ] 5.2 [qa-tester] 既存 E2E / 結合テストの環境変数設定を `VIDEO_DIRS` に更新（テストの期待値は変更せず環境変数名のみ整合）
+- [x] 5.1 [qa-tester] Playwright E2E テスト作成（E2E-01 Happy Path, E2E-02 Zero-State エラー詳細トースト表示, E2E-03 復帰 Path, E2E-04 `mockup.html` 整合検証）、PNG キャプチャ出力
+- [x] 5.2 [qa-tester] 既存 E2E / 結合テストの環境変数設定を `VIDEO_DIRS` に更新（テストの期待値は変更せず環境変数名のみ整合）
 
 ## 6. ドキュメント・設定の同期
 
