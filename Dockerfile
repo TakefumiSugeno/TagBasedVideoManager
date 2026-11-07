@@ -43,7 +43,6 @@ RUN mkdir -p /app/videos /app/data/thumbnails
 
 # 環境変数のデフォルト設定
 ENV PORT=5620
-ENV VIDEO_DIR=/app/videos
 ENV THUMBNAIL_DIR=/app/data/thumbnails
 ENV DATABASE_PATH=/app/data/metadata.db
 EXPOSE 5620

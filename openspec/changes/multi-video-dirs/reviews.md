@@ -216,3 +216,74 @@
 - **pg-reviewer**: LGTM: true
 - **se-reviewer**: LGTM: true
 - **LGTM**: true
+
+---
+
+## レビュー記録: multi-video-dirs / apply / Task 4 (Task 4.1〜4.5)
+
+- **日時**: 2026-11-07
+- **フェーズ**: apply
+- **タスク**: Task 4.5: デプロイスクリプトと Docker 構成のレビュー (Task 4.1〜4.4)
+- **レビュアー**: `qa-reviewer`, `pg-reviewer`, `se-reviewer`
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md` / `checklist_apply_impl.md`
+- **対象成果物**:
+  - `Dockerfile`
+  - `scripts/common.ps1` (`Resolve-VideoMounts`, `New-RunArguments`)
+  - `scripts/deploy.ps1`
+  - `scripts/deploy.sh` (`parse_env`, 早期検証, マウント引数構築)
+  - `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs` (UT-13〜UT-19, IT-13〜IT-17)
+
+### 1. 挑戦的設問への回答サマリ
+
+#### 1.1 qa-reviewer（Adversarial QA / トートロジー検証 / 実機コンテナ検証）
+
+- **Cycle 1 指摘と Adversarial QA 破壊テスト**:
+  - 敵対的 QA として意地悪な入力（空要素混在、末尾スラッシュ連続、特殊記号、パストラバーサル、ルート複数スラッシュ等）を与えて検証を実施。
+  - 指摘 1 (Critical): `scripts/deploy.sh` で `dir/..` や `..` が指定された場合、`leaf=".."` となり、マウント先が `/app/videos/..`（すなわちコンテナ内 `/app` 全体）を上書きマウントしてしまう致命的な脆弱性を検出。
+  - 指摘 2 (Major): `scripts/deploy.sh` でルート複数スラッシュ（`///`）が末尾トリムをすり抜けてルート直下マウントされてしまう不具合を検出。
+  - 指摘 3 (Major): `DeployScriptTests.fs` の `IT-15` が単に `grep -qE "load_env|parse_env"` しているだけの偽装テスト（形骸化テスト）であることを告発。
+  - Cycle 1 判定: `LGTM: false`。
+- **Cycle 2 是正確認と堅牢性実証**:
+  - `qa-tester` により `IT-15` を `parse_env` の実動作検証へ是正し、パストラバーサル・複数スラッシュルートの Red テスト 16 件（UT-18: 10件, IT-16: 2件, IT-17: 4件）を追加。
+  - `pg-implementer` により `scripts/deploy.sh` および `scripts/common.ps1` にガード節を追加し、全 16 件が Green に転換。
+  - 独立スクラッチテストによる 47 件の破壊テスト（意地悪入力・インジェクション記号・特殊記号・未定義変数等）を再実行し、全不正入力が例外発生で安全に拒絶され正常系のみ通過することを確認（**Green / 落とせず堅牢**）。
+- **IT-11 / IT-12 実コンテナ検証 (Task 4.4)**:
+  - ホスト（Windows 11）上の Docker Desktop 環境にて `alpine:latest` を用いた実コンテナ検証を実施。
+  - `IT-11`: 複数一時ディレクトリが独立してマウントされ両方のファイルが読み取れること、および `:ro` マウントによりコンテナ内からの書き込み試行が `Read-only file system` エラーで即座に拒否されることを確認（PASS）。
+  - `IT-12`: コンテナ内環境変数 `VIDEO_DIRS`（`/app/videos/tvm-test-A;/app/videos/tvm-test-B`）と実マウント先パスが完全一致していることを確認（PASS）。
+
+#### 1.2 pg-reviewer（コードシンプルさ / 暗黙の仮定検証）
+
+- **暗黙の仮定・例外握りつぶし**:
+  - `scripts/deploy.ps1` および `deploy.sh` において、未設定・空文字環境変数に対する早期バリデーションと設定例付きエラー出力を確認。
+  - `Test-PortInUse` は非ブロッキング警告用として適切に実装。
+- **コード品質・シェルイディオム**:
+  - PowerShell: `[CmdletBinding()]`、明示的な型指定、`[PSCustomObject]` による構造化返却が徹底。
+  - Bash: `set -euo pipefail` 厳格モードの維持、行単位パーサ `parse_env` の実装、改行コード LF の維持を確認。
+- **コード削減提案 (YAGNI)**:
+  - Suggestion 2件（重複エラー分岐の統合、不要な try-catch 削減）を提示。動作に影響しないため保留として記録。
+
+#### 1.3 se-reviewer（障害耐性 / インフラ運用 / セキュリティ検証）
+
+- **外部依存・シェルパースの安全性**:
+  - `deploy.sh` において `source .env` および `eval` が完全に排除され、安全な行パーサ `parse_env` によりコマンドインジェクション・パラメータインジェクションのリスクを根絶。
+- **副作用抑止と冪等性**:
+  - 早期入力検証がイメージビルド（`build`）やコンテナ停止・削除（`stop`, `rm`）より前に確実に実行され、AST 解析（`resolveLine < buildLine < stopLine`）およびモックランタイム監査ログにより不正入力時の副作用ゼロを実証（IT-14）。
+- **運用・保守・エラーガイダンス**:
+  - 未設定・旧変数残存・ルート指定・不在・重複時の設定例付きエラーメッセージによる MTTR 短縮。
+  - `:ro` マウントによるホスト動画ファイル破損リスクの物理的排除。
+  - ヘルスチェック失敗時のコンテナログ自動出力機能の維持。
+
+### 2. 指摘事項（保留・申し送り）
+
+| ID         | 種別       | 対象                 | 内容                                                                                                    | 対応方針                       |
+| :--------- | :--------- | :------------------- | :------------------------------------------------------------------------------------------------------ | :----------------------------- |
+| **Sugg-5** | Suggestion | `scripts/common.ps1` | `Resolve-VideoMounts` における `$VideoDirs` 空チェックと `$rawPaths.Count -eq 0` の重複エラー分岐の統合 | 保留（次期リファクタ時に検討） |
+| **Sugg-6** | Suggestion | `scripts/deploy.ps1` | `nvidia-smi` 判定における不要な try-catch の削除および冗長な代入の整理                                  | 保留（次期リファクタ時に検討） |
+
+### 3. 総合判定
+
+- **qa-reviewer**: LGTM: true
+- **pg-reviewer**: LGTM: true
+- **se-reviewer**: LGTM: true
+- **LGTM**: true

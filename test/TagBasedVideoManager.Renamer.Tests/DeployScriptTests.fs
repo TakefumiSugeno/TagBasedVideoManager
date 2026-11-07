@@ -146,7 +146,7 @@ Write-Output "DANGEROUS=$(@($bad).Count)"
         r.StdOut.Trim() |> should equal "DANGEROUS=0"
 
     [<Fact>]
-    let ``IT-SCRIPT-01: deploy.ps1 は common.ps1 の関数群を実際に呼び出している (AST)`` () =
+    let ``IT-SCRIPT-01: deploy.ps1 は common.ps1 の関数群（Resolve-VideoMounts含む）を実際に呼び出している (AST)`` () =
         let full = RepoLayout.pathOf "scripts/deploy.ps1"
         Assert.True(File.Exists full, "必須ファイルが存在しません: scripts/deploy.ps1")
 
@@ -166,8 +166,35 @@ $cmds | Sort-Object -Unique | ForEach-Object {{ Write-Output ("CMD=" + $_) }}
             |> Array.filter (fun l -> l.StartsWith "CMD=")
             |> Array.map (fun l -> l.Substring 4)
 
-        for name in [ "Test-PortInUse"; "ConvertTo-WslPath"; "Get-ContainerRuntimeName"; "New-RunArguments" ] do
+        for name in [ "Test-PortInUse"; "ConvertTo-WslPath"; "Get-ContainerRuntimeName"; "New-RunArguments"; "Resolve-VideoMounts" ] do
             commands |> Array.contains name |> should equal true
+
+    [<Fact>]
+    let ``IT-SCRIPT-01: deploy.ps1 は旧 VideoDir パラメータを廃止し VideoDirs を宣言している (AST)`` () =
+        let full = RepoLayout.pathOf "scripts/deploy.ps1"
+        Assert.True(File.Exists full, "必須ファイルが存在しません: scripts/deploy.ps1")
+
+        let script =
+            $"""
+$t = $null; $e = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile({psq full}, [ref]$t, [ref]$e)
+$paramBlock = $ast.ParamBlock
+$params = @()
+if ($paramBlock) {{
+    $params = @($paramBlock.Parameters | ForEach-Object {{ $_.Name.VariablePath.UserPath }})
+}}
+ConvertTo-Json -InputObject $params -Compress
+"""
+        let r = runPwsh script
+        Assert.True((r.ExitCode = 0), $"pwsh 実行失敗: {r.StdErr}")
+        use doc = JsonDocument.Parse r.StdOut
+        let paramNames =
+            doc.RootElement.EnumerateArray()
+            |> Seq.map (fun e -> e.GetString())
+            |> List.ofSeq
+
+        paramNames |> List.contains "VideoDirs" |> should equal true
+        paramNames |> List.contains "VideoDir" |> should equal false
 
     [<Fact>]
     let ``IT-SCRIPT-01: deploy.ps1 は common.ps1 を dot-source している`` () =
@@ -369,24 +396,256 @@ module RuntimeNameScriptTests =
 
         detect isWindows available |> should equal expected
 
-/// scripts/common.ps1 の run 引数構築 (UT-GPU-01〜03 ほか)
+/// scripts/common.ps1 のマウント解決・入力検証 (UT-13〜UT-19)
+module VideoMountResolutionTests =
+
+    type ResolvedMountInfo =
+        { HostPath: string
+          ContainerPath: string
+          VolumeArg: string }
+
+    type ResolveResult =
+        { ContainerVideoDirs: string
+          VolumeArgs: string list
+          Mounts: ResolvedMountInfo list }
+
+    let private withTempDirs (dirNames: string list) (action: string list -> unit) =
+        let tempRoot = Path.Combine(Path.GetTempPath(), $"tvm-mount-test-{Guid.NewGuid():N}")
+        Directory.CreateDirectory tempRoot |> ignore
+        try
+            let created =
+                dirNames
+                |> List.map (fun name ->
+                    let p = Path.Combine(tempRoot, name)
+                    Directory.CreateDirectory p |> ignore
+                    p)
+            action created
+        finally
+            try Directory.Delete(tempRoot, true) with _ -> ()
+
+    let private callResolve (videoDirs: string option) (oldVideoDir: string option) (targetIsWindows: bool option) : ScriptProcess.ProcessResult =
+        let common = RepoLayout.pathOf "scripts/common.ps1"
+        let vdArg = match videoDirs with Some s -> $"-VideoDirs {psq s}" | None -> ""
+        let oldArg = match oldVideoDir with Some s -> $"-OldVideoDir {psq s}" | None -> ""
+        let winArg = match targetIsWindows with Some b -> $"-TargetIsWindows {psBool b}" | None -> ""
+        let script =
+            $"""
+. {psq common}
+$res = Resolve-VideoMounts {vdArg} {oldArg} {winArg}
+if ($null -ne $res) {{
+    $mounts = @()
+    if ($res.Mounts) {{
+        $mounts = @($res.Mounts | ForEach-Object {{
+            [PSCustomObject]@{{
+                HostPath = [string]$_.HostPath
+                ContainerPath = [string]$_.ContainerPath
+                VolumeArg = [string]($_.VolumeArg ?? ($_.HostPath + ":" + $_.ContainerPath + ":ro"))
+            }}
+        }})
+    }}
+    $volArgs = @()
+    if ($res.VolumeArgs) {{
+        $volArgs = [string[]]$res.VolumeArgs
+    }} elseif ($res.MountArgs) {{
+        $volArgs = [string[]]$res.MountArgs
+    }} else {{
+        $volArgs = @($mounts | ForEach-Object {{ "-v"; $_.VolumeArg }})
+    }}
+    [PSCustomObject]@{{
+        ContainerVideoDirs = [string]$res.ContainerVideoDirs
+        VolumeArgs = $volArgs
+        Mounts = $mounts
+    }} | ConvertTo-Json -Depth 5 -Compress
+}}
+"""
+        runPwsh script
+
+    let private resolveSuccess (videoDirs: string) (oldVideoDir: string option) (targetIsWindows: bool option) : ResolveResult =
+        let r = callResolve (Some videoDirs) oldVideoDir targetIsWindows
+        Assert.True((r.ExitCode = 0), $"Resolve-VideoMounts が失敗しました (exit={r.ExitCode}):\nSTDERR: {r.StdErr}\nSTDOUT: {r.StdOut}")
+        use doc = JsonDocument.Parse r.StdOut
+        let root = doc.RootElement
+        let containerVideoDirs = root.GetProperty("ContainerVideoDirs").GetString()
+        let volumeArgs =
+            root.GetProperty("VolumeArgs").EnumerateArray()
+            |> Seq.map (fun e -> e.GetString())
+            |> List.ofSeq
+        let mounts =
+            root.GetProperty("Mounts").EnumerateArray()
+            |> Seq.map (fun e ->
+                { HostPath = e.GetProperty("HostPath").GetString()
+                  ContainerPath = e.GetProperty("ContainerPath").GetString()
+                  VolumeArg = e.GetProperty("VolumeArg").GetString() })
+            |> List.ofSeq
+        { ContainerVideoDirs = containerVideoDirs
+          VolumeArgs = volumeArgs
+          Mounts = mounts }
+
+    let private hasPair (flag: string) (value: string) (args: string list) : bool =
+        args |> List.pairwise |> List.exists (fun (a, b) -> a = flag && b = value)
+
+    [<Fact>]
+    let ``UT-13: 複数フォルダ指定時、各フォルダが WSL パス変換され :ro マウントと VIDEO_DIRS が組み立てられる`` () =
+        withTempDirs [ "Anime"; "Movie" ] (fun paths ->
+            let input = String.concat ";" paths
+            let res = resolveSuccess input None (Some true)
+            res.Mounts.Length |> should equal 2
+            res.Mounts.[0].ContainerPath |> should equal "/app/videos/Anime"
+            res.Mounts.[1].ContainerPath |> should equal "/app/videos/Movie"
+            res.ContainerVideoDirs |> should equal "/app/videos/Anime;/app/videos/Movie"
+            res.Mounts |> List.iter (fun m -> m.VolumeArg |> should endWith ":ro")
+            hasPair "-v" res.Mounts.[0].VolumeArg res.VolumeArgs |> should equal true
+            hasPair "-v" res.Mounts.[1].VolumeArg res.VolumeArgs |> should equal true)
+
+    [<Fact>]
+    let ``UT-14: 1件境界 D:\X -> /app/videos/X:ro および VIDEO_DIRS=/app/videos/X`` () =
+        withTempDirs [ "Clips" ] (fun paths ->
+            let res = resolveSuccess paths.[0] None (Some true)
+            res.Mounts.Length |> should equal 1
+            res.Mounts.[0].ContainerPath |> should equal "/app/videos/Clips"
+            res.ContainerVideoDirs |> should equal "/app/videos/Clips"
+            res.Mounts.[0].VolumeArg |> should endWith ":ro")
+
+    [<Theory>]
+    [<InlineData("")>]
+    [<InlineData("   ")>]
+    [<InlineData(null)>]
+    let ``UT-15: VIDEO_DIRS 未設定・空文字・空白のみの時、設定例付きエラーで非0終了する`` (input: string) =
+        let r = callResolve (if isNull input then None else Some input) None None
+        Assert.True((r.ExitCode <> 0), $"未設定/空入力で非0終了すべきです: exit={r.ExitCode}")
+        let combined = r.StdErr + " " + r.StdOut
+        combined |> should contain "VIDEO_DIRS"
+        Assert.True(Regex.IsMatch(combined, @"VIDEO_DIRS\s*="), $"エラーメッセージに設定例が含まれる必要があります: {combined}")
+
+    [<Fact>]
+    let ``UT-15b: 旧 VIDEO_DIR のみが設定されている時、移行案内エラーで非0終了する`` () =
+        let r = callResolve None (Some "C:\\OldVideos") None
+        Assert.True((r.ExitCode <> 0), $"旧変数のみで非0終了すべきです: exit={r.ExitCode}")
+        let combined = r.StdErr + " " + r.StdOut
+        combined |> should contain "VIDEO_DIR"
+        combined |> should contain "VIDEO_DIRS"
+
+    [<Fact>]
+    let ``UT-16: フォルダ名（最終パス要素）が重複するパスの場合、マウント先衝突エラーで非0終了する`` () =
+        withTempDirs [ "parentA/Clips"; "parentB/Clips" ] (fun paths ->
+            let input = String.concat ";" paths
+            let r = callResolve (Some input) None (Some true)
+            Assert.True((r.ExitCode <> 0), $"同名フォルダで非0終了すべきです: exit={r.ExitCode}")
+            let combined = r.StdErr + " " + r.StdOut
+            Assert.True(
+                combined.Contains("Clips", StringComparison.OrdinalIgnoreCase) &&
+                (combined.Contains("重複") || combined.Contains("conflict") || combined.Contains("duplicate") || combined.Contains("衝突")),
+                $"同名衝突を示すエラーメッセージが必要です: {combined}"
+            ))
+
+    [<Fact>]
+    let ``UT-16: 大文字小文字違いの同名フォルダも Windows ではマウント先衝突エラーで非0終了する`` () =
+        withTempDirs [ "parentA/videos"; "parentB/VIDEOS" ] (fun paths ->
+            let input = String.concat ";" paths
+            let r = callResolve (Some input) None (Some true)
+            Assert.True((r.ExitCode <> 0), $"大文字小文字違いで非0終了すべきです: exit={r.ExitCode}")
+            let combined = r.StdErr + " " + r.StdOut
+            Assert.True(
+                combined.Contains("videos", StringComparison.OrdinalIgnoreCase) &&
+                (combined.Contains("重複") || combined.Contains("conflict") || combined.Contains("duplicate") || combined.Contains("衝突")),
+                $"大文字小文字衝突を示すエラーメッセージが必要です: {combined}"
+            ))
+
+    [<Fact>]
+    let ``UT-17: ホスト上に存在しないパスが含まれる場合、パス不在エラーで非0終了する`` () =
+        withTempDirs [ "Exists" ] (fun paths ->
+            let nonExistent = Path.Combine(Path.GetTempPath(), $"non-existent-{Guid.NewGuid():N}")
+            let input = $"{paths.[0]};{nonExistent}"
+            let r = callResolve (Some input) None None
+            Assert.True((r.ExitCode <> 0), $"存在しないパスで非0終了すべきです: exit={r.ExitCode}")
+            let combined = r.StdErr + " " + r.StdOut
+            Assert.True(
+                combined.Contains("存在しない") || combined.Contains("not exist") || combined.Contains("NotFound") || combined.Contains(nonExistent),
+                $"不在パスを示すエラーメッセージが必要です: {combined}"
+            ))
+
+    [<Theory>]
+    [<InlineData("C:\\")>]
+    [<InlineData("D:\\")>]
+    [<InlineData("/")>]
+    [<InlineData("//")>]
+    [<InlineData("///")>]
+    [<InlineData("////")>]
+    let ``UT-18: ドライブ直下およびルート（複数スラッシュ含む）が指定された場合、フォルダ名決定不能エラーで非0終了する`` (path: string) =
+        let r = callResolve (Some path) None None
+        Assert.True((r.ExitCode <> 0), $"ドライブ直下またはルートで非0終了すべきです: exit={r.ExitCode}")
+        let combined = r.StdErr + " " + r.StdOut
+        Assert.True(
+            combined.Contains("ドライブ直下") || combined.Contains("root") || combined.Contains("ルート") || combined.Contains("フォルダ名") || combined.Contains("cannot determine") || combined.Contains("名前"),
+            $"フォルダ名決定不能エラーを示す必要があります: {combined}"
+        )
+
+    [<Theory>]
+    [<InlineData(".")>]
+    [<InlineData("..")>]
+    [<InlineData("./")>]
+    [<InlineData("../")>]
+    [<InlineData(".\\")>]
+    [<InlineData("..\\")>]
+    [<InlineData("child/..")>]
+    [<InlineData("child/.")>]
+    [<InlineData("child\\..")>]
+    [<InlineData("child\\.")>]
+    let ``UT-18: フォルダ名(Leaf)が相対参照やパストラバーサル（. や ..）となるパスはエラーで非0終了する (PowerShell)`` (subPath: string) =
+        withTempDirs [ "child" ] (fun paths ->
+            let tempBase = Path.GetDirectoryName(paths.[0])
+            let testPath =
+                if subPath = "." || subPath = ".." || subPath = "./" || subPath = "../" || subPath = ".\\" || subPath = "..\\" then
+                    Path.Combine(paths.[0], subPath)
+                elif subPath.StartsWith("child/") || subPath.StartsWith("child\\") then
+                    Path.Combine(tempBase, subPath)
+                else
+                    Path.Combine(paths.[0], subPath)
+
+            let r = callResolve (Some testPath) None None
+            Assert.True((r.ExitCode <> 0), $"Leaf が . または .. のパスで非0終了すべきです (path='{testPath}'): exit={r.ExitCode}")
+            let combined = r.StdErr + " " + r.StdOut
+            Assert.True(
+                combined.Contains("フォルダ名") || combined.Contains("無効") || combined.Contains("不正") || combined.Contains("traversal") || combined.Contains("マウント先") || combined.Contains("決定できない"),
+                $"パストラバーサルまたは無効なフォルダ名エラーを示す必要があります: {combined}"
+            ))
+
+    [<Fact>]
+    let ``UT-19: 空白・日本語を含むパスが 1 つの引数要素として分割されずに渡る`` () =
+        withTempDirs [ "動画 フォルダ 2026"; "Season 1 Clips" ] (fun paths ->
+            let input = String.concat ";" paths
+            let res = resolveSuccess input None (Some true)
+            res.Mounts.Length |> should equal 2
+            res.Mounts.[0].ContainerPath |> should equal "/app/videos/動画 フォルダ 2026"
+            res.Mounts.[1].ContainerPath |> should equal "/app/videos/Season 1 Clips"
+            res.ContainerVideoDirs |> should equal "/app/videos/動画 フォルダ 2026;/app/videos/Season 1 Clips"
+            res.Mounts.[0].VolumeArg |> should contain "動画 フォルダ 2026"
+            res.Mounts.[1].VolumeArg |> should contain "Season 1 Clips"
+            hasPair "-v" res.Mounts.[0].VolumeArg res.VolumeArgs |> should equal true
+            hasPair "-v" res.Mounts.[1].VolumeArg res.VolumeArgs |> should equal true)
+
+/// scripts/common.ps1 の run 引数構築 (UT-GPU-01〜03, IT-13 ほか)
 module RunArgumentsScriptTests =
 
+    let private hasPair (flag: string) (value: string) (args: string list) : bool =
+        args |> List.pairwise |> List.exists (fun (a, b) -> a = flag && b = value)
+
     /// New-RunArguments を呼び出し、JSON 配列として受け取った引数リストを返す
-    let private build (name: string) (port: int) (videoDir: string) (dataDir: string) (nvidia: bool) (isLinux: bool) (hasDri: bool) : string list =
+    let private build (name: string) (port: int) (videoMountArgs: string list) (containerVideoDirs: string) (dataDir: string) (nvidia: bool) (isLinux: bool) (hasDri: bool) : string list =
+        let mountJson = JsonSerializer.Serialize(videoMountArgs)
         let output =
             callCommon
-                $"ConvertTo-Json -InputObject ([string[]](New-RunArguments -Name {psq name} -Port {port} -VideoDir {psq videoDir} -DataDir {psq dataDir} -HasNvidiaGpu {psBool nvidia} -IsLinux {psBool isLinux} -HasDri {psBool hasDri})) -Compress"
+                $"""
+$mountArgs = ConvertFrom-Json '{mountJson}'
+$args = New-RunArguments -Name {psq name} -Port {port} -VideoMountArgs $mountArgs -ContainerVideoDirs {psq containerVideoDirs} -DataDir {psq dataDir} -HasNvidiaGpu {psBool nvidia} -IsLinux {psBool isLinux} -HasDri {psBool hasDri}
+ConvertTo-Json -InputObject ([string[]]$args) -Compress
+"""
 
         use doc = JsonDocument.Parse output
         doc.RootElement.EnumerateArray() |> Seq.map (fun e -> e.GetString()) |> List.ofSeq
 
     let private defaultArgs nvidia isLinux hasDri =
-        build "tag-based-video-manager" 5620 "/mnt/c/Users/Public/Videos" "/work/data" nvidia isLinux hasDri
-
-    /// flag の直後が value である隣接ペアが存在するか
-    let private hasPair (flag: string) (value: string) (args: string list) : bool =
-        args |> List.pairwise |> List.exists (fun (a, b) -> a = flag && b = value)
+        build "tag-based-video-manager" 5620 [ "-v"; "/mnt/c/Users/Public/Videos:/app/videos/Videos:ro" ] "/app/videos/Videos" "/work/data" nvidia isLinux hasDri
 
     [<Fact>]
     let ``UT-GPU-02: GPU なしでは run -d --name と基本引数のみで GPU 系引数を含まない`` () =
@@ -430,32 +689,34 @@ module RunArgumentsScriptTests =
     [<InlineData(5621)>]
     [<InlineData(65535)>]
     let ``UT-RUN-ARGS: ホストポートはコンテナ内 5620 へ ホスト:5620 の形式で公開する`` (port: int) =
-        let args = build "tag-based-video-manager" port "/v" "/d" false false false
+        let args = build "tag-based-video-manager" port [ "-v"; "/v:/app/videos/v:ro" ] "/app/videos/v" "/d" false false false
         hasPair "-p" $"{port}:5620" args |> should equal true
 
     [<Fact>]
     let ``UT-RUN-ARGS: 動画は :ro、データは書き込み可でマウントする`` () =
         let args = defaultArgs false false false
-        hasPair "-v" "/mnt/c/Users/Public/Videos:/app/videos:ro" args |> should equal true
+        hasPair "-v" "/mnt/c/Users/Public/Videos:/app/videos/Videos:ro" args |> should equal true
         hasPair "-v" "/work/data:/app/data" args |> should equal true
 
     [<Fact>]
     let ``UT-RUN-ARGS: スペース・日本語を含むパスは 1 要素のまま分割されずに渡る`` () =
-        let args = build "tag-based-video-manager" 5620 "/mnt/d/My Videos/シーズン 1" "/mnt/d/アプリ data" false false false
-        hasPair "-v" "/mnt/d/My Videos/シーズン 1:/app/videos:ro" args |> should equal true
+        let mountArgs = [ "-v"; "/mnt/d/My Videos/シーズン 1:/app/videos/シーズン 1:ro" ]
+        let args = build "tag-based-video-manager" 5620 mountArgs "/app/videos/シーズン 1" "/mnt/d/アプリ data" false false false
+        hasPair "-v" "/mnt/d/My Videos/シーズン 1:/app/videos/シーズン 1:ro" args |> should equal true
         hasPair "-v" "/mnt/d/アプリ data:/app/data" args |> should equal true
 
     [<Fact>]
-    let ``UT-RUN-ARGS: 環境変数 PORT/VIDEO_DIR/THUMBNAIL_DIR/DATABASE_PATH をコンテナ内値で指定する`` () =
+    let ``UT-RUN-ARGS: 環境変数 PORT/VIDEO_DIRS/THUMBNAIL_DIR/DATABASE_PATH をコンテナ内値で指定する`` () =
         let args = defaultArgs false false false
         args |> should contain "PORT=5620"
-        args |> should contain "VIDEO_DIR=/app/videos"
+        args |> should contain "VIDEO_DIRS=/app/videos/Videos"
+        (args |> List.exists (fun a -> a.StartsWith "VIDEO_DIR=")) |> should equal false
         args |> should contain "THUMBNAIL_DIR=/app/data/thumbnails"
         args |> should contain "DATABASE_PATH=/app/data/metadata.db"
 
     [<Fact>]
     let ``UT-RUN-ARGS: ホストポートを変えても内部 PORT 環境変数は 5620 のまま`` () =
-        let args = build "tag-based-video-manager" 5621 "/v" "/d" false false false
+        let args = build "tag-based-video-manager" 5621 [ "-v"; "/v:/app/videos/v:ro" ] "/app/videos/v" "/d" false false false
         args |> should contain "PORT=5620"
         args |> should not' (contain "PORT=5621")
 
@@ -468,8 +729,256 @@ module RunArgumentsScriptTests =
 
     [<Fact>]
     let ``UT-RUN-ARGS: コンテナ名は引数どおりに反映される`` () =
-        let args = build "custom-name-1" 5620 "/v" "/d" false false false
+        let args = build "custom-name-1" 5620 [ "-v"; "/v:/app/videos/v:ro" ] "/app/videos/v" "/d" false false false
         hasPair "--name" "custom-name-1" args |> should equal true
+
+    [<Fact>]
+    let ``IT-13: New-RunArguments は複数マウントと VIDEO_DIRS 環境変数を正しく引数配列に展開する`` () =
+        let mountArgs = [ "-v"; "/mnt/d/X:/app/videos/X:ro"; "-v"; "/mnt/f/Y:/app/videos/Y:ro" ]
+        let containerVideoDirs = "/app/videos/X;/app/videos/Y"
+        let args = build "tag-based-video-manager" 5620 mountArgs containerVideoDirs "/work/data" false false false
+
+        args.Head |> should equal "run"
+        args |> should contain "-d"
+        hasPair "--name" "tag-based-video-manager" args |> should equal true
+        hasPair "-p" "5620:5620" args |> should equal true
+        hasPair "-v" "/mnt/d/X:/app/videos/X:ro" args |> should equal true
+        hasPair "-v" "/mnt/f/Y:/app/videos/Y:ro" args |> should equal true
+        hasPair "-v" "/work/data:/app/data" args |> should equal true
+        args |> should contain "PORT=5620"
+        args |> should contain "VIDEO_DIRS=/app/videos/X;/app/videos/Y"
+        (args |> List.exists (fun a -> a.StartsWith "VIDEO_DIR=")) |> should equal false
+        args |> should contain "THUMBNAIL_DIR=/app/data/thumbnails"
+        args |> should contain "DATABASE_PATH=/app/data/metadata.db"
+
+/// scripts/deploy.ps1 の早期検証と副作用抑止 (IT-14)
+module DeployScriptSideEffectTests =
+
+    [<Fact>]
+    let ``IT-14: deploy.ps1 の AST 解析で Resolve-VideoMounts が build や stop より前に呼び出されている`` () =
+        let full = RepoLayout.pathOf "scripts/deploy.ps1"
+        Assert.True(File.Exists full, "scripts/deploy.ps1 が存在しません")
+        let script =
+            $"""
+$t = $null; $e = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile({psq full}, [ref]$t, [ref]$e)
+$cmds = $ast.FindAll({{ param($a) $a -is [System.Management.Automation.Language.CommandAst] }}, $true)
+
+$resolveLine = -1
+$buildLine = -1
+$stopLine = -1
+
+foreach ($c in $cmds) {{
+    $name = $c.GetCommandName()
+    $text = $c.Extent.Text
+    if ($name -eq "Resolve-VideoMounts" -and $resolveLine -eq -1) {{
+        $resolveLine = $c.Extent.StartLineNumber
+    }}
+    if ($text -match '\bbuild\b' -and $buildLine -eq -1) {{
+        $buildLine = $c.Extent.StartLineNumber
+    }}
+    if ($text -match '\bstop\b' -and $stopLine -eq -1) {{
+        $stopLine = $c.Extent.StartLineNumber
+    }}
+}}
+
+[PSCustomObject]@{{
+    ResolveLine = $resolveLine
+    BuildLine = $buildLine
+    StopLine = $stopLine
+}} | ConvertTo-Json -Compress
+"""
+        let r = runPwsh script
+        Assert.True((r.ExitCode = 0), $"pwsh 実行失敗: {r.StdErr}")
+        use doc = JsonDocument.Parse r.StdOut
+        let resolveLine = doc.RootElement.GetProperty("ResolveLine").GetInt32()
+        let buildLine = doc.RootElement.GetProperty("BuildLine").GetInt32()
+        let stopLine = doc.RootElement.GetProperty("StopLine").GetInt32()
+
+        Assert.True(resolveLine > 0, "deploy.ps1 に Resolve-VideoMounts の呼び出しが存在しなければなりません")
+        Assert.True(resolveLine < buildLine, $"Resolve-VideoMounts (L{resolveLine}) は build (L{buildLine}) より前に実行される必要があります")
+        Assert.True(resolveLine < stopLine, $"Resolve-VideoMounts (L{resolveLine}) は stop (L{stopLine}) より前に実行される必要があります")
+
+    [<Fact>]
+    let ``IT-14: deploy.ps1 は入力検証エラー時に build や stop や rm を一切実行しない（副作用抑止）`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), $"tvm-audit-{Guid.NewGuid():N}")
+        Directory.CreateDirectory tempDir |> ignore
+        let auditLog = Path.Combine(tempDir, "audit.log").Replace('\\', '/')
+        let mockScript = Path.Combine(tempDir, "mock-runtime.cmd")
+        let mockContent = "@echo off\r\necho %* >> \"" + auditLog + "\"\r\nexit /b 0\r\n"
+        File.WriteAllText(mockScript, mockContent)
+
+        try
+            let deployScript = RepoLayout.pathOf "scripts/deploy.ps1"
+            let testPs1 =
+                $"""
+$env:PATH = {psq tempDir} + [IO.Path]::PathSeparator + $env:PATH
+Copy-Item {psq mockScript} (Join-Path {psq tempDir} "docker.cmd")
+Copy-Item {psq mockScript} (Join-Path {psq tempDir} "wslc.cmd")
+
+$env:VIDEO_DIRS = ""
+$env:VIDEO_DIR = ""
+& {psq deployScript} -VideoDirs ""
+exit $LASTEXITCODE
+"""
+            let r = runPwsh testPs1
+            Assert.True((r.ExitCode <> 0), $"検証エラーで非0終了すべきです: exit={r.ExitCode}")
+            if File.Exists auditLog then
+                let auditContent = File.ReadAllText auditLog
+                Assert.True(
+                    not (auditContent.Contains("build") || auditContent.Contains("stop") || auditContent.Contains("rm")),
+                    $"副作用抑止違反: 検証エラー前に build/stop/rm が呼び出されました:\n{auditContent}"
+                )
+        finally
+            try Directory.Delete(tempDir, true) with _ -> ()
+
+/// scripts/deploy.sh の .env 安全読み込み (IT-15)
+module DeployScriptEnvParsingTests =
+
+    [<Fact>]
+    let ``IT-15: deploy.sh は source .env による危険な読み込みを行っていない`` () =
+        let text = RepoLayout.readTextOrFail "scripts/deploy.sh"
+        Regex.IsMatch(text, @"(?m)^\s*(source|\.)\s+.*\.env") |> should equal false
+
+    [<Fact>]
+    let ``IT-15: deploy.sh はセミコロンを含む VIDEO_DIRS を .env から安全に読み込める`` () =
+        let bashCommand =
+            """
+set -euo pipefail
+# deploy.sh が source .env を行っている場合はエラー終了させる
+if grep -qE '^\s*(source|\.)\s+.*\.env' scripts/deploy.sh; then
+    echo "ERROR: deploy.sh still uses source .env" >&2
+    exit 1
+fi
+
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+cat << 'EOF' > "$TMP_DIR/.env"
+# テスト用コメント行
+PORT=5620
+VIDEO_DIRS="D:\Anime;F:\Movie"
+DATA_DIR="/tmp/data"
+CUSTOM_EMPTY=""
+SINGLE_QUOTE='literal;value'
+EOF
+
+# deploy.sh から parse_env 関数を抽出して実行・検証
+export REPO_ROOT="$TMP_DIR"
+
+eval "$(sed -n '/^parse_env()/,/^}/p' scripts/deploy.sh)"
+
+if ! declare -f parse_env >/dev/null 2>&1; then
+    echo "ERROR: parse_env could not be extracted from scripts/deploy.sh" >&2
+    exit 1
+fi
+
+# 環境変数をクリアして parse_env を実行
+unset PORT VIDEO_DIRS DATA_DIR CUSTOM_EMPTY SINGLE_QUOTE
+parse_env "$TMP_DIR/.env"
+
+# 実質的な値の一致とセミコロン非分割をアサート
+if [ "${VIDEO_DIRS:-}" != 'D:\Anime;F:\Movie' ]; then
+    echo "ERROR: VIDEO_DIRS mismatch: got '${VIDEO_DIRS:-}', expected 'D:\Anime;F:\Movie'" >&2
+    exit 1
+fi
+if [ "${PORT:-}" != "5620" ]; then
+    echo "ERROR: PORT mismatch: got '${PORT:-}', expected '5620'" >&2
+    exit 1
+fi
+if [ "${DATA_DIR:-}" != "/tmp/data" ]; then
+    echo "ERROR: DATA_DIR mismatch: got '${DATA_DIR:-}', expected '/tmp/data'" >&2
+    exit 1
+fi
+if [ "${SINGLE_QUOTE:-}" != 'literal;value' ]; then
+    echo "ERROR: SINGLE_QUOTE mismatch: got '${SINGLE_QUOTE:-}', expected 'literal;value'" >&2
+    exit 1
+fi
+
+echo "ENV_PARSING_OK"
+"""
+        let r = run "bash" [ "-c"; bashCommand ] (RepoLayout.repoRoot ()) 30000
+        Assert.True((r.ExitCode = 0), $"deploy.sh の .env 安全読み込み検証が失敗しました (exit={r.ExitCode}):\nSTDERR: {r.StdErr}\nSTDOUT: {r.StdOut}")
+        r.StdOut |> should contain "ENV_PARSING_OK"
+
+/// scripts/deploy.sh の Linux 向け早期入力検証およびパストラバーサル防止 (IT-16 / IT-17)
+module DeployScriptLinuxValidationTests =
+
+    [<Theory>]
+    [<InlineData("///")>]
+    [<InlineData("////")>]
+    let ``IT-16: deploy.sh はルート複数スラッシュが指定された場合、ルート拒絶エラーで非0終了し副作用を実行しない`` (rootPath: string) =
+        let bashCommand =
+            $"""
+set -euo pipefail
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+mkdir -p "$TMP_DIR/bin"
+cat << 'EOF' > "$TMP_DIR/bin/docker"
+#!/usr/bin/env bash
+echo "$@" >> "$AUDIT_FILE"
+exit 0
+EOF
+chmod +x "$TMP_DIR/bin/docker"
+cp "$TMP_DIR/bin/docker" "$TMP_DIR/bin/podman"
+
+export PATH="$TMP_DIR/bin:$PATH"
+export AUDIT_FILE="$TMP_DIR/audit.log"
+export PORT=5620
+export DATA_DIR="$TMP_DIR/data"
+export VIDEO_DIRS="{rootPath}"
+
+bash scripts/deploy.sh
+"""
+        let r = run "bash" [ "-c"; bashCommand ] (RepoLayout.repoRoot ()) 30000
+        Assert.True((r.ExitCode <> 0), $"複数スラッシュルートで非0終了すべきです: exit={r.ExitCode}")
+        let combined = r.StdErr + " " + r.StdOut
+        Assert.True(
+            combined.Contains("ルート") || combined.Contains("root") || combined.Contains("フォルダ名") || combined.Contains("マウント先"),
+            $"ルート拒絶エラーメッセージが必要です: {combined}"
+        )
+
+    [<Theory>]
+    [<InlineData(".")>]
+    [<InlineData("..")>]
+    [<InlineData("child/..")>]
+    [<InlineData("child/.")>]
+    let ``IT-17: deploy.sh はフォルダ名(Leaf)がパストラバーサル（. や ..）となるパスが指定された場合、エラーで非0終了し副作用を実行しない`` (subPath: string) =
+        let bashCommand =
+            $"""
+set -euo pipefail
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+mkdir -p "$TMP_DIR/bin"
+cat << 'EOF' > "$TMP_DIR/bin/docker"
+#!/usr/bin/env bash
+echo "$@" >> "$AUDIT_FILE"
+exit 0
+EOF
+chmod +x "$TMP_DIR/bin/docker"
+cp "$TMP_DIR/bin/docker" "$TMP_DIR/bin/podman"
+
+mkdir -p "$TMP_DIR/videos/child"
+
+export PATH="$TMP_DIR/bin:$PATH"
+export AUDIT_FILE="$TMP_DIR/audit.log"
+export PORT=5620
+export DATA_DIR="$TMP_DIR/data"
+
+TEST_PATH="$TMP_DIR/videos/{subPath}"
+export VIDEO_DIRS="$TEST_PATH"
+
+bash scripts/deploy.sh
+"""
+        let r = run "bash" [ "-c"; bashCommand ] (RepoLayout.repoRoot ()) 30000
+        Assert.True((r.ExitCode <> 0), $"Leaf が . または .. のパスで非0終了すべきです (subPath={subPath}): exit={r.ExitCode}")
+        let combined = r.StdErr + " " + r.StdOut
+        Assert.True(
+            combined.Contains("フォルダ名") || combined.Contains("無効") || combined.Contains("不正") || combined.Contains("traversal") || combined.Contains("マウント先") || combined.Contains("ルート"),
+            $"パストラバーサルまたは無効なフォルダ名エラーを示す必要があります: {combined}"
+        )
 
 /// 不要な Docker Compose 関連資産の廃止および単一コンテナ構成への整合検証 (IT-CLEAN-01〜04)
 module ObsoleteDockerComposeRemovalTests =
@@ -507,4 +1016,3 @@ module ObsoleteDockerComposeRemovalTests =
 
         unionCaseNames |> Array.contains "DockerError" |> should equal false
         unionCaseNames |> Array.contains "ContainerError" |> should equal true
-

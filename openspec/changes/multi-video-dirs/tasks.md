@@ -19,11 +19,11 @@
 
 ## 4. デプロイスクリプトと Docker 構成
 
-- [ ] 4.1 [qa-tester] `DeployScriptTests.fs` に Red テスト追加（UT-13〜UT-19, IT-13〜IT-15、早期バリデーション・副作用抑止の検証）
-- [ ] 4.2 [pg-implementer] `scripts/common.ps1`（`Resolve-VideoMounts` 実装、WSL パス変換、`-VideoDirs` 対応）、`scripts/deploy.ps1`、`scripts/deploy.sh`（安全な `.env` パーサ実装、既定値・旧引数廃止、イメージビルドおよび既存コンテナ停止前の厳格な入力検証）
-- [ ] 4.3 [pg-implementer] `Dockerfile` の `ENV VIDEO_DIR=/app/videos` 削除（`mkdir -p /app/videos` は維持）
-- [ ] 4.4 [qa-tester] 実コンテナ利用可能な環境で IT-11 / IT-12 を確認（実行不可環境の場合は引数検証で代替し、その旨を `reviews.md` に記録）
-- [ ] 4.5 [se-reviewer / pg-reviewer / qa-reviewer] レビュー（外部プロセス・シェルパースの安全性を重点確認）、`verify-gate.ps1 -Gate apply`
+- [x] 4.1 [qa-tester] `DeployScriptTests.fs` に Red テスト追加（UT-13〜UT-19, IT-13〜IT-15、早期バリデーション・副作用抑止の検証）
+- [x] 4.2 [pg-implementer] `scripts/common.ps1`（`Resolve-VideoMounts` 実装、WSL パス変換、`-VideoDirs` 対応）、`scripts/deploy.ps1`、`scripts/deploy.sh`（安全な `.env` パーサ実装、既定値・旧引数廃止、イメージビルドおよび既存コンテナ停止前の厳格な入力検証）
+- [x] 4.3 [pg-implementer] `Dockerfile` の `ENV VIDEO_DIR=/app/videos` 削除（`mkdir -p /app/videos` は維持）
+- [x] 4.4 [qa-tester] 実コンテナ利用可能な環境で IT-11 / IT-12 を確認（実行不可環境の場合は引数検証で代替し、その旨を `reviews.md` に記録）
+- [x] 4.5 [se-reviewer / pg-reviewer / qa-reviewer] レビュー（外部プロセス・シェルパースの安全性を重点確認）、`verify-gate.ps1 -Gate apply`
 
 ## 5. E2E テストと画面検証
 
