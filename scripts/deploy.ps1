@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # scripts/deploy.ps1: Windows / WSL3 向け自動デプロイスクリプト
 # =============================================================================
 [CmdletBinding()]
@@ -106,7 +106,7 @@ catch {}
 
 # 7. 新コンテナ起動
 Write-Host "--- 新コンテナを起動中 ---" -ForegroundColor Cyan
-$runArgs = New-RunArguments -Name $containerName -Port $resolvedPort -VideoMountArgs $resolvedMounts.VolumeArgs -ContainerVideoDirs $resolvedMounts.ContainerVideoDirs -DataDir $wslDataDir -HasNvidiaGpu $hasNvidia -IsLinux $false -HasDri $false
+$runArgs = New-RunArguments -Name $containerName -Port $resolvedPort -VideoMountArgs $resolvedMounts.VolumeArgs -ContainerVideoDirs $resolvedMounts.ContainerVideoDirs -DataDir $wslDataDir -HasNvidiaGpu $hasNvidia -IsLinux $false -HasDri $false -Runtime $runtime
 $allArgs = @($runArgs) + @($imageName)
 & $runtime @allArgs
 if ($LASTEXITCODE -ne 0) {
@@ -116,7 +116,8 @@ if ($LASTEXITCODE -ne 0) {
 
 # 8. ヘルスチェック (最大30秒)
 Write-Host "--- ヘルスチェック実行中 (ポート 5620) ---" -ForegroundColor Cyan
-$healthUrl = "http://localhost:${resolvedPort}/"
+# wslc は IPv4 (127.0.0.1) にのみバインドするため、IPv6 優先によるタイムアウトを防ぐため明示的に 127.0.0.1 を指定する
+$healthUrl = "http://127.0.0.1:${resolvedPort}/"
 $maxRetries = 10
 $retryCount = 0
 $isHealthy = $false
