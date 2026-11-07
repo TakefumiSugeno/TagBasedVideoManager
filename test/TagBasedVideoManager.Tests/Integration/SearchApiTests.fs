@@ -465,3 +465,62 @@ type SearchTests () =
             t1.VideoCount |> should equal 2
             t2.VideoCount |> should equal 1
         | Error _ -> failwith "Failed to get tags"
+
+    [<Fact>]
+    member _.``GET /api/videos should return correct tags in response (IT-01, IT-02, IT-03)`` () =
+        use conn = Db.getConnection dbPath
+        let _ = DbInit.initializeDatabase conn |> ignore
+
+        // タグの作成
+        let tag1 = { Tag.Id = "t_api_1"; Name = "自然"; ColorCode = "#10b981"; ParentId = None; VideoCount = 0 }
+        let tag2 = { Tag.Id = "t_api_2"; Name = "海"; ColorCode = "#3b82f6"; ParentId = None; VideoCount = 0 }
+        let _ = Db.saveTag conn tag1 |> Async.RunSynchronously
+        let _ = Db.saveTag conn tag2 |> Async.RunSynchronously
+
+        // 動画の作成
+        let now = DateTime.UtcNow.ToString("o")
+        let sql = "INSERT INTO Videos (Id, FileName, FilePath, Duration, FileSize, CreatedAt, AccessCount) VALUES (@Id, @FileName, @FilePath, 100, 1000, @CreatedAt, 0)"
+        Dapper.SqlMapper.Execute(conn, sql, {| Id = "v_sea"; FileName = "sea_nature.mp4"; FilePath = "C:\\sea.mp4"; CreatedAt = now |}) |> ignore
+        Dapper.SqlMapper.Execute(conn, sql, {| Id = "v_untagged"; FileName = "untagged.mp4"; FilePath = "C:\\untagged.mp4"; CreatedAt = now |}) |> ignore
+
+        // v_sea に両方のタグを紐付け
+        let _ = Db.addTagToVideo conn "v_sea" "t_api_1" |> Async.RunSynchronously
+        let _ = Db.addTagToVideo conn "v_sea" "t_api_2" |> Async.RunSynchronously
+
+        // TestServer を起動して GET /api/videos を検証
+        let builder =
+            WebHostBuilder()
+                .UseContentRoot(Directory.GetCurrentDirectory())
+                .ConfigureServices(fun services ->
+                    Environment.SetEnvironmentVariable("DATABASE_PATH", dbPath)
+                    Program.configureServices services
+                )
+                .Configure(Action<IApplicationBuilder> (fun app -> Program.configureApp app))
+        use server = new TestServer(builder)
+        use client = server.CreateClient()
+
+        // 1. 全件取得 (IT-01, IT-02)
+        let resAll = client.GetAsync("/api/videos").Result
+        resAll.StatusCode |> should equal HttpStatusCode.OK
+        let jsonAll = resAll.Content.ReadAsStringAsync().Result
+        use docAll = JsonDocument.Parse(jsonAll)
+        let rootAll = docAll.RootElement
+        rootAll.GetArrayLength() |> should equal 2
+
+        let vSeaElem = rootAll.EnumerateArray() |> Seq.find (fun el -> el.GetProperty("id").GetString() = "v_sea")
+        let tagsElem = vSeaElem.GetProperty("tags")
+        tagsElem.GetArrayLength() |> should equal 2
+
+        let vUntaggedElem = rootAll.EnumerateArray() |> Seq.find (fun el -> el.GetProperty("id").GetString() = "v_untagged")
+        vUntaggedElem.GetProperty("tags").GetArrayLength() |> should equal 0
+
+        // 2. 検索 API (IT-03)
+        let resSearch = client.GetAsync("/api/videos?q=sea").Result
+        resSearch.StatusCode |> should equal HttpStatusCode.OK
+        let jsonSearch = resSearch.Content.ReadAsStringAsync().Result
+        use docSearch = JsonDocument.Parse(jsonSearch)
+        let rootSearch = docSearch.RootElement
+        rootSearch.GetArrayLength() |> should equal 1
+        rootSearch.[0].GetProperty("id").GetString() |> should equal "v_sea"
+        rootSearch.[0].GetProperty("tags").GetArrayLength() |> should equal 2
+
