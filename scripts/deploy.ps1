@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # scripts/deploy.ps1: Windows / WSL3 向け自動デプロイスクリプト
 # =============================================================================
 [CmdletBinding()]
@@ -106,7 +106,7 @@ catch {}
 
 # 7. 新コンテナ起動
 Write-Host "--- 新コンテナを起動中 ---" -ForegroundColor Cyan
-$runArgs = New-RunArguments -Name $containerName -Port $resolvedPort -VideoMountArgs $resolvedMounts.VolumeArgs -ContainerVideoDirs $resolvedMounts.ContainerVideoDirs -DataDir $wslDataDir -HasNvidiaGpu $hasNvidia -IsLinux $false -HasDri $false
+$runArgs = New-RunArguments -Name $containerName -Port $resolvedPort -VideoMountArgs $resolvedMounts.VolumeArgs -ContainerVideoDirs $resolvedMounts.ContainerVideoDirs -DataDir $wslDataDir -HasNvidiaGpu $hasNvidia -IsLinux $false -HasDri $false -Runtime $runtime
 $allArgs = @($runArgs) + @($imageName)
 & $runtime @allArgs
 if ($LASTEXITCODE -ne 0) {

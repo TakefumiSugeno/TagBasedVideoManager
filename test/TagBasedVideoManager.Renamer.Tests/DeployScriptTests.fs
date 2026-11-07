@@ -631,18 +631,25 @@ module RunArgumentsScriptTests =
         args |> List.pairwise |> List.exists (fun (a, b) -> a = flag && b = value)
 
     /// New-RunArguments を呼び出し、JSON 配列として受け取った引数リストを返す
-    let private build (name: string) (port: int) (videoMountArgs: string list) (containerVideoDirs: string) (dataDir: string) (nvidia: bool) (isLinux: bool) (hasDri: bool) : string list =
+    let private buildWithRuntime (name: string) (port: int) (videoMountArgs: string list) (containerVideoDirs: string) (dataDir: string) (nvidia: bool) (isLinux: bool) (hasDri: bool) (runtime: string option) : string list =
         let mountJson = JsonSerializer.Serialize(videoMountArgs)
+        let runtimeParam =
+            match runtime with
+            | Some r -> $"-Runtime {psq r}"
+            | None -> ""
         let output =
             callCommon
                 $"""
 $mountArgs = ConvertFrom-Json '{mountJson}'
-$args = New-RunArguments -Name {psq name} -Port {port} -VideoMountArgs $mountArgs -ContainerVideoDirs {psq containerVideoDirs} -DataDir {psq dataDir} -HasNvidiaGpu {psBool nvidia} -IsLinux {psBool isLinux} -HasDri {psBool hasDri}
+$args = New-RunArguments -Name {psq name} -Port {port} -VideoMountArgs $mountArgs -ContainerVideoDirs {psq containerVideoDirs} -DataDir {psq dataDir} -HasNvidiaGpu {psBool nvidia} -IsLinux {psBool isLinux} -HasDri {psBool hasDri} {runtimeParam}
 ConvertTo-Json -InputObject ([string[]]$args) -Compress
 """
 
         use doc = JsonDocument.Parse output
         doc.RootElement.EnumerateArray() |> Seq.map (fun e -> e.GetString()) |> List.ofSeq
+
+    let private build (name: string) (port: int) (videoMountArgs: string list) (containerVideoDirs: string) (dataDir: string) (nvidia: bool) (isLinux: bool) (hasDri: bool) : string list =
+        buildWithRuntime name port videoMountArgs containerVideoDirs dataDir nvidia isLinux hasDri None
 
     let private defaultArgs nvidia isLinux hasDri =
         build "tag-based-video-manager" 5620 [ "-v"; "/mnt/c/Users/Public/Videos:/app/videos/Videos:ro" ] "/app/videos/Videos" "/work/data" nvidia isLinux hasDri
@@ -726,6 +733,11 @@ ConvertTo-Json -InputObject ([string[]]$args) -Compress
 
         (hasPair "--restart" "unless-stopped" args || List.contains "--restart=unless-stopped" args)
         |> should equal true
+
+    [<Fact>]
+    let ``UT-RUN-ARGS-WSLC: wslc 指定時は --restart オプションを含めない`` () =
+        let args = buildWithRuntime "tag-based-video-manager" 5620 [ "-v"; "/v:/app/videos/v:ro" ] "/app/videos/v" "/d" false false false (Some "wslc")
+        args |> should not' (contain "--restart")
 
     [<Fact>]
     let ``UT-RUN-ARGS: コンテナ名は引数どおりに反映される`` () =
@@ -831,6 +843,26 @@ exit $LASTEXITCODE
                 )
         finally
             try Directory.Delete(tempDir, true) with _ -> ()
+
+    [<Fact>]
+    let ``IT-SCRIPT-03: deploy.ps1 は New-RunArguments に -Runtime $runtime を渡している (AST)`` () =
+        let full = RepoLayout.pathOf "scripts/deploy.ps1"
+        let script =
+            $"""
+$t = $null; $e = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile({psq full}, [ref]$t, [ref]$e)
+$cmds = $ast.FindAll({{ param($a) $a -is [System.Management.Automation.Language.CommandAst] }}, $true)
+$newRunArgsCmd = $cmds | Where-Object {{ $_.GetCommandName() -eq "New-RunArguments" }} | Select-Object -First 1
+$hasRuntime = $false
+if ($newRunArgsCmd) {{
+    $hasRuntime = $newRunArgsCmd.Extent.Text -match '-Runtime\s+\$runtime'
+}}
+[PSCustomObject]@{{ HasRuntime = $hasRuntime }} | ConvertTo-Json -Compress
+"""
+        let r = runPwsh script
+        Assert.True((r.ExitCode = 0), $"pwsh 実行失敗: {r.StdErr}")
+        use doc = JsonDocument.Parse r.StdOut
+        doc.RootElement.GetProperty("HasRuntime").GetBoolean() |> should equal true
 
 /// scripts/deploy.sh の .env 安全読み込み (IT-15)
 module DeployScriptEnvParsingTests =

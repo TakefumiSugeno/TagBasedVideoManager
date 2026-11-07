@@ -89,3 +89,127 @@
 - **条件付きLGTM**: なし
 - **保留指摘（申し送り）**: 指摘1, 指摘2（いずれも将来拡張時の Suggestion）
 - **次のアクション**: Gate 1 を通過し、Apply フェーズ（TDD 実装）へ移行可能。
+
+---
+
+# レビュー記録: fix-wslc-unsupported-restart-option / apply / Task 1.1-1.3
+
+- **日時**: 2026-11-08
+- **フェーズ**: apply
+- **タスク**: Task 1.1（根本原因の特定と再現テスト作成）、Task 1.2（プロダクションスクリプトの修正）、Task 1.3（回帰テスト実行）
+- **レビュアー**: qa (QA Reviewer Agent)
+- **使用プロトコル**: openspec/templates/checklist_apply_test.md, openspec/templates/checklist_apply_impl.md
+- **対象成果物**:
+  - `openspec/changes/fix-wslc-unsupported-restart-option/proposal.md`
+  - `openspec/changes/fix-wslc-unsupported-restart-option/tasks.md`
+  - `scripts/common.ps1` (行 211, 246-250)
+  - `scripts/deploy.ps1` (行 109)
+  - `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs` (行 634-644, 738-741, 848-866)
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: トートロジーテスト（実装式のコピペ）の有無
+
+- **確認内容・回答**:
+  テストコードにおいて、プロダクションコードの判定ロジック（`if ($Runtime -ne "wslc")`）をそのままコピペして期待値を計算している箇所はありません。
+  `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs` の `UT-RUN-ARGS-WSLC`（行 738-741）では、固定値 `Some "wslc"` を渡して呼び出した結果の引数配列に対して、`args |> should not' (contain "--restart")` と直接固定リテラルで否定アサーションを行っています。
+  また既存の `UT-RUN-ARGS: --restart unless-stopped を指定する`（行 731-735）でも、`hasPair "--restart" "unless-stopped" args` によりフラグと値のペアを厳格にアサートしており、トートロジーは存在しません。
+  さらに `IT-SCRIPT-03`（行 848-866）では、PowerShell AST を用いて `scripts/deploy.ps1` の `New-RunArguments` 呼び出しに `-Runtime $runtime` が渡されていることを静的構文解析で直接検証しており、自己完結的で独立性の高いテストとなっています。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs`: 行 731-741, 848-866
+  - `scripts/common.ps1`: 行 246-250
+
+### 設問2: 甘いアサーション・無意味なモックの有無
+
+- **確認内容・回答**:
+  モックライブラリを用いた内部ロジックのモック化やすり替えは一切行われておらず、実際の PowerShell スクリプト（`scripts/common.ps1` および `scripts/deploy.ps1`）を呼び出して生成された引数リストや AST を検証しています。
+  アサーションも `not.toBeNull()` や単なる例外非発生チェックに留まらず、配列内に `"--restart"` が含まれないこと、あるいは `"--restart"` と `"unless-stopped"` のペアが含まれていること、AST 内に `-Runtime $runtime` が指定されていることを厳密に検証しており、甘いアサーションはありません。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs`: 行 731-741, 863-865
+
+### 設問3: ミューテーション思考（バグのすり抜け検証）
+
+- **確認内容・回答**:
+  プロダクションコードの条件式を反転（Mutation）させた場合のテストの挙動を思考検証しました。
+  1. **条件反転（`-ne` を `-eq` に反転）**:
+     `scripts/common.ps1` の行 247 を `if ($Runtime -eq "wslc")` に反転させた場合、`UT-RUN-ARGS-WSLC` では `wslc` 時に `--restart` が付与されるため `should not' (contain "--restart")` で確実に **Red (失敗)** します。またデフォルト（未指定/docker）時にも `--restart` が付与されなくなるため `UT-RUN-ARGS: --restart unless-stopped を指定する` で確実に **Red (失敗)** します。
+  2. **定数破壊（`"wslc"` を `"docker"` などに誤修正）**:
+     `UT-RUN-ARGS-WSLC` で `wslc` 指定時に `--restart` が含まれるため確実に **Red (失敗)** します。
+  3. **呼び出し側引数漏れ（`-Runtime $runtime` の渡し忘れ）**:
+     `scripts/deploy.ps1` で `-Runtime` を渡し忘れた場合、`IT-SCRIPT-03` が AST パース正規表現不一致により確実に **Red (失敗)** します。
+     このように、プロダクションコードの主要な破壊に対して死角なくテストが検知できる状態になっています。
+- **確認根拠**:
+  - `scripts/common.ps1`: 行 247
+  - `scripts/deploy.ps1`: 行 109
+  - `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs`: 行 734-740, 858-865
+
+### 設問4: フレーキー要因・環境依存の摘出
+
+- **確認内容・回答**:
+  テストコード内に固定秒数の `sleep` 待機、グローバル状態の汚染、現在時刻の参照、テスト間順序への依存はありません。プロセス呼び出しや AST 解析も決定論的であり、フレーキーとなる要因は認められません。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs`: 行 634-644, 738-741, 848-866
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+意地悪な入力（空文字、null、大文字 "WSLC"、"docker"、"podman"、特殊文字、不正型）を `New-RunArguments` に投入し、スクリプトの堅牢性を実証検証しました。
+
+- **対象関数/モジュール**: `scripts/common.ps1` / `New-RunArguments`
+- **破壊テストコード名**: `AdversarialRuntimeParameterTest` (PowerShell スクラッチ検証)
+- **実行コマンド**:
+  ```powershell
+  . ./scripts/common.ps1
+  $inputs = @(
+      @{ Name = 'null'; Val = $null },
+      @{ Name = 'empty'; Val = '' },
+      @{ Name = 'wslc'; Val = 'wslc' },
+      @{ Name = 'WSLC (upper)'; Val = 'WSLC' },
+      @{ Name = 'Wslc (title)'; Val = 'Wslc' },
+      @{ Name = 'docker'; Val = 'docker' },
+      @{ Name = 'podman'; Val = 'podman' },
+      @{ Name = 'special chars'; Val = 'wslc;rm' },
+      @{ Name = 'trailing space'; Val = 'wslc ' }
+  )
+
+  foreach ($tc in $inputs) {
+      $res = New-RunArguments -Name 'test' -Port 5620 -VideoMountArgs @('-v', '/v:/app/videos/v:ro') -ContainerVideoDirs '/app/videos/v' -DataDir '/data' -Runtime $tc.Val
+      $hasRestart = $res -contains '--restart'
+      [PSCustomObject]@{ Case = $tc.Name; Input = $tc.Val; HasRestart = $hasRestart }
+  }
+  ```
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+- **実行ログ要約**:
+  ```text
+  Case           Input   HasRestart
+  ----           -----   ----------
+  null                         True
+  empty                        True
+  wslc           wslc         False
+  WSLC (upper)   WSLC         False
+  Wslc (title)   Wslc         False
+  docker         docker        True
+  podman         podman        True
+  special chars  wslc;rm       True
+  trailing space wslc          True
+  ```
+  また、型不一致となる配列 `Runtime = @('wslc', 'docker')` を渡したケースでは、PowerShell の `[string]$Runtime` 型制約により即座に引数変換エラーで安全に例外停止することを確認しました。
+  さらに、PowerShell の `-ne` 演算子はデフォルトで大文字小文字を区別しないため、`WSLC` や `Wslc` など大文字混在で指定された場合でも確実に `--restart` が除外される堅牢性を備えています。
+
+---
+
+## 3. 指摘事項
+
+なし（理由: 堅牢性確認済み。トートロジーや甘いアサーションはなく、意地悪な入力に対しても安全に動作することを確認）
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: Gate 2 通過。次フェーズ（Archive）へ進む

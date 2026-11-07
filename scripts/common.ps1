@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # scripts/common.ps1: コンテナ運用共通関数ライブラリ
 # =============================================================================
 
@@ -207,7 +207,8 @@ function New-RunArguments {
         [bool]$HasNvidiaGpu = $false,
         [Alias("IsLinux")]
         [bool]$TargetIsLinux = $false,
-        [bool]$HasDri = $false
+        [bool]$HasDri = $false,
+        [string]$Runtime = ""
     )
 
     $argsList = [System.Collections.Generic.List[string]]::new()
@@ -242,8 +243,11 @@ function New-RunArguments {
         $argsList.Add("/dev/dri:/dev/dri")
     }
 
-    $argsList.Add("--restart")
-    $argsList.Add("unless-stopped")
+    # wslc は --restart オプションをサポートしていないため除外する
+    if ($Runtime -ne "wslc") {
+        $argsList.Add("--restart")
+        $argsList.Add("unless-stopped")
+    }
 
     return $argsList.ToArray()
 }
