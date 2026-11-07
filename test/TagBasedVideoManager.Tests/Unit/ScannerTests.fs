@@ -4,6 +4,7 @@ open System
 open System.IO
 open System.Net
 open System.Net.Http
+open System.Runtime.InteropServices
 open System.Text
 open System.Text.Json
 open Microsoft.AspNetCore.Hosting
@@ -104,6 +105,9 @@ type ScannerTests () =
         Directory.CreateDirectory(videoDir) |> ignore
         Directory.CreateDirectory(thumbDir) |> ignore
         File.WriteAllText(Path.Combine(videoDir, "api_test.mp4"), "dummy")
+
+        use initConn = Db.getConnection dbPath
+        DbInit.initializeDatabase initConn |> ignore
 
         let builder =
             WebHostBuilder()
@@ -454,3 +458,433 @@ type ScannerTests () =
         MediaQueue.clearQueue()
         let result = Scanner.syncVideoDirectory videoDir thumbDir mockMediaProcessor conn |> Async.RunSynchronously
         result |> should equal (Ok 0 : Result<int, DbError>)
+
+    // =========================================================================
+    // multi-video-dirs (Task 2.1): 単体テスト・デシジョンテーブル (UT-11, 12b, 12c, DT-01, DT-02)
+    // =========================================================================
+
+    [<Fact>]
+    member _.``UT-11: ルートディレクトリとサブディレクトリの相対パスからルート名とサブフォルダ名タグが導出されること`` () =
+        let isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        let root = if isWindows then @"D:\Anime" else "/data/Anime"
+        let file = if isWindows then @"D:\Anime\S1\a.mp4" else "/data/Anime/S1/a.mp4"
+        let tags = Scanner.deriveFolderTags root file
+        tags |> should equal ["Anime"; "S1"]
+
+    [<Fact>]
+    member _.``UT-12b: ルート直下のファイルの場合はルート名タグのみが導出されること`` () =
+        let isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        let root = if isWindows then @"D:\Anime" else "/data/Anime"
+        let file = if isWindows then @"D:\Anime\a.mp4" else "/data/Anime/a.mp4"
+        let tags = Scanner.deriveFolderTags root file
+        tags |> should equal ["Anime"]
+
+    [<Fact>]
+    member _.``UT-12c: 末尾に区切り文字が付いたルートディレクトリでもルート名タグが正しく導出されること`` () =
+        let isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        let root = if isWindows then @"D:\Anime\" else "/data/Anime/"
+        let file = if isWindows then @"D:\Anime\a.mp4" else "/data/Anime/a.mp4"
+        let tags = Scanner.deriveFolderTags root file
+        tags |> should equal ["Anime"]
+
+    [<Fact>]
+    member _.``DT-01: 相対パスがルート配下の場合はルート名およびサブフォルダ名タグが付与されること`` () =
+        let isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        let root = if isWindows then @"D:\Anime" else "/data/Anime"
+        let file = if isWindows then @"D:\Anime\Season1\Part2\ep1.mp4" else "/data/Anime/Season1/Part2/ep1.mp4"
+        let tags = Scanner.deriveFolderTags root file
+        tags |> should equal ["Anime"; "Season1"; "Part2"]
+
+    [<Fact>]
+    member _.``DT-02: ファイルがルート配下にない（相対パスがドットドットで始まる）場合はタグが付与されないこと`` () =
+        let isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        let root = if isWindows then @"D:\Anime" else "/data/Anime"
+        let file = if isWindows then @"D:\Other\movie.mp4" else "/data/Other/movie.mp4"
+        let tags = Scanner.deriveFolderTags root file
+        tags |> should equal ([] : string list)
+
+    // =========================================================================
+    // multi-video-dirs (Task 2.1): 結合テスト (IT-01〜IT-06, IT-05b, IT-06b, IT-09, IT-10, ST-01/02/04)
+    // =========================================================================
+
+    [<Fact>]
+    member _.``IT-01: 親フォルダ配下のシンボリックリンクまたはジャンクション先の動画が検出されDBに登録されること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_it01_{Guid.NewGuid():N}")
+        let rootDir = Path.Combine(testBase, "Videos")
+        let targetDir = Path.Combine(testBase, "Target")
+        let linkDir = Path.Combine(rootDir, "LinkedDir")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(rootDir) |> ignore
+            Directory.CreateDirectory(targetDir) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            let realVideo = Path.Combine(targetDir, "link_video.mp4")
+            File.WriteAllText(realVideo, "dummy")
+            Directory.CreateSymbolicLink(linkDir, targetDir) |> ignore
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let result = Scanner.syncVideoDirectories [rootDir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            result |> should equal (Ok 1 : Result<int, DbError>)
+
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos |> List.length |> should equal 1
+            let resolvedTargetVideo = TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath realVideo
+            videos.Head.FilePath |> should equal resolvedTargetVideo
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``IT-02: 複数の物理フォルダを指定したときに全フォルダ配下の動画が検出されDBに登録されること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_it02_{Guid.NewGuid():N}")
+        let dir1 = Path.Combine(testBase, "Dir1")
+        let dir2 = Path.Combine(testBase, "Dir2")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(dir1) |> ignore
+            Directory.CreateDirectory(dir2) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            File.WriteAllText(Path.Combine(dir1, "v1.mp4"), "dummy")
+            File.WriteAllText(Path.Combine(dir2, "v2.mp4"), "dummy")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let result = Scanner.syncVideoDirectories [dir1; dir2] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            result |> should equal (Ok 2 : Result<int, DbError>)
+
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos |> List.length |> should equal 2
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``IT-03: 指定されたディレクトリのうち一部が存在しない場合でもスキップされて実在するディレクトリの走査が継続されること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_it03_{Guid.NewGuid():N}")
+        let dir1 = Path.Combine(testBase, "ExistingDir")
+        let missingDir = Path.Combine(testBase, "NonExistingDir")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(dir1) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            File.WriteAllText(Path.Combine(dir1, "v1.mp4"), "dummy")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let result = Scanner.syncVideoDirectories [dir1; missingDir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            result |> should equal (Ok 1 : Result<int, DbError>)
+
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos |> List.length |> should equal 1
+            videos.Head.FileName |> should equal "v1.mp4"
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``IT-04: 指定された全てのディレクトリが存在しない場合でも例外終了せず走査結果0件として安全に終了すること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_it04_{Guid.NewGuid():N}")
+        let missing1 = Path.Combine(testBase, "NonExisting1")
+        let missing2 = Path.Combine(testBase, "NonExisting2")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(testBase) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let result = Scanner.syncVideoDirectories [missing1; missing2] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            result |> should equal (Ok 0 : Result<int, DbError>)
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``IT-05: 親子関係のルートが指定されても同一の物理ファイルは重複登録されず1件のみ登録されること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_it05_{Guid.NewGuid():N}")
+        let parentDir = Path.Combine(testBase, "Parent")
+        let subDir = Path.Combine(parentDir, "Sub")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(subDir) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            File.WriteAllText(Path.Combine(subDir, "nested.mp4"), "dummy")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let result = Scanner.syncVideoDirectories [parentDir; subDir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            result |> should equal (Ok 1 : Result<int, DbError>)
+
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos |> List.length |> should equal 1
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``IT-05b: 入れ子関係のルートが指定された場合、所属するすべてのルート名タグが和集合で付与されること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_it05b_{Guid.NewGuid():N}")
+        let parentDir = Path.Combine(testBase, "AnimeParent")
+        let subDir = Path.Combine(parentDir, "SpecialSub")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(subDir) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            File.WriteAllText(Path.Combine(subDir, "ova.mp4"), "dummy")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let result = Scanner.syncVideoDirectories [parentDir; subDir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            result |> should equal (Ok 1 : Result<int, DbError>)
+
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos |> List.length |> should equal 1
+            let tagNames = videos.Head.Tags |> List.map (fun t -> t.Name)
+            tagNames |> should contain "AnimeParent"
+            tagNames |> should contain "SpecialSub"
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``IT-06: 大文字小文字の表記揺れがある同一パスで再スキャンしても重複登録されず追加件数は0件となること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_it06_{Guid.NewGuid():N}")
+        let dir1 = Path.Combine(testBase, "Videos")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(dir1) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            File.WriteAllText(Path.Combine(dir1, "sample.mp4"), "dummy")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            // 1回目のスキャン
+            let res1 = Scanner.syncVideoDirectories [dir1] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            res1 |> should equal (Ok 1 : Result<int, DbError>)
+
+            // 2回目のスキャン: 大文字小文字表記を変えてスキャン
+            let dirAltCase =
+                if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
+                    dir1.ToUpperInvariant()
+                else
+                    dir1
+            let res2 = Scanner.syncVideoDirectories [dirAltCase] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            res2 |> should equal (Ok 0 : Result<int, DbError>)
+
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos |> List.length |> should equal 1
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``IT-06b: 旧仕様等でルート名タグが付与されていない既存動画に対して再スキャン時に不足タグが安全に追記されること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_it06b_{Guid.NewGuid():N}")
+        let rootDir = Path.Combine(testBase, "AnimeArchive")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(rootDir) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            let videoFile = Path.Combine(rootDir, "legacy.mp4")
+            File.WriteAllText(videoFile, "dummy")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            // 既存動画レコードをタグなしで登録
+            let existingVideo = {
+                TagBasedVideoManager.Domain.Video.Id = "v_legacy01"
+                TagBasedVideoManager.Domain.Video.FileName = "legacy.mp4"
+                TagBasedVideoManager.Domain.Video.FilePath = Path.GetFullPath(videoFile)
+                TagBasedVideoManager.Domain.Video.Duration = 100L
+                TagBasedVideoManager.Domain.Video.FileSize = 100L
+                TagBasedVideoManager.Domain.Video.ThumbnailPath = None
+                TagBasedVideoManager.Domain.Video.IsFavorite = false
+                TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
+                TagBasedVideoManager.Domain.Video.AccessCount = 0
+                TagBasedVideoManager.Domain.Video.LastAccessedAt = None
+                TagBasedVideoManager.Domain.Video.Tags = []
+            }
+            Db.saveVideo conn existingVideo |> Async.RunSynchronously |> ignore
+
+            // 再スキャンを実行
+            let res = Scanner.syncVideoDirectories [rootDir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            res |> should equal (Ok 0 : Result<int, DbError>)
+
+            // 動画を取得し、不足していたルート名タグ "AnimeArchive" が追記されていることを検証
+            let videoResult = Db.getVideo conn "v_legacy01" |> Async.RunSynchronously
+            match videoResult with
+            | Ok v ->
+                let tagNames = v.Tags |> List.map (fun t -> t.Name)
+                tagNames |> should contain "AnimeArchive"
+            | Error err -> failwith $"Failed to get video: {err}"
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``IT-09: ルートフォルダ名および相対サブフォルダ名のタグがDBに作成され動画に紐付いて永続化されること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_it09_{Guid.NewGuid():N}")
+        let rootDir = Path.Combine(testBase, "AnimeSeries")
+        let subDir = Path.Combine(rootDir, "Season1")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(subDir) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            File.WriteAllText(Path.Combine(subDir, "ep1.mp4"), "dummy")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let result = Scanner.syncVideoDirectories [rootDir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            result |> should equal (Ok 1 : Result<int, DbError>)
+
+            let tags = Db.getTags conn |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            let tagNames = tags |> List.map (fun t -> t.Name)
+            tagNames |> should contain "AnimeSeries"
+            tagNames |> should contain "Season1"
+
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos |> List.length |> should equal 1
+            let vTagNames = videos.Head.Tags |> List.map (fun t -> t.Name)
+            vTagNames |> should contain "AnimeSeries"
+            vTagNames |> should contain "Season1"
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``IT-10: 異なる親を持つ同名ルート（大文字小文字違い）の動画走査時にタグが1つに統合され重複作成されないこと`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_it10_{Guid.NewGuid():N}")
+        let dirA = Path.Combine(testBase, "StoreA", "Clips")
+        let dirB = Path.Combine(testBase, "StoreB", "clips")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(dirA) |> ignore
+            Directory.CreateDirectory(dirB) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            File.WriteAllText(Path.Combine(dirA, "c1.mp4"), "dummy")
+            File.WriteAllText(Path.Combine(dirB, "c2.mp4"), "dummy")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let result = Scanner.syncVideoDirectories [dirA; dirB] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            result |> should equal (Ok 2 : Result<int, DbError>)
+
+            let tags = Db.getTags conn |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            let clipTags = tags |> List.filter (fun t -> String.Equals(t.Name, "Clips", StringComparison.OrdinalIgnoreCase))
+            clipTags |> List.length |> should equal 1
+            let sharedTagId = clipTags.Head.Id
+
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos |> List.length |> should equal 2
+            for v in videos do
+                v.Tags |> List.exists (fun t -> t.Id = sharedTagId) |> should equal true
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``ST-01: 未スキャン状態から正常設定でのスキャン実行により登録済み状態へ遷移すること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_st01_{Guid.NewGuid():N}")
+        let dir = Path.Combine(testBase, "NewVideos")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(dir) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            File.WriteAllText(Path.Combine(dir, "v_init.mp4"), "dummy")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let before = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            before |> List.length |> should equal 0
+
+            let result = Scanner.syncVideoDirectories [dir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            result |> should equal (Ok 1 : Result<int, DbError>)
+
+            let after = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            after |> List.length |> should equal 1
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``ST-02: 登録済み状態から再スキャンを実行しても動画件数は不変（冪等性）で登録済み状態が維持されること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_st02_{Guid.NewGuid():N}")
+        let dir = Path.Combine(testBase, "IdempotentVideos")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(dir) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            File.WriteAllText(Path.Combine(dir, "idem.mp4"), "dummy")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let res1 = Scanner.syncVideoDirectories [dir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            res1 |> should equal (Ok 1 : Result<int, DbError>)
+
+            let res2 = Scanner.syncVideoDirectories [dir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            res2 |> should equal (Ok 0 : Result<int, DbError>)
+
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos |> List.length |> should equal 1
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``ST-04: 登録済みの2ルートのうち1ルートが不在になっても不在ルートの動画レコードはDBから削除されず保護されること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_st04_{Guid.NewGuid():N}")
+        let dir1 = Path.Combine(testBase, "StableDir")
+        let dir2 = Path.Combine(testBase, "RemovableDir")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(dir1) |> ignore
+            Directory.CreateDirectory(dir2) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+            File.WriteAllText(Path.Combine(dir1, "v_stable.mp4"), "dummy")
+            File.WriteAllText(Path.Combine(dir2, "v_removable.mp4"), "dummy")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let res1 = Scanner.syncVideoDirectories [dir1; dir2] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            res1 |> should equal (Ok 2 : Result<int, DbError>)
+
+            Directory.Delete(dir2, true)
+
+            let res2 = Scanner.syncVideoDirectories [dir1; dir2] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            res2 |> should equal (Ok 0 : Result<int, DbError>)
+
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos |> List.length |> should equal 2
+            videos |> List.exists (fun v -> v.FileName = "v_stable.mp4") |> should equal true
+            videos |> List.exists (fun v -> v.FileName = "v_removable.mp4") |> should equal true
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()

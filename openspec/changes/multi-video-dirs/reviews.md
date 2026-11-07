@@ -108,3 +108,57 @@
 - **qa-reviewer**: LGTM: true
 - **pg-reviewer**: LGTM: true
 - **LGTM**: true
+
+---
+
+## Apply タスクレビュー結果: Task 2.3 (Scanner 複数ルート走査・パス正規化・タグ導出)
+
+- **日時**: 2026-11-07
+- **フェーズ**: apply
+- **タスク**: Task 2.3: Scanner 複数ルート走査・パス正規化・タグ導出のレビュー
+- **レビュアー**: `qa-reviewer`, `pg-reviewer`, `se-reviewer`
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md` / `checklist_apply_impl.md`
+- **対象成果物**:
+  - `src/TagBasedVideoManager/Scanner.fs`
+  - `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs`
+
+### 1. 挑戦的設問への回答サマリ
+
+#### 1.1 qa-reviewer（Adversarial QA / トートロジー検証）
+
+- **トートロジー・甘いアサーションの検証**:
+  - `UT-11`, `UT-12b`, `DT-01`, `DT-02`, `IT-01`〜`IT-10`, `ST-01/02/04` の全テストにおいて、期待値は具体的な固定リテラル値でアサートされておりトートロジーは皆無。
+- **Adversarial QA（破壊テスト再実行結果）**:
+  - `deriveFolderTags`, `deriveAllFolderTags`, `syncVideoDirectories` に対し、パストラバーサル、別ドライブ、特殊文字、不正Null文字、真の DB Fault Injection（接続無効化、テーブルDROP）など全 28 パターンの破壊テストを実行。
+  - すべての意地悪な入力に対してクラッシュせず仕様通りの安全な戻り値または `Error(QueryError)` を即座に返却し、**堅牢性を確認（Green / 落とせず）**。
+
+#### 1.2 pg-reviewer（コードシンプルさ / 暗黙の仮定検証）
+
+- **暗黙の仮定・例外握りつぶし**:
+  - DB初期データ取得失敗時のサイレントフォールバックを排除し、即座に `Error err` を返却するよう是正完了。
+  - `thumbDir` 作成失敗時もサイレントに捨てず警告ログを出力するよう改善。
+- **コード削減・リファクタ**:
+  - フォルダタグ付与と自動タグ付けルールにおける動画へのタグ紐付け・辞書同期コードを共通関数 `attachTag` に集約し、約 20 行のコード削減および辞書ルックアップの効率化を達成。
+
+#### 1.3 se-reviewer（障害耐性 / 可観測性 / 状態遷移検証）
+
+- **障害耐性・耐障害性**:
+  - 不在ルートは警告ログを出力してスキップされ、全滅時も `Ok 0` として安全に終了。
+  - 走査中の権限不足や切断時も例外トラップによりプロセスダウンを防止。
+- **可観測性・状態遷移**:
+  - 不在ルートの警告ログ（`[Scanner Warning]`）により運用者の特定が迅速に行える。
+  - `ST-01`（正常遷移）、`ST-02`（再スキャン冪等性）、`ST-04`（不在ルート時の既存レコード保護）のすべてが成立することを確認。
+
+### 2. 指摘事項（保留・申し送り）
+
+| ID        | 種別  | 対象         | 内容                                                                                                   | 対応方針                                                    |
+| :-------- | :---- | :----------- | :----------------------------------------------------------------------------------------------------- | :---------------------------------------------------------- |
+| **Min-3** | Minor | `Scanner.fs` | 親ディレクトリを指す循環シンボリックリンク（ジャンクション）による無限再帰対策（`visitedDirs` の導入） | 通常構成では極めて稀。Archive 時に `handover.md` へ申し送り |
+| **Min-4** | Minor | `Scanner.fs` | ファイル走査中（`enumerateFiles`）のアクセス権限エラー発生時の詳細ログ出力                             | Archive 時に `handover.md` へ申し送り                       |
+
+### 3. 総合判定
+
+- **qa-reviewer**: LGTM: true
+- **pg-reviewer**: LGTM: true
+- **se-reviewer**: LGTM: true
+- **LGTM**: true

@@ -6,9 +6,9 @@
 
 ## 2. Scanner の複数ルート走査・パス正規化・タグ導出
 
-- [ ] 2.1 [qa-tester] パス正規化（大文字小文字照合）、ルート名タグ導出（UT-11/12b/12c, DT-01/02）、および `syncVideoDirectory` の結合 Red テスト（IT-01〜IT-06, IT-05b, IT-06b, IT-09, IT-10, ST-01/02/04）
-- [ ] 2.2 [pg-implementer] `Scanner.syncVideoDirectory` の改修（複数ルート走査、ファイル・ディレクトリの物理パス解決、パス正規化による二重登録防止、不在ルートのスキップ＋警告ログ、入れ子ルート対応タグ和集合付与、既存動画への不足タグ安全追記）
-- [ ] 2.3 [qa-reviewer / pg-reviewer / se-reviewer] レビュー、`verify-gate.ps1 -Gate apply`
+- [x] 2.1 [qa-tester] パス正規化（大文字小文字照合）、ルート名タグ導出（UT-11/12b/12c, DT-01/02）、および `syncVideoDirectory` の結合 Red テスト（IT-01〜IT-06, IT-05b, IT-06b, IT-09, IT-10, ST-01/02/04）
+- [x] 2.2 [pg-implementer] `Scanner.syncVideoDirectory` の改修（複数ルート走査、ファイル・ディレクトリの物理パス解決、パス正規化による二重登録防止、不在ルートのスキップ＋警告ログ、入れ子ルート対応タグ和集合付与、既存動画への不足タグ安全追記）
+- [x] 2.3 [qa-reviewer / pg-reviewer / se-reviewer] レビュー、`verify-gate.ps1 -Gate apply`
 
 ## 3. スキャン API エラー詳細化と UI エラートースト改修
 
