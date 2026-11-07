@@ -162,3 +162,57 @@
 - **pg-reviewer**: LGTM: true
 - **se-reviewer**: LGTM: true
 - **LGTM**: true
+
+---
+
+## Apply タスクレビュー結果: Task 3.4 (スキャン API エラー詳細化と UI エラートースト改修)
+
+- **日時**: 2026-11-07
+- **フェーズ**: apply
+- **タスク**: Task 3.4: スキャン API エラー詳細化と UI エラートースト改修のレビュー (Task 3.1〜3.3)
+- **レビュアー**: `qa-reviewer`, `pg-reviewer`, `se-reviewer`
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md` / `checklist_apply_impl.md`
+- **対象成果物**:
+  - `src/TagBasedVideoManager/HttpHandlers.fs` (`triggerScan`)
+  - `src/TagBasedVideoManager/wwwroot/app.js` (`showToast`, `triggerScan`)
+  - `src/TagBasedVideoManager/wwwroot/index.html` (トースト詳細表示領域)
+  - `test/TagBasedVideoManager.Tests/Unit/HttpHandlersTests.fs` (IT-07, IT-07b, IT-08, ST-03)
+
+### 1. 挑戦的設問への回答サマリ
+
+#### 1.1 qa-reviewer（Adversarial QA / トートロジー検証）
+
+- **トートロジー・甘いアサーションの検証**:
+  - `IT-07`, `IT-07b`, `IT-08` ではステータスコード 500 だけでなく、設定例（`VIDEO_DIRS=D:\Anime;F:\Movie`）や旧変数廃止案内キーワードを固定リテラル値で厳格に検証。
+  - `ST-03` ではスキャン失敗時の既存動画・タグレコードの不変性（ID・パス・属性・タグ紐付けの全項目）を検証し、異常遷移拒否を完全に実証。
+- **Adversarial QA（破壊テスト実行結果）**:
+  - 不正記号、空白、ドライブ直下混在、セミコロンのみ、不在パスなど多角的な極端入力を与えて検証。未処理例外によるクラッシュはなく、制御された適切なエラーレスポンスまたは安全なスキップ（200 OK 0件）を返却することを確認（**Green / 落とせず**）。
+
+#### 1.2 pg-reviewer（コードシンプルさ / 暗黙の仮定検証）
+
+- **暗黙の仮定・例外握りつぶし**:
+  - `VideoDirs.fromEnvironment` のエラー時にデフォルトへのサイレントフォールバックを排除し、即座に 500 レスポンスを返却。
+  - フロントエンドでは `toastTimeoutId` の導入により連続通知時のタイマー競合（早期消滅）を防止。
+  - `x-text` バインドにより XSS リスクも完全に排除。
+
+#### 1.3 se-reviewer（障害耐性 / 可観測性 / UIモック忠実性）
+
+- **可観測性・MTTR短縮**:
+  - 設定不備時にサーバーログを追うことなく、UI のトースト（7秒間表示）上に設定例が表示され、画面上ですぐに対処可能なため MTTR が大幅に削減。
+- **UIモック忠実性**:
+  - `mockup.html` の仕様（表示時間 7秒、モノスペース、暗色背景、`break-all leading-relaxed whitespace-pre-wrap`、閉じるボタン）が `index.html` および `app.js` に忠実に反映されていることを確認。
+
+### 2. 指摘事項（保留・申し送り）
+
+| ID         | 種別       | 対象              | 内容                                                               | 対応方針                       |
+| :--------- | :--------- | :---------------- | :----------------------------------------------------------------- | :----------------------------- |
+| **Sugg-2** | Suggestion | `HttpHandlers.fs` | `getEnv` や 500 レスポンス生成の共通 Giraffe 関数活用              | 保留（次期リファクタ時に検討） |
+| **Sugg-3** | Suggestion | `app.js`          | `triggerScan()` 冒頭への `isScanning` 二重実行ガード節追加         | 保留（次期UI改善時に検討）     |
+| **Sugg-4** | Suggestion | `index.html`      | トースト詳細領域への `max-h-48 overflow-y-auto` スクロール制御追加 | 保留（Archive 時に申し送り）   |
+
+### 3. 総合判定
+
+- **qa-reviewer**: LGTM: true
+- **pg-reviewer**: LGTM: true
+- **se-reviewer**: LGTM: true
+- **LGTM**: true

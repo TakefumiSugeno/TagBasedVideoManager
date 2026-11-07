@@ -114,7 +114,7 @@ type ScannerTests () =
                 .UseContentRoot(Directory.GetCurrentDirectory())
                 .ConfigureServices(fun services ->
                     Environment.SetEnvironmentVariable("DATABASE_PATH", dbPath)
-                    Environment.SetEnvironmentVariable("VIDEO_DIR", videoDir)
+                    Environment.SetEnvironmentVariable("VIDEO_DIRS", videoDir)
                     Environment.SetEnvironmentVariable("THUMBNAIL_DIR", thumbDir)
                     Program.configureServices services
                 )

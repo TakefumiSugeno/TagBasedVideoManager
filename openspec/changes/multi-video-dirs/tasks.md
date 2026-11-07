@@ -12,10 +12,10 @@
 
 ## 3. スキャン API エラー詳細化と UI エラートースト改修
 
-- [ ] 3.1 [qa-tester] API レスポンス（500 エラー時の設定例・移行案内詳細メッセージ）の Red テスト（IT-07, IT-07b, IT-08, ST-03）
-- [ ] 3.2 [pg-implementer] `HttpHandlers.triggerScan` を `VideoDirs.fromEnvironment` 読み取りに変更し、エラー時に設定例・移行案内を含む詳細メッセージを返却
-- [ ] 3.3 [pg-implementer] `src/TagBasedVideoManager/wwwroot/app.js` を改修し、スキャン失敗時に API から取得した詳細メッセージをトースト内に表示（表示時間 7 秒、`mockup.html` 準拠）
-- [ ] 3.4 [qa-reviewer / pg-reviewer / se-reviewer] レビュー、`verify-gate.ps1 -Gate apply`
+- [x] 3.1 [qa-tester] API レスポンス（500 エラー時の設定例・移行案内詳細メッセージ）の Red テスト（IT-07, IT-07b, IT-08, ST-03）
+- [x] 3.2 [pg-implementer] `HttpHandlers.triggerScan` を `VideoDirs.fromEnvironment` 読み取りに変更し、エラー時に設定例・移行案内を含む詳細メッセージを返却
+- [x] 3.3 [pg-implementer] `src/TagBasedVideoManager/wwwroot/app.js` を改修し、スキャン失敗時に API から取得した詳細メッセージをトースト内に表示（表示時間 7 秒、`mockup.html` 準拠）
+- [x] 3.4 [qa-reviewer / pg-reviewer / se-reviewer] レビュー、`verify-gate.ps1 -Gate apply`
 
 ## 4. デプロイスクリプトと Docker 構成
 
