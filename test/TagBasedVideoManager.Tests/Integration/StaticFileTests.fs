@@ -146,3 +146,24 @@ type StaticFileTests () =
         let response = client.GetAsync("/manifest.webmanifest").Result
         response.StatusCode |> should equal HttpStatusCode.OK
         response.Content.Headers.ContentType.MediaType |> should equal "application/manifest+json"
+
+    [<Fact>]
+    member _.``index.html内のサムネイル画像タグにloading=lazyとdecoding=asyncが設定されていること (E2E-01)`` () =
+        let contentRoot, webRoot = getContentAndWebRoot ()
+        let builder =
+            WebHostBuilder()
+                .UseContentRoot(contentRoot)
+                .UseWebRoot(webRoot)
+                .ConfigureServices(Program.configureServices)
+                .Configure(Program.configureApp)
+
+        use server = new TestServer(builder)
+        use client = server.CreateClient()
+
+        let response = client.GetAsync("/index.html").Result
+        response.StatusCode |> should equal HttpStatusCode.OK
+        let content = response.Content.ReadAsStringAsync().Result
+
+        // サムネイル画像の lazy loading および async decoding 属性の存在を検証
+        content |> should contain "loading=\"lazy\""
+        content |> should contain "decoding=\"async\""

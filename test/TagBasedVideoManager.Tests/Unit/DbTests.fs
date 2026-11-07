@@ -253,3 +253,223 @@ module DbTests =
             | Error e -> failwithf "getTags failed: %A" e
         } |> Async.RunSynchronously
 
+    /// <summary>
+    /// UT-01 / DT-01: 複数動画・複数タグの正常系一括取得検証。
+    /// 各動画に紐付くタグが正しく結合されて返却されること。
+    /// </summary>
+    [<Fact>]
+    let ``getVideos should batch load tags correctly for multiple videos (UT-01, DT-01)`` () =
+        async {
+            use conn = createInMemoryDb ()
+
+            // タグを2件作成
+            let tag1 = { Id = "t_1"; Name = "アクション"; ColorCode = "#ff0000"; ParentId = None; VideoCount = 0 }
+            let tag2 = { Id = "t_2"; Name = "コメディ"; ColorCode = "#00ff00"; ParentId = None; VideoCount = 0 }
+            let! _ = Db.saveTag conn tag1
+            let! _ = Db.saveTag conn tag2
+
+            // 動画を3件作成
+            for i in 1 .. 3 do
+                let v = {
+                    Id = $"v_{i}"
+                    FileName = $"video_{i}.mp4"
+                    FilePath = $"C:\\videos\\video_{i}.mp4"
+                    Duration = int64 (i * 60)
+                    FileSize = int64 (i * 1000000)
+                    ThumbnailPath = None
+                    IsFavorite = false
+                    CreatedAt = DateTime.UtcNow
+                    FileModifiedAt = DateTime.UtcNow
+                    AccessCount = 0
+                    LastAccessedAt = None
+                    Tags = []
+                }
+                let! _ = Db.saveVideo conn v
+                // 全動画に tag1, tag2 を紐付け
+                let! _ = Db.addTagToVideo conn $"v_{i}" "t_1"
+                let! _ = Db.addTagToVideo conn $"v_{i}" "t_2"
+                ()
+
+            // getVideos を実行
+            let! res = Db.getVideos conn None
+            match res with
+            | Ok videos ->
+                videos.Length |> should equal 3
+                for v in videos do
+                    v.Tags.Length |> should equal 2
+                    let tagIds = v.Tags |> List.map (fun t -> t.Id) |> Set.ofList
+                    tagIds |> should equal (set [ "t_1"; "t_2" ])
+            | Error e -> failwithf "getVideos failed: %A" e
+        } |> Async.RunSynchronously
+
+    /// <summary>
+    /// UT-02 / DT-02: タグあり動画とタグなし動画が混在する場合の境界値検証。
+    /// タグ未付与の動画は Tags = [] となり、タグ付き動画には正確にタグが付与されること。
+    /// </summary>
+    [<Fact>]
+    let ``getVideos should handle mixed tagged and untagged videos (UT-02, DT-02)`` () =
+        async {
+            use conn = createInMemoryDb ()
+
+            let tag1 = { Id = "t_single"; Name = "アニメ"; ColorCode = "#0000ff"; ParentId = None; VideoCount = 0 }
+            let! _ = Db.saveTag conn tag1
+
+            let vTagged = {
+                Id = "v_tagged"
+                FileName = "tagged.mp4"
+                FilePath = "C:\\tagged.mp4"
+                Duration = 60L
+                FileSize = 1000L
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+            }
+            let vUntagged = {
+                Id = "v_untagged"
+                FileName = "untagged.mp4"
+                FilePath = "C:\\untagged.mp4"
+                Duration = 60L
+                FileSize = 1000L
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+            }
+
+            let! _ = Db.saveVideo conn vTagged
+            let! _ = Db.saveVideo conn vUntagged
+            let! _ = Db.addTagToVideo conn "v_tagged" "t_single"
+
+            let! res = Db.getVideos conn None
+            match res with
+            | Ok videos ->
+                videos.Length |> should equal 2
+                let tagged = videos |> List.find (fun v -> v.Id = "v_tagged")
+                let untagged = videos |> List.find (fun v -> v.Id = "v_untagged")
+                tagged.Tags.Length |> should equal 1
+                tagged.Tags.[0].Id |> should equal "t_single"
+                untagged.Tags.Length |> should equal 0
+            | Error e -> failwithf "getVideos failed: %A" e
+        } |> Async.RunSynchronously
+
+    /// <summary>
+    /// UT-03 / DT-04: 動画0件の空状態境界検証。
+    /// DBに動画が存在しない場合、例外やエラーなく即座に空リストが返ること。
+    /// </summary>
+    [<Fact>]
+    let ``getVideos should safely return empty list when no videos exist (UT-03, DT-04)`` () =
+        async {
+            use conn = createInMemoryDb ()
+            let! res = Db.getVideos conn None
+            match res with
+            | Ok videos -> videos.Length |> should equal 0
+            | Error e -> failwithf "getVideos failed: %A" e
+        } |> Async.RunSynchronously
+
+    /// <summary>
+    /// UT-04 / DT-03: 多数の動画が存在する場合の境界値検証（チャンク分割INクエリの動作確認）。
+    /// 50件以上の動画に対しても、全動画のタグ情報が欠落なく結合されること。
+    /// </summary>
+    [<Fact>]
+    let ``getVideos should handle large number of videos with tags (UT-04, DT-03)`` () =
+        async {
+            use conn = createInMemoryDb ()
+
+            let tagA = { Id = "t_a"; Name = "TagA"; ColorCode = "#111"; ParentId = None; VideoCount = 0 }
+            let! _ = Db.saveTag conn tagA
+
+            let count = 60
+            for i in 1 .. count do
+                let v = {
+                    Id = $"v_large_{i}"
+                    FileName = $"large_{i}.mp4"
+                    FilePath = $"C:\\large_{i}.mp4"
+                    Duration = 10L
+                    FileSize = 100L
+                    ThumbnailPath = None
+                    IsFavorite = false
+                    CreatedAt = DateTime.UtcNow
+                    FileModifiedAt = DateTime.UtcNow
+                    AccessCount = 0
+                    LastAccessedAt = None
+                    Tags = []
+                }
+                let! _ = Db.saveVideo conn v
+                let! _ = Db.addTagToVideo conn $"v_large_{i}" "t_a"
+                ()
+
+            let! res = Db.getVideos conn None
+            match res with
+            | Ok videos ->
+                videos.Length |> should equal count
+                for v in videos do
+                    v.Tags.Length |> should equal 1
+                    v.Tags.[0].Id |> should equal "t_a"
+            | Error e -> failwithf "getVideos failed: %A" e
+        } |> Async.RunSynchronously
+
+    /// <summary>
+    /// UT-05: searchVideos におけるタグ一括結合検証。
+    /// 検索条件に一致した動画群に対して、正しくタグ情報が付与されて返ること。
+    /// </summary>
+    [<Fact>]
+    let ``searchVideos should batch load tags correctly for matched videos (UT-05)`` () =
+        async {
+            use conn = createInMemoryDb ()
+
+            let tag1 = { Id = "t_search"; Name = "探訪"; ColorCode = "#abcdef"; ParentId = None; VideoCount = 0 }
+            let! _ = Db.saveTag conn tag1
+
+            let v1 = {
+                Id = "v_match"
+                FileName = "kyoto_travel.mp4"
+                FilePath = "C:\\kyoto_travel.mp4"
+                Duration = 100L
+                FileSize = 1000L
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+            }
+            let v2 = {
+                Id = "v_other"
+                FileName = "home.mp4"
+                FilePath = "C:\\home.mp4"
+                Duration = 50L
+                FileSize = 500L
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+            }
+
+            let! _ = Db.saveVideo conn v1
+            let! _ = Db.saveVideo conn v2
+            let! _ = Db.addTagToVideo conn "v_match" "t_search"
+
+            // "kyoto" で検索
+            let tokens = [ Keyword "kyoto" ]
+            let! res = Db.searchVideos conn tokens
+            match res with
+            | Ok videos ->
+                videos.Length |> should equal 1
+                videos.[0].Id |> should equal "v_match"
+                videos.[0].Tags.Length |> should equal 1
+                videos.[0].Tags.[0].Name |> should equal "探訪"
+            | Error e -> failwithf "searchVideos failed: %A" e
+        } |> Async.RunSynchronously
+
+

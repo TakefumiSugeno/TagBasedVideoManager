@@ -33,6 +33,16 @@ type private TagDbDto = {
 }
 
 [<CLIMutable>]
+type private VideoTagItemDto = {
+    VideoId: string
+    Id: string
+    Name: string
+    ColorCode: string
+    ParentId: string
+    VideoCount: int
+}
+
+[<CLIMutable>]
 type private TaggingRuleDbDto = {
     Id: string
     Pattern: string
@@ -173,6 +183,62 @@ module Db =
                 return Error (QueryError ex.Message)
         }
 
+    /// 動画リストに対して、紐付くタグ情報を単一の一括クエリ（またはチャンク分割クエリ）で取得しマッピングする
+    let internal attachTagsBatch (conn: IDbConnection) (videos: Video list) : Async<Result<Video list, DbError>> =
+        async {
+            if List.isEmpty videos then
+                return Ok []
+            else
+                try
+                    let videoIds = videos |> List.map (fun v -> v.Id)
+                    // SQLiteのIN句パラメータ制限を考慮し、500件単位でチャンク分割
+                    let chunks = videoIds |> List.chunkBySize 500
+                    let mutable allTagItems = []
+
+                    for chunk in chunks do
+                        let sql = """
+                            SELECT vt.VideoId, t.Id, t.Name, t.ColorCode, t.ParentId, 0 AS VideoCount
+                            FROM Tags t
+                            INNER JOIN VideoTags vt ON t.Id = vt.TagId
+                            WHERE vt.VideoId IN @VideoIds
+                        """
+                        let! dtos = Async.AwaitTask (conn.QueryAsync<VideoTagItemDto>(sql, {| VideoIds = chunk |}))
+                        allTagItems <- (Seq.toList dtos) @ allTagItems
+
+                    // VideoIdごとにタグリストをグループ化
+                    let tagsByVideoId =
+                        allTagItems
+                        |> Seq.groupBy (fun td -> td.VideoId)
+                        |> Seq.map (fun (vid, tagDtos) ->
+                            let tags =
+                                tagDtos
+                                |> Seq.map (fun td -> {
+                                    Tag.Id = td.Id
+                                    Name = td.Name
+                                    ColorCode = td.ColorCode
+                                    ParentId = Option.ofObj td.ParentId
+                                    VideoCount = td.VideoCount
+                                })
+                                |> Seq.toList
+                            vid, tags
+                        )
+                        |> Map.ofSeq
+
+                    let videosWithTags =
+                        videos
+                        |> List.map (fun v ->
+                            let tags =
+                                match tagsByVideoId |> Map.tryFind v.Id with
+                                | Some ts -> ts
+                                | None -> []
+                            { v with Tags = tags }
+                        )
+
+                    return Ok videosWithTags
+                with ex ->
+                    return Error (QueryError ex.Message)
+        }
+
     /// 動画一覧の取得
     let getVideos (conn: IDbConnection) (searchQuery: string option) : Async<Result<Video list, DbError>> =
         async {
@@ -180,33 +246,7 @@ module Db =
                 let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt FROM Videos"
                 let! dtos = Async.AwaitTask (conn.QueryAsync<VideoDbDto>(sql))
                 let videos = dtos |> Seq.map dtoToVideo |> Seq.toList
-
-                // 各動画に紐付くタグ情報を結合取得する
-                let! videosWithTags = 
-                    videos 
-                    |> List.map (fun v -> async {
-                        let tagSql = """
-                            SELECT t.Id, t.Name, t.ColorCode, t.ParentId 
-                            FROM Tags t
-                            INNER JOIN VideoTags vt ON t.Id = vt.TagId
-                            WHERE vt.VideoId = @VideoId
-                        """
-                        let! tagDtos = Async.AwaitTask (conn.QueryAsync<TagDbDto>(tagSql, {| VideoId = v.Id |}))
-                        let tags = 
-                            tagDtos 
-                            |> Seq.map (fun td -> {
-                                Tag.Id = td.Id
-                                Name = td.Name
-                                ColorCode = td.ColorCode
-                                ParentId = Option.ofObj td.ParentId
-                                VideoCount = td.VideoCount
-                            })
-                            |> Seq.toList
-                        return { v with Tags = tags }
-                    })
-                    |> Async.Sequential
-                
-                return Ok (Array.toList videosWithTags)
+                return! attachTagsBatch conn videos
             with
             | ex -> return Error (QueryError ex.Message)
         }
@@ -312,33 +352,7 @@ module Db =
 
                 let! dtos = Async.AwaitTask (conn.QueryAsync<VideoDbDto>(sql, parameters))
                 let videos = dtos |> Seq.map dtoToVideo |> Seq.toList
-
-                // 各動画に紐付くタグ情報を結合取得する
-                let! videosWithTags = 
-                    videos 
-                    |> List.map (fun v -> async {
-                        let tagSql = """
-                            SELECT t.Id, t.Name, t.ColorCode, t.ParentId 
-                            FROM Tags t
-                            INNER JOIN VideoTags vt ON t.Id = vt.TagId
-                            WHERE vt.VideoId = @VideoId
-                        """
-                        let! tagDtos = Async.AwaitTask (conn.QueryAsync<TagDbDto>(tagSql, {| VideoId = v.Id |}))
-                        let tags = 
-                            tagDtos 
-                            |> Seq.map (fun td -> {
-                                Tag.Id = td.Id
-                                Name = td.Name
-                                ColorCode = td.ColorCode
-                                ParentId = Option.ofObj td.ParentId
-                                VideoCount = td.VideoCount
-                            })
-                            |> Seq.toList
-                        return { v with Tags = tags }
-                    })
-                    |> Async.Sequential
-                
-                return Ok (Array.toList videosWithTags)
+                return! attachTagsBatch conn videos
             with
             | ex -> return Error (QueryError ex.Message)
         }
