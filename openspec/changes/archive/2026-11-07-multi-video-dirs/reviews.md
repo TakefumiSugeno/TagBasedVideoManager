@@ -219,6 +219,60 @@
 
 ---
 
+## レビュー記録: multi-video-dirs / archive (総括レビュー)
+
+- **日時**: 2026-11-07
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー（技術的負債自白・初見エンジニア型）
+- **レビュアー**: `user-reviewer`, `se-reviewer`, `pg-reviewer`, `qa-reviewer`
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+- **対象成果物**:
+  - `openspec/changes/multi-video-dirs/proposal.md`
+  - `openspec/changes/multi-video-dirs/design.md`
+  - `openspec/changes/multi-video-dirs/test_plan.md`
+  - `openspec/changes/multi-video-dirs/handover.md`
+  - `README.md`, `AGENTS.md`, `openspec/config.yaml`, `.env.sample`
+  - プロダクションコード (`VideoDirs.fs`, `Scanner.fs`, `HttpHandlers.fs`, `scripts/`, `Dockerfile`)
+  - テスト結果エビデンス (全 462 件 Pass, TRX, CoverageReport, E2E スクリーンショット 4 枚)
+
+### 1. 挑戦的設問への回答サマリ
+
+#### 1.1 user-reviewer（初見エンジニア視点の Why 検証・操作体験）
+
+- **Why の追跡可能性**: なぜ複数ディレクトリ指定が必要なのか（Issue #22）、なぜ `VIDEO_DIRS` に一本化しフォールバックなしとしたのか、なぜドライブ直下を拒絶するのか、なぜデプロイスクリプトで早期検証するのかが `proposal.md`, `design.md`, `handover.md`, `README.md` に初見でも理解できる水準で論理的に記録されていることを確認。
+- **トラブルシューティング手順**: UI エラートースト（7秒間 monospace 展開表示）やデプロイスクリプトのエラー出力、ロールバック手順（`git revert` と `.env` 復元で即座に安定復旧可能）が確立されていることを確認。
+
+#### 1.2 se-reviewer（隠された負債の自白・アーキテクチャ耐障害性・非破壊性）
+
+- **自白と負債記録**: スキャン中の動的ファイル削除（Min-2）、循環ジャンクション対策（Min-3）、権限エラー詳細ログ（Min-4）などの妥協点がすべて `handover.md` に記録されていることを確認。
+- **アーキテクチャと安全性**: 早期バリデーションによる副作用抑止（`IT-14`）、`:ro` マウントによるホスト動画保護、行単位パーサ `parse_env` によるインジェクション排除（`IT-15`）の堅牢性を確認。DB スキーマ変更なし・データ破壊なしのためロールバック可能であることを確認。
+
+#### 1.3 pg-reviewer（罠の告発・暗黙の前提・コード品質）
+
+- **将来の罠の告発**: `VideoDirs.parse`（構文検証のみ）と `Scanner`（絶対パス化・トリム）の分担ギャップ、Docker 内パスとホストパスの乖離（DB レコードポータビリティ）、フォルダ移動時の旧タグ残留仕様などを告発。これらが `handover.md` の技術的負債・運用注意事項に反映されていることを確認。
+- **保留指摘突合**: Apply フェーズの全指摘が `handover.md` に漏れなく引き継がれていることを確認。
+
+#### 1.4 qa-reviewer（テスト計画突合・Skip 放置ゼロ・E2E レビュー）
+
+- **網羅性検証**: `test_plan.md` の全テスト区分（UT, DT, IT, ST, E2E）が実装・検証され、全 462 件 100% Pass（失敗 0, スキップ 0）であることを確認。Skip 放置 0 件を機械的検証。
+- **E2E スクリーンショット**: 4 枚の実画面キャプチャがすべて正常に生成され、UI モック（`mockup.html`）のデザイン・フォント・配置と忠実に一致していることを確認。
+
+### 2. 指摘事項（保留・申し送り）
+
+| ID              | 種別       | 対象        | 内容                                         | 対応方針                             |
+| :-------------- | :--------- | :---------- | :------------------------------------------- | :----------------------------------- |
+| **Sugg-User-1** | Suggestion | `README.md` | 将来のトラブルシューティング独立見出しの新設 | 保留（次回ドキュメント改善時に対応） |
+
+### 3. 総合判定
+
+- **user-reviewer**: LGTM: true
+- **se-reviewer**: LGTM: true
+- **pg-reviewer**: LGTM: true
+- **qa-reviewer**: LGTM: true
+- **LGTM**: true
+
+---
+
 ## レビュー記録: multi-video-dirs / apply / Task 4 (Task 4.1〜4.5)
 
 - **日時**: 2026-11-07
@@ -286,4 +340,58 @@
 - **qa-reviewer**: LGTM: true
 - **pg-reviewer**: LGTM: true
 - **se-reviewer**: LGTM: true
+- **LGTM**: true
+
+---
+
+## レビュー記録: multi-video-dirs / archive (総括レビュー)
+
+- **日時**: 2026-11-07
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー（技術的負債自白・初見エンジニア型）
+- **レビュアー**: `user-reviewer`, `se-reviewer`, `pg-reviewer`, `qa-reviewer`
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+- **対象成果物**:
+  - `openspec/changes/multi-video-dirs/proposal.md`
+  - `openspec/changes/multi-video-dirs/design.md`
+  - `openspec/changes/multi-video-dirs/test_plan.md`
+  - `openspec/changes/multi-video-dirs/handover.md`
+  - `README.md`, `AGENTS.md`, `openspec/config.yaml`, `.env.sample`
+  - プロダクションコード (`VideoDirs.fs`, `Scanner.fs`, `HttpHandlers.fs`, `scripts/`, `Dockerfile`)
+  - テスト結果エビデンス (全 462 件 Pass, TRX, CoverageReport, E2E スクリーンショット 4 枚)
+
+### 1. 挑戦的設問への回答サマリ
+
+#### 1.1 user-reviewer（初見エンジニア視点の Why 検証・操作体験）
+
+- **Why の追跡可能性**: なぜ複数ディレクトリ指定が必要なのか（Issue #22）、なぜ `VIDEO_DIRS` に一本化しフォールバックなしとしたのか、なぜドライブ直下を拒絶するのか、なぜデプロイスクリプトで早期検証するのかが `proposal.md`, `design.md`, `handover.md`, `README.md` に初見でも理解できる水準で論理的に記録されていることを確認。
+- **トラブルシューティング手順**: UI エラートースト（7秒間 monospace 展開表示）やデプロイスクリプトのエラー出力、ロールバック手順（`git revert` と `.env` 復元で即座に安定復旧可能）が確立されていることを確認。
+
+#### 1.2 se-reviewer（隠された負債の自白・アーキテクチャ耐障害性・非破壊性）
+
+- **自白と負債記録**: スキャン中の動的ファイル削除（Min-2）、循環ジャンクション対策（Min-3）、権限エラー詳細ログ（Min-4）などの妥協点がすべて `handover.md` に記録されていることを確認。
+- **アーキテクチャと安全性**: 早期バリデーションによる副作用抑止（`IT-14`）、`:ro` マウントによるホスト動画保護、行単位パーサ `parse_env` によるインジェクション排除（`IT-15`）の堅牢性を確認。DB スキーマ変更なし・データ破壊なしのためロールバック可能であることを確認。
+
+#### 1.3 pg-reviewer（罠の告発・暗黙の前提・コード品質）
+
+- **将来の罠の告発**: `VideoDirs.parse`（構文検証のみ）と `Scanner`（絶対パス化・トリム）の分担ギャップ、Docker 内パスとホストパスの乖離（DB レコードポータビリティ）、フォルダ移動時の旧タグ残留仕様などを告発。これらが `handover.md` の技術的負債・運用注意事項に反映されていることを確認。
+- **保留指摘突合**: Apply フェーズの全指摘が `handover.md` に漏れなく引き継がれていることを確認。
+
+#### 1.4 qa-reviewer（テスト計画突合・Skip 放置ゼロ・E2E レビュー）
+
+- **網羅性検証**: `test_plan.md` の全テスト区分（UT, DT, IT, ST, E2E）が実装・検証され、全 462 件 100% Pass（失敗 0, スキップ 0）であることを確認。Skip 放置 0 件を機械的検証。
+- **E2E スクリーンショット**: 4 枚の実画面キャプチャがすべて正常に生成され、UI モック（`mockup.html`）のデザイン・フォント・配置と忠実に一致していることを確認。
+
+### 2. 指摘事項（保留・申し送り）
+
+| ID              | 種別       | 対象        | 内容                                         | 対応方針                             |
+| :-------------- | :--------- | :---------- | :------------------------------------------- | :----------------------------------- |
+| **Sugg-User-1** | Suggestion | `README.md` | 将来のトラブルシューティング独立見出しの新設 | 保留（次回ドキュメント改善時に対応） |
+
+### 3. 総合判定
+
+- **user-reviewer**: LGTM: true
+- **se-reviewer**: LGTM: true
+- **pg-reviewer**: LGTM: true
+- **qa-reviewer**: LGTM: true
 - **LGTM**: true
