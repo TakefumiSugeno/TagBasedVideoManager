@@ -2,11 +2,27 @@ namespace TagBasedVideoManager.Renamer
 
 open System
 open System.IO
+open System.Text
 open TagBasedVideoManager.Renamer
 
 module FileRenamer =
 
+    /// UTF-8 バイト数およびパス長制限に収まるよう、ベース名を Unicode スカラー値 (Rune) 単位で安全にトリミングする (サロゲートペア完全保護・ヒープ割り当て最小化)
+    let private trimBaseNameToFit (baseName: string) (maxBytes: int) (maxChars: int) : string =
+        let sb = StringBuilder()
+        let mutable currentBytes = 0
+        let mutable currentChars = 0
+        for rune in baseName.EnumerateRunes() do
+            let rBytes = rune.Utf8SequenceLength
+            let rChars = rune.Utf16SequenceLength
+            if currentBytes + rBytes <= maxBytes && currentChars + rChars <= maxChars then
+                sb.Append(rune.ToString()) |> ignore
+                currentBytes <- currentBytes + rBytes
+                currentChars <- currentChars + rChars
+        sb.ToString()
+
     /// 移動先ファイルパスが既に存在する場合、末尾に _1, _2 等のサフィックスを付与して一意なパスを生成する
+    /// （サフィックス付与後も UTF-8 で 240 バイト以内、かつフルパス 240 文字以内を厳格に維持）
     let rec private resolveUniqueDestination (directory: string) (fileName: string) : string =
         let targetPath = Path.Combine(directory, fileName)
         if not (File.Exists(targetPath)) then
@@ -16,7 +32,12 @@ module FileRenamer =
             let ext = Path.GetExtension(fileName)
 
             let rec findAvailableIndex idx =
-                let candidateName = $"{baseName}_{idx}{ext}"
+                let suffix = $"_{idx}{ext}"
+                let suffixBytes = Encoding.UTF8.GetByteCount(suffix)
+                let maxBaseBytes = max 1 (240 - suffixBytes)
+                let maxBaseChars = max 1 (240 - directory.Length - 1 - suffix.Length)
+                let trimmedBase = trimBaseNameToFit baseName maxBaseBytes maxBaseChars
+                let candidateName = $"{trimmedBase}{suffix}"
                 let candidatePath = Path.Combine(directory, candidateName)
                 if not (File.Exists(candidatePath)) then candidatePath
                 else findAvailableIndex (idx + 1)

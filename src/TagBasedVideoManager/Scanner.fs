@@ -345,18 +345,29 @@ module Scanner =
                             | Ok rows when rows > 0 ->
                                 addedCount <- addedCount + 1
                                 existingVideoDict.[normFilePath] <- newVideo
-                                // 非同期バックグラウンドのサムネイル・メタデータ生成キューへ投入
-                                MediaQueue.enqueue {
-                                    VideoId = targetVideoId
-                                    FilePath = normFilePath
-                                    ThumbDir = thumbDir
-                                    MediaProc = mediaProc
-                                    ConnectionString = conn.ConnectionString
-                                }
+
+                                let fileName = Path.GetFileName(normFilePath)
+                                let fnBytes = System.Text.Encoding.UTF8.GetByteCount(fileName)
+                                if fnBytes > 255 then
+                                    // 255バイト制限 (NAME_MAX) 超過警告を記録し、外部メディアキューへの投入をスキップ (FFmpegハング防止)
+                                    do! Db.saveErrorLog conn $"[Scanner Warning] 動画ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過しているため、Linux/WSL/Docker 環境で再生やメディア処理が失敗する可能性があります。VideoId={targetVideoId}, FilePath={normFilePath}, Bytes={fnBytes}" None
+                                else
+                                    // 非同期バックグラウンドのサムネイル・メタデータ生成キューへ投入
+                                    MediaQueue.enqueue {
+                                        VideoId = targetVideoId
+                                        FilePath = normFilePath
+                                        ThumbDir = thumbDir
+                                        MediaProc = mediaProc
+                                        ConnectionString = conn.ConnectionString
+                                    }
                             | _ -> ()
                         else
                             match existingOpt with
                             | Some v ->
+                                let fileName = Path.GetFileName(normFilePath)
+                                let fnBytes = System.Text.Encoding.UTF8.GetByteCount(fileName)
+                                let isFileNameTooLong = fnBytes > 255
+
                                 // 既存動画の場合でも、サムネイル画像が未作成・実ファイルが存在しない、またはメタデータが未取得 (Duration = 0L) の場合はキューへ再投入
                                 let thumbMissing =
                                     match v.ThumbnailPath with
@@ -365,7 +376,7 @@ module Scanner =
 
                                 let durationMissing = v.Duration = 0L
 
-                                if thumbMissing || durationMissing then
+                                if (thumbMissing || durationMissing) && not isFileNameTooLong then
                                     MediaQueue.enqueue {
                                         VideoId = targetVideoId
                                         FilePath = normFilePath

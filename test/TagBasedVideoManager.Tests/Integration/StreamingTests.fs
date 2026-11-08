@@ -13,6 +13,8 @@ open Xunit
 open FsUnit
 open Giraffe
 open TagBasedVideoManager
+open TagBasedVideoManager.Domain
+open TagBasedVideoManager.Infrastructure
 
 type StreamingTests () =
     let dummyVideoPath = Path.Combine(AppContext.BaseDirectory, "stream_test.mp4")
@@ -115,4 +117,46 @@ type StreamingTests () =
         bytes.Length |> should equal 5
         bytes.[0] |> should equal 95uy
         bytes.[4] |> should equal 99uy
+
+    [<Fact>]
+    member _.``IT-WEB-03: Linux 255バイト制限超過動画に対するストリーム要求に対してTestHost経由でHTTP422と専用エラーコードを返却する`` () =
+        let longFileName = String('あ', 86) + ".mp4"
+        let longVideoId = "vid_long_test_host"
+        let longVideoPath = Path.Combine(AppContext.BaseDirectory, longFileName)
+
+        let builder =
+            WebHostBuilder()
+                .UseContentRoot(Directory.GetCurrentDirectory())
+                .ConfigureServices(fun services ->
+                    Program.configureServices services
+                    use sp = services.BuildServiceProvider()
+                    use conn = sp.GetRequiredService<System.Data.IDbConnection>()
+                    DbInit.initializeDatabase conn |> ignore
+                    let video = {
+                        Id = longVideoId
+                        FileName = longFileName
+                        FilePath = longVideoPath
+                        Duration = 120L
+                        FileSize = 100L
+                        ThumbnailPath = None
+                        IsFavorite = false
+                        CreatedAt = DateTime.UtcNow
+                        FileModifiedAt = DateTime.UtcNow
+                        AccessCount = 0
+                        LastAccessedAt = None
+                        Tags = []
+                    }
+                    Db.saveVideo conn video |> Async.RunSynchronously |> ignore
+                )
+                .Configure(Program.configureApp)
+
+        use server = new TestServer(builder)
+        use client = server.CreateClient()
+
+        let response = client.GetAsync($"/api/videos/{longVideoId}/stream").Result
+
+        response.StatusCode |> should equal HttpStatusCode.UnprocessableEntity
+        let body = response.Content.ReadAsStringAsync().Result
+        body.Contains("\"code\":\"FILE_NAME_TOO_LONG\"") |> should equal true
+        body.Contains("255") |> should equal true
 

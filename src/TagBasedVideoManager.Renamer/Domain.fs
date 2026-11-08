@@ -19,12 +19,27 @@ type SearchResultItem = {
     Url: string
 }
 
+/// 制約違反の種別
+type ConstraintViolation =
+    | WindowsPathOnly     // Windows フルパス文字数のみ超過 (>= 240字)
+    | LinuxFileNameOnly   // Linux ファイル名 UTF-8 バイト数のみ超過 (>= 240B)
+    | BothViolated        // 両方超過
+
+/// 表示フィルタの選択肢
+type ConstraintFilter =
+    | FilterAll           // すべて
+    | FilterLinuxOnly     // Linuxファイル名超過のみ
+    | FilterWindowsOnly   // Windowsパス長超過のみ
+    | FilterBothOnly      // 両方超過
+
 /// スキャン結果の候補ファイル情報
 type ScanCandidate = {
     FullPath: string
     FileName: string
     DirectoryPath: string
     PathLength: int
+    FileNameBytes: int
+    Violation: ConstraintViolation
     FileSizeBytes: int64
     LastWriteTime: DateTime
 }
@@ -35,8 +50,11 @@ type RenameProposal = {
     OriginalFileName: string
     DirectoryPath: string
     OriginalLength: int
+    OriginalFileNameBytes: int
+    OriginalViolation: ConstraintViolation
     ProposedFileName: string
     ProposedLength: int
+    ProposedFileNameBytes: int
     AiComment: string option // 問題・補完発生時のみ Some
     IsSelected: bool
     LastWriteTime: DateTime
@@ -52,8 +70,11 @@ module Proposal =
         OriginalFileName = candidate.FileName
         DirectoryPath = candidate.DirectoryPath
         OriginalLength = candidate.PathLength
+        OriginalFileNameBytes = candidate.FileNameBytes
+        OriginalViolation = candidate.Violation
         ProposedFileName = candidate.FileName
         ProposedLength = candidate.PathLength
+        ProposedFileNameBytes = candidate.FileNameBytes
         AiComment = Some "（AI提案の開始を待機しています...）"
         IsSelected = true
         LastWriteTime = candidate.LastWriteTime

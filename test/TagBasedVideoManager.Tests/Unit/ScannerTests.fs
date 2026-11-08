@@ -888,3 +888,112 @@ type ScannerTests () =
         finally
             if Directory.Exists(testBase) then
                 try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``UT-SCN-02: ファイル名が UTF-8 で 255 バイトを超える動画をスキャンした場合 DB 登録を維持しつつ ErrorLogs に警告ログを記録し MediaQueue 投入をスキップする`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_utscn02_{Guid.NewGuid():N}")
+        let scanDir = Path.Combine(testBase, "videos")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(scanDir) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+
+            // 86文字のひらがな（86 * 3 = 258バイト）+ ".mp4" = 262バイト (> 255B)
+            let longFileName = String('あ', 86) + ".mp4"
+            let longFilePath = Path.Combine(scanDir, longFileName)
+            File.WriteAllText(longFilePath, "dummy content")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let processedPaths = System.Collections.Concurrent.ConcurrentBag<string>()
+            let spyMediaProcessor = {
+                new IMediaProcessor with
+                    member _.GetMetadata(p) =
+                        processedPaths.Add(p)
+                        async { return Ok (120L, 1024L) }
+                    member _.GenerateThumbnail(p, o) =
+                        async { return Ok o }
+                    member _.CancelAll() = ()
+            }
+
+            let res = Scanner.syncVideoDirectories [scanDir] testThumb spyMediaProcessor conn |> Async.RunSynchronously
+            res |> should equal (Ok 1 : Result<int, DbError>)
+
+            // 1. DB に動画レコードが登録されていること（ファイル名・パス維持）
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos.Length |> should equal 1
+            videos.[0].FileName |> should equal longFileName
+
+            // 2. ErrorLogs に 255バイト制限 (NAME_MAX) 超過警告が記録されていること
+            let logsRes = Db.getErrorLogs conn |> Async.RunSynchronously
+            match logsRes with
+            | Ok logs ->
+                logs.Length |> should be (greaterThanOrEqualTo 1)
+                let warnLog = logs |> List.find (fun l -> l.Message.Contains("255") || l.Message.Contains("NAME_MAX"))
+                warnLog.Message.Contains("Linux") |> should equal true
+                warnLog.Message.Contains(longFileName) |> should equal true
+            | Error e -> failwithf "Failed to get error logs: %A" e
+
+            // 3. MediaQueue に投入されていないこと（キュー処理が実行されない）
+            System.Threading.Thread.Sleep(200) // キューワーカーの猶予
+            processedPaths |> Seq.contains longFilePath |> should equal false
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``UT-SCN-01: ファイル名が UTF-8 で 255 バイト以内の正常な動画をスキャンした場合 DB 登録され MediaQueue に投入され ErrorLogs に警告は記録されない`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_utscn01_{Guid.NewGuid():N}")
+        let scanDir = Path.Combine(testBase, "videos")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(scanDir) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+
+            let normalFileName = "normal_video.mp4"
+            let normalFilePath = Path.Combine(scanDir, normalFileName)
+            File.WriteAllText(normalFilePath, "dummy content")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            let processedPaths = System.Collections.Concurrent.ConcurrentBag<string>()
+            let spyMediaProcessor = {
+                new IMediaProcessor with
+                    member _.GetMetadata(p) =
+                        processedPaths.Add(p)
+                        async { return Ok (120L, 1024L) }
+                    member _.GenerateThumbnail(p, o) =
+                        async { return Ok o }
+                    member _.CancelAll() = ()
+            }
+
+            let res = Scanner.syncVideoDirectories [scanDir] testThumb spyMediaProcessor conn |> Async.RunSynchronously
+            res |> should equal (Ok 1 : Result<int, DbError>)
+
+            // 1. DB に登録されていること
+            let videos = Db.getVideos conn None |> Async.RunSynchronously |> Result.defaultWith (fun _ -> [])
+            videos.Length |> should equal 1
+            videos.[0].FileName |> should equal normalFileName
+
+            // 2. ErrorLogs に警告が記録されていないこと
+            let logsRes = Db.getErrorLogs conn |> Async.RunSynchronously
+            match logsRes with
+            | Ok logs ->
+                let warnLogs = logs |> List.filter (fun l -> l.Message.Contains("255") || l.Message.Contains("NAME_MAX"))
+                warnLogs |> should be Empty
+            | Error e -> failwithf "Failed to get error logs: %A" e
+
+            // 3. MediaQueue に投入されて処理されること
+            // キューワーカーが非同期で処理するのを最大2秒待機
+            let mutable waitCount = 0
+            while processedPaths.IsEmpty && waitCount < 20 do
+                System.Threading.Thread.Sleep(100)
+                waitCount <- waitCount + 1
+            processedPaths.IsEmpty |> should equal false
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()

@@ -367,6 +367,97 @@ module Views =
                                                     Border.margin (4.0, 0.0, 4.0, 0.0)
                                                     Border.verticalAlignment VerticalAlignment.Center
                                                 ]
+                                                // Linuxファイル名バイト数基準表示
+                                                TextBlock.create [
+                                                    TextBlock.text "Linuxファイル名:"
+                                                    TextBlock.foreground (SolidColorBrush textSub)
+                                                    TextBlock.fontSize 11.0
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                    TextBlock.fontWeight FontWeight.Medium
+                                                ]
+                                                TextBlock.create [
+                                                    TextBlock.text "≧"
+                                                    TextBlock.foreground (SolidColorBrush textBeforeLabel)
+                                                    TextBlock.fontWeight FontWeight.Bold
+                                                    TextBlock.fontSize 12.0
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                ]
+                                                TextBlock.create [
+                                                    TextBlock.text "240"
+                                                    TextBlock.foreground (SolidColorBrush textAiComment)
+                                                    TextBlock.fontWeight FontWeight.Bold
+                                                    TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                                    TextBlock.fontSize 11.0
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                ]
+                                                TextBlock.create [
+                                                    TextBlock.text "B"
+                                                    TextBlock.foreground (SolidColorBrush textZinc400)
+                                                    TextBlock.fontSize 11.0
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                ]
+                                                // 縦区切り線
+                                                Border.create [
+                                                    Border.width 1.0
+                                                    Border.height 14.0
+                                                    Border.background (SolidColorBrush borderZinc700)
+                                                    Border.margin (4.0, 0.0, 4.0, 0.0)
+                                                    Border.verticalAlignment VerticalAlignment.Center
+                                                ]
+                                                // 表示フィルタ ComboBox
+                                                TextBlock.create [
+                                                    TextBlock.text "🔍 フィルタ:"
+                                                    TextBlock.foreground (SolidColorBrush textSub)
+                                                    TextBlock.fontSize 11.0
+                                                    TextBlock.fontWeight FontWeight.Medium
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                ]
+                                                let countLinux = model.Candidates |> List.filter (fun c -> c.OriginalViolation = LinuxFileNameOnly) |> List.length
+                                                let countWindows = model.Candidates |> List.filter (fun c -> c.OriginalViolation = WindowsPathOnly) |> List.length
+                                                let countBoth = model.Candidates |> List.filter (fun c -> c.OriginalViolation = BothViolated) |> List.length
+                                                let countAll = model.Candidates.Length
+                                                let filterItems = [
+                                                    $"すべて (全{countAll}件)"
+                                                    $"🐧 Linuxファイル名超過のみ ({countLinux}件)"
+                                                    $"🪟 Windowsパス長超過のみ ({countWindows}件)"
+                                                    $"⚠️ 両方超過 ({countBoth}件)"
+                                                ]
+                                                let selectedFilterIdx =
+                                                    match model.FilterConstraint with
+                                                    | FilterAll -> 0
+                                                    | FilterLinuxOnly -> 1
+                                                    | FilterWindowsOnly -> 2
+                                                    | FilterBothOnly -> 3
+                                                ComboBox.create [
+                                                    ComboBox.dataItems filterItems
+                                                    ComboBox.selectedIndex selectedFilterIdx
+                                                    ComboBox.height 26.0
+                                                    ComboBox.fontSize 11.0
+                                                    ComboBox.minWidth 190.0
+                                                    ComboBox.verticalAlignment VerticalAlignment.Center
+                                                    ComboBox.background (SolidColorBrush btnDark)
+                                                    ComboBox.foreground (SolidColorBrush textWhite)
+                                                    ComboBox.borderBrush (SolidColorBrush borderZinc700)
+                                                    ComboBox.borderThickness 1.0
+                                                    ComboBox.cornerRadius 3.0
+                                                    ComboBox.padding (6.0, 2.0)
+                                                    ComboBox.onSelectedIndexChanged (fun idx ->
+                                                        match idx with
+                                                        | 0 -> dispatch (SetConstraintFilter FilterAll)
+                                                        | 1 -> dispatch (SetConstraintFilter FilterLinuxOnly)
+                                                        | 2 -> dispatch (SetConstraintFilter FilterWindowsOnly)
+                                                        | 3 -> dispatch (SetConstraintFilter FilterBothOnly)
+                                                        | _ -> ()
+                                                    )
+                                                ]
+                                                // 縦区切り線
+                                                Border.create [
+                                                    Border.width 1.0
+                                                    Border.height 14.0
+                                                    Border.background (SolidColorBrush borderZinc700)
+                                                    Border.margin (4.0, 0.0, 4.0, 0.0)
+                                                    Border.verticalAlignment VerticalAlignment.Center
+                                                ]
                                                 // 日本語除外抽出チェックボックス
                                                 CheckBox.create [
                                                     CheckBox.content "ファイル名に日本語を含まないもののみ抽出"
@@ -543,6 +634,19 @@ module Views =
                 int (Math.Round((1.0 - (float c.ProposedLength / float c.OriginalLength)) * 100.0))
             else 0
 
+        // 制約違反種別バッジ (BEFORE カード右上)
+        let violationBadgeText, violationBadgeBg, violationBadgeBorder, violationBadgeFg =
+            match c.OriginalViolation with
+            | LinuxFileNameOnly ->
+                $"🐧 Linux: ファイル名超過 ({c.OriginalFileNameBytes}B / 上限255B)",
+                Color.Parse("#450a0a"), Color.Parse("#991b1b"), Color.Parse("#fca5a5")
+            | WindowsPathOnly ->
+                $"🪟 Windows: パス長超過 ({c.OriginalLength}字 / 上限260字)",
+                Color.Parse("#451a03"), Color.Parse("#b45309"), Color.Parse("#fcd34d")
+            | BothViolated ->
+                $"⚠️ 両方超過 (Win:{c.OriginalLength}字 / Linux:{c.OriginalFileNameBytes}B)",
+                Color.Parse("#4c0519"), Color.Parse("#e11d48"), Color.Parse("#fda4af")
+
         let badgeBg, badgeBorder, badgeText, badgeFg =
             if isIncrease then
                 Color.Parse("#3f1d1d"), Color.Parse("#7f1d1d"), $"+{c.ProposedLength - c.OriginalLength}字 (増加)", Color.Parse("#fca5a5")
@@ -551,13 +655,19 @@ module Views =
             else
                 badgeBgAfter, borderAfter, $"-{diff}字 ({reductionPercent}%%短縮)", textAfterLabel
 
+        let isNameDanger = c.ProposedFileNameBytes > 255
+        let isNameWarning = c.ProposedFileNameBytes > 240 && not isNameDanger
+        let isPathDanger = isDanger || c.ProposedLength >= 240
+
         let statusText, statusFg =
             if c.IsAiProcessing then
                 "🌐 検索中", Color.Parse("#60a5fa")
             elif isIncrease then
                 "⚠️ 文字数増加", Color.Parse("#f87171")
-            elif isDanger then
+            elif isDanger || isNameDanger then
                 "⚠️ 要短縮", Color.Parse("#f87171")
+            elif isNameWarning then
+                "⚠️ Linux注意", Color.Parse("#fbbf24")
             elif isUnshortened && not c.IsAiProposed then
                 "⚠️ 未短縮", Color.Parse("#fbbf24")
             else
@@ -566,12 +676,14 @@ module Views =
         let afterBg = bgAfter
 
         let afterBorder =
-            if isIncrease || isDanger then Color.Parse("#ef4444")
+            if isIncrease || isPathDanger || isNameDanger then Color.Parse("#ef4444")
+            elif isNameWarning then Color.Parse("#b45309")
             else borderAfter
 
         let afterBadgeBg, afterBadgeBorder =
             if c.IsAiProcessing then Color.Parse("#172554"), Color.Parse("#1e40af")
-            elif isIncrease || isDanger then Color.Parse("#450a0a"), Color.Parse("#b91c1c")
+            elif isIncrease || isPathDanger || isNameDanger then Color.Parse("#450a0a"), Color.Parse("#b91c1c")
+            elif isNameWarning then Color.Parse("#451a03"), Color.Parse("#b45309")
             elif not c.IsAiProposed then Color.Parse("#27272a"), Color.Parse("#3f3f46")
             else badgeBgAfter, borderAfter
 
@@ -579,13 +691,15 @@ module Views =
             if c.IsAiProcessing then
                 "AFTER (処理中...)", Color.Parse("#93c5fd")
             elif isIncrease then
-                (if isDanger then $"AFTER ({c.ProposedLength}字 [危険])" else $"AFTER ({c.ProposedLength}字 [増加])"), Color.Parse("#f87171")
-            elif isDanger then
+                (if isPathDanger || isNameDanger then $"AFTER ({c.ProposedLength}字 [危険])" else $"AFTER ({c.ProposedLength}字 [増加])"), Color.Parse("#f87171")
+            elif isPathDanger || isNameDanger then
                 $"AFTER ({c.ProposedLength}字 [危険])", Color.Parse("#f87171")
+            elif isNameWarning then
+                $"AFTER ({c.ProposedLength}字 [注意])", Color.Parse("#fbbf24")
             elif not c.IsAiProposed then
                 $"AFTER ({c.ProposedLength}字 [未短縮])", Color.Parse("#a1a1aa")
             else
-                $"AFTER ({c.ProposedLength}字 [安全])", textAfterLabel
+                $"AFTER  ✓ 安全 ({c.ProposedLength}字 / {c.ProposedFileNameBytes}B)", textAfterLabel
 
         let rightBadgeText, rightBadgeBg, rightBadgeBorder, rightBadgeFg =
             if c.IsAiProcessing then
@@ -634,6 +748,26 @@ module Views =
                                     StackPanel.verticalAlignment VerticalAlignment.Center
                                     StackPanel.margin (8.0, 0.0, 0.0, 0.0)
                                     StackPanel.children [
+                                        // 違反種別バッジ
+                                        Border.create [
+                                            Border.background (SolidColorBrush violationBadgeBg)
+                                            Border.borderBrush (SolidColorBrush violationBadgeBorder)
+                                            Border.borderThickness 1.0
+                                            Border.cornerRadius 4.0
+                                            Border.padding (6.0, 2.0)
+                                            Border.verticalAlignment VerticalAlignment.Center
+                                            Border.child (
+                                                TextBlock.create [
+                                                    TextBlock.text violationBadgeText
+                                                    TextBlock.fontSize 10.0
+                                                    TextBlock.fontFamily (FontFamily "Yu Gothic UI, Segoe UI, sans-serif")
+                                                    TextBlock.fontWeight FontWeight.Bold
+                                                    TextBlock.foreground (SolidColorBrush violationBadgeFg)
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                    TextBlock.textWrapping TextWrapping.NoWrap
+                                                ]
+                                            )
+                                        ]
                                         Border.create [
                                             Border.background (SolidColorBrush badgeBg)
                                             Border.borderBrush (SolidColorBrush badgeBorder)
@@ -700,7 +834,7 @@ module Views =
                             ]
                         ]
 
-                        // Line 2: BEFORE (薄赤背景・行高さ 32px 統一・ラベル幅 160px 固定・親幅制約)
+                        // Line 2: BEFORE (薄赤背景・行高さ 32px 統一・ラベル幅 195px 固定・親幅制約)
                         Border.create [
                             Border.background (SolidColorBrush bgBefore)
                             Border.borderBrush (SolidColorBrush borderBefore)
@@ -712,10 +846,10 @@ module Views =
                             Border.child (
                                 DockPanel.create [
                                     DockPanel.children [
-                                        // ラベル幅 160px 固定（AFTER行と垂直開始位置を一致させる）
+                                        // ラベル幅 195px 固定（AFTER行と垂直開始位置を一致させる）
                                         Border.create [
                                             DockPanel.dock Dock.Left
-                                            Border.width 160.0
+                                            Border.width 195.0
                                             Border.background (SolidColorBrush badgeBgBefore)
                                             Border.borderBrush (SolidColorBrush borderBefore)
                                             Border.borderThickness 1.0
@@ -724,11 +858,12 @@ module Views =
                                             Border.margin (0.0, 0.0, 8.0, 0.0)
                                             Border.child (
                                                 TextBlock.create [
-                                                    TextBlock.text $"BEFORE ({c.OriginalLength}字 [危険])"
+                                                    TextBlock.text $"BEFORE ({c.OriginalLength}字 / {c.OriginalFileNameBytes}B)"
                                                     TextBlock.fontSize 10.0
                                                     TextBlock.fontWeight FontWeight.Bold
                                                     TextBlock.foreground (SolidColorBrush textBeforeLabel)
                                                     TextBlock.verticalAlignment VerticalAlignment.Center
+                                                    TextBlock.textWrapping TextWrapping.NoWrap
                                                 ]
                                             )
                                         ]
@@ -787,7 +922,7 @@ module Views =
                             )
                         ]
 
-                        // Line 3: AFTER (行高さ 32px 統一・ラベル幅 160px 固定・動的評価連動)
+                        // Line 3: AFTER (行高さ 32px 統一・ラベル幅 195px 固定・動的評価連動)
                         Border.create [
                             Border.background (SolidColorBrush afterBg)
                             Border.borderBrush (SolidColorBrush afterBorder)
@@ -799,10 +934,10 @@ module Views =
                             Border.child (
                                 DockPanel.create [
                                     DockPanel.children [
-                                        // ラベル幅 160px 固定（BEFORE行と垂直開始位置を一致させる）
+                                        // ラベル幅 195px 固定（BEFORE行と垂直開始位置を一致させる）
                                         Border.create [
                                             DockPanel.dock Dock.Left
-                                            Border.width 160.0
+                                            Border.width 195.0
                                             Border.background (SolidColorBrush afterBadgeBg)
                                             Border.borderBrush (SolidColorBrush afterBadgeBorder)
                                             Border.borderThickness 1.0
@@ -816,6 +951,7 @@ module Views =
                                                     TextBlock.fontWeight FontWeight.Bold
                                                     TextBlock.foreground (SolidColorBrush afterLabelFg)
                                                     TextBlock.verticalAlignment VerticalAlignment.Center
+                                                    TextBlock.textWrapping TextWrapping.NoWrap
                                                 ]
                                             )
                                         ]
@@ -967,6 +1103,19 @@ module Views =
                 int (Math.Round((1.0 - (float c.ProposedLength / float c.OriginalLength)) * 100.0))
             else 0
 
+        // 制約違反種別バッジ
+        let violationBadgeText, violationBadgeBg, violationBadgeBorder, violationBadgeFg =
+            match c.OriginalViolation with
+            | LinuxFileNameOnly ->
+                $"🐧 Linux: ファイル名超過 ({c.OriginalFileNameBytes}B / 上限255B)",
+                Color.Parse("#450a0a"), Color.Parse("#991b1b"), Color.Parse("#fca5a5")
+            | WindowsPathOnly ->
+                $"🪟 Windows: パス長超過 ({c.OriginalLength}字 / 上限260字)",
+                Color.Parse("#451a03"), Color.Parse("#b45309"), Color.Parse("#fcd34d")
+            | BothViolated ->
+                $"⚠️ 両方超過 (Win:{c.OriginalLength}字 / Linux:{c.OriginalFileNameBytes}B)",
+                Color.Parse("#4c0519"), Color.Parse("#e11d48"), Color.Parse("#fda4af")
+
         let badgeBg, badgeBorder, badgeText, badgeFg =
             if isIncrease then
                 Color.Parse("#3f1d1d"), Color.Parse("#7f1d1d"), $"+{c.ProposedLength - c.OriginalLength}字 (増加)", Color.Parse("#fca5a5")
@@ -975,13 +1124,19 @@ module Views =
             else
                 badgeBgAfter, borderAfter, $"-{diff}字 ({reductionPercent}%%短縮)", textAfterLabel
 
+        let isNameDanger = c.ProposedFileNameBytes > 255
+        let isNameWarning = c.ProposedFileNameBytes > 240 && not isNameDanger
+        let isPathDanger = isDanger || c.ProposedLength >= 240
+
         let statusText, statusFg =
             if c.IsAiProcessing then
                 "🌐 検索中", Color.Parse("#60a5fa")
             elif isIncrease then
                 "⚠️ 文字数増加", Color.Parse("#f87171")
-            elif isDanger then
+            elif isDanger || isNameDanger then
                 "⚠️ 要短縮", Color.Parse("#f87171")
+            elif isNameWarning then
+                "⚠️ Linux注意", Color.Parse("#fbbf24")
             elif isUnshortened && not c.IsAiProposed then
                 "⚠️ 未短縮", Color.Parse("#fbbf24")
             else
@@ -990,7 +1145,8 @@ module Views =
         let afterBg = bgAfter
 
         let afterBorder =
-            if isIncrease || isDanger then Color.Parse("#ef4444")
+            if isIncrease || isPathDanger || isNameDanger then Color.Parse("#ef4444")
+            elif isNameWarning then Color.Parse("#b45309")
             else borderAfter
 
         let afterLabelTitle, afterLabelFg =
@@ -998,8 +1154,10 @@ module Views =
                 "AFTER (処理中...)", Color.Parse("#93c5fd")
             elif isIncrease then
                 "⚠️ AFTER (文字数増加 / 編集可)", Color.Parse("#f87171")
-            elif isDanger then
+            elif isPathDanger || isNameDanger then
                 "⚠️ AFTER (要短縮 / 編集可)", Color.Parse("#f87171")
+            elif isNameWarning then
+                "⚠️ AFTER (Linux注意 / 編集可)", Color.Parse("#fbbf24")
             elif not c.IsAiProposed then
                 "AFTER (未提案 / 編集可)", Color.Parse("#a1a1aa")
             else
@@ -1009,13 +1167,15 @@ module Views =
             if c.IsAiProcessing then
                 "処理中...", Color.Parse("#93c5fd")
             elif isIncrease then
-                (if isDanger then $"{c.ProposedLength}字 [危険 (増加)]" else $"{c.ProposedLength}字 [増加]"), Color.Parse("#f87171")
-            elif isDanger then
-                $"{c.ProposedLength}字 [危険]", Color.Parse("#f87171")
+                (if isPathDanger || isNameDanger then $"{c.ProposedLength}字 / {c.ProposedFileNameBytes}B [危険 (増加)]" else $"{c.ProposedLength}字 / {c.ProposedFileNameBytes}B [増加]"), Color.Parse("#f87171")
+            elif isPathDanger || isNameDanger then
+                $"{c.ProposedLength}字 / {c.ProposedFileNameBytes}B [危険]", Color.Parse("#f87171")
+            elif isNameWarning then
+                $"{c.ProposedLength}字 / {c.ProposedFileNameBytes}B [注意]", Color.Parse("#fbbf24")
             elif not c.IsAiProposed then
-                $"{c.ProposedLength}字 [未提案]", Color.Parse("#a1a1aa")
+                $"{c.ProposedLength}字 / {c.ProposedFileNameBytes}B [未提案]", Color.Parse("#a1a1aa")
             else
-                $"{c.ProposedLength}字 [安全]", textAfterLabel
+                $"{c.ProposedLength}字 / {c.ProposedFileNameBytes}B [安全]", textAfterLabel
 
         let (origBaseName, origExt) = splitFileName c.OriginalFileName
         let (proposedBaseName, proposedExt) = splitFileName c.ProposedFileName
@@ -1042,6 +1202,26 @@ module Views =
                                     StackPanel.verticalAlignment VerticalAlignment.Center
                                     StackPanel.margin (8.0, 0.0, 0.0, 0.0)
                                     StackPanel.children [
+                                        // 違反種別バッジ
+                                        Border.create [
+                                            Border.background (SolidColorBrush violationBadgeBg)
+                                            Border.borderBrush (SolidColorBrush violationBadgeBorder)
+                                            Border.borderThickness 1.0
+                                            Border.cornerRadius 4.0
+                                            Border.padding (6.0, 2.0)
+                                            Border.verticalAlignment VerticalAlignment.Center
+                                            Border.child (
+                                                TextBlock.create [
+                                                    TextBlock.text violationBadgeText
+                                                    TextBlock.fontSize 10.0
+                                                    TextBlock.fontFamily (FontFamily "Yu Gothic UI, Segoe UI, sans-serif")
+                                                    TextBlock.fontWeight FontWeight.Bold
+                                                    TextBlock.foreground (SolidColorBrush violationBadgeFg)
+                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                    TextBlock.textWrapping TextWrapping.NoWrap
+                                                ]
+                                            )
+                                        ]
                                         Border.create [
                                             Border.background (SolidColorBrush badgeBg)
                                             Border.borderBrush (SolidColorBrush badgeBorder)
@@ -1129,7 +1309,7 @@ module Views =
                                                         ]
                                                         TextBlock.create [
                                                             DockPanel.dock Dock.Right
-                                                            TextBlock.text $"{c.OriginalLength}字 [危険]"
+                                                            TextBlock.text $"{c.OriginalLength}字 / {c.OriginalFileNameBytes}B"
                                                             TextBlock.fontSize 10.0
                                                             TextBlock.fontFamily monoFontFamily
                                                             TextBlock.fontWeight FontWeight.Bold
@@ -1359,8 +1539,9 @@ module Views =
     // 4. Comparison List Container (SECTION 3)
     // ==========================================
     let comparisonList (model: Model) (dispatch: Msg -> unit) =
-        let selectedCount = model.Candidates |> List.filter (fun c -> c.IsSelected) |> List.length
-        let allSelected = model.Candidates.Length > 0 && selectedCount = model.Candidates.Length
+        let filteredCandidates = State.getFilteredCandidates model.FilterConstraint model.Candidates
+        let selectedCount = filteredCandidates |> List.filter (fun c -> c.IsSelected) |> List.length
+        let allSelected = filteredCandidates.Length > 0 && selectedCount = filteredCandidates.Length
 
         Border.create [
             Border.background (SolidColorBrush bgSurface)
@@ -1390,7 +1571,7 @@ module Views =
                                             StackPanel.children [
                                                 CheckBox.create [
                                                     CheckBox.isChecked allSelected
-                                                    CheckBox.isEnabled (model.Candidates.Length > 0)
+                                                    CheckBox.isEnabled (filteredCandidates.Length > 0)
                                                     CheckBox.onIsCheckedChanged (fun e ->
                                                         match getCheckBoxValue e with
                                                         | Some isChecked when isChecked <> allSelected ->
@@ -1408,7 +1589,8 @@ module Views =
                                                 ]
                                                 TextBlock.create [
                                                     let countText =
-                                                        if model.Candidates.Length > 0 then $"({selectedCount} / {model.Candidates.Length} 件選択中)"
+                                                        if filteredCandidates.Length > 0 then $"({selectedCount} / {filteredCandidates.Length} 件選択中)"
+                                                        elif model.Candidates.Length > 0 then $"(フィルタ該当 0 / 全 {model.Candidates.Length} 件)"
                                                         else "(実行ボタンを押して抽出)"
                                                     TextBlock.text countText
                                                     TextBlock.foreground (SolidColorBrush textSub)
@@ -1559,10 +1741,63 @@ module Views =
                                                 TextBlock.horizontalAlignment HorizontalAlignment.Center
                                             ]
                                             TextBlock.create [
-                                                TextBlock.text $"設定済みのフォルダから指定文字数（初期値: {model.CurrentThreshold}字）以上の長パスファイルを検出し、AI提案を生成します"
+                                                TextBlock.text $"設定済みのフォルダから指定文字数（初期値: {model.CurrentThreshold}字）またはLinuxファイル名（240B）以上の制限超過ファイルを検出し、AI提案を生成します"
                                                 TextBlock.fontSize 11.0
                                                 TextBlock.foreground (SolidColorBrush textZinc500)
                                                 TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                            ]
+                                        ]
+                                    ]
+                                elif filteredCandidates.IsEmpty then
+                                    // Empty State (0件時の安心案内表示: mockup.html 準拠)
+                                    StackPanel.create [
+                                        StackPanel.horizontalAlignment HorizontalAlignment.Center
+                                        StackPanel.verticalAlignment VerticalAlignment.Center
+                                        StackPanel.spacing 12.0
+                                        StackPanel.margin (0.0, 48.0)
+                                        StackPanel.children [
+                                            Border.create [
+                                                Border.width 60.0
+                                                Border.height 60.0
+                                                Border.cornerRadius 30.0
+                                                Border.background (SolidColorBrush (Color.Parse("#064e3b")))
+                                                Border.borderBrush (SolidColorBrush (Color.Parse("#047857")))
+                                                Border.borderThickness 1.0
+                                                Border.horizontalAlignment HorizontalAlignment.Center
+                                                Border.child (
+                                                    TextBlock.create [
+                                                        TextBlock.text "🎉"
+                                                        TextBlock.fontSize 26.0
+                                                        TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                        TextBlock.verticalAlignment VerticalAlignment.Center
+                                                    ]
+                                                )
+                                            ]
+                                            TextBlock.create [
+                                                TextBlock.text "対象ファイルはありません"
+                                                TextBlock.fontSize 14.0
+                                                TextBlock.fontWeight FontWeight.Bold
+                                                TextBlock.foreground (SolidColorBrush textWhite)
+                                                TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                            ]
+                                            TextBlock.create [
+                                                TextBlock.text $"現在の閾値・フィルタ条件に合致する制限超過ファイルは存在しません。\nすべてのファイルが Windows ({model.CurrentThreshold}字) および Linux (240B) の安全制限をクリアしています。"
+                                                TextBlock.fontSize 11.0
+                                                TextBlock.foreground (SolidColorBrush textZinc400)
+                                                TextBlock.textAlignment TextAlignment.Center
+                                                TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                            ]
+                                            Button.create [
+                                                Button.content "フィルタを「すべて」に戻す"
+                                                Button.background (SolidColorBrush btnDark)
+                                                Button.borderBrush (SolidColorBrush borderZinc700)
+                                                Button.borderThickness 1.0
+                                                Button.foreground (SolidColorBrush textZinc400)
+                                                Button.fontSize 11.0
+                                                Button.cornerRadius 4.0
+                                                Button.padding (12.0, 6.0)
+                                                Button.horizontalAlignment HorizontalAlignment.Center
+                                                Button.onClick (fun _ -> dispatch (SetConstraintFilter FilterAll))
                                             ]
                                         ]
                                     ]
@@ -1571,7 +1806,7 @@ module Views =
                                         StackPanel.spacing 4.0
                                         StackPanel.margin (0.0, 0.0, 0.0, 36.0)
                                         StackPanel.children [
-                                            for idx, c in List.indexed model.Candidates do
+                                            for idx, c in List.indexed filteredCandidates do
                                                 match model.Layout with
                                                 | Vertical -> candidateCardVertical idx c model.CurrentThreshold dispatch
                                                 | Horizontal -> candidateCardHorizontal idx c model.CurrentThreshold dispatch

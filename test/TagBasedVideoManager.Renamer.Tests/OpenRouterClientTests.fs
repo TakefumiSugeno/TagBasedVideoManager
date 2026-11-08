@@ -21,6 +21,8 @@ module OpenRouterClientTests =
         FileName = "VeryLongFileName_20250812_Wakkanai_Touring.mp4"
         DirectoryPath = "C:\\Videos\\LongDir"
         PathLength = 265
+        FileNameBytes = 46
+        Violation = WindowsPathOnly
         FileSizeBytes = 1024L * 1024L
         LastWriteTime = DateTime(2025, 8, 12, 10, 0, 0)
     }
@@ -30,6 +32,8 @@ module OpenRouterClientTests =
         FileName = "7f8a9b0c-1234-5678-abcd-ef0123456789_odd_name.mp4"
         DirectoryPath = "C:\\Videos\\LongDir"
         PathLength = 250
+        FileNameBytes = 54
+        Violation = WindowsPathOnly
         FileSizeBytes = 512L * 1024L
         LastWriteTime = DateTime(2025, 8, 15, 14, 30, 0)
     }
@@ -317,3 +321,11 @@ module OpenRouterClientTests =
             | Error other ->
                 failwith $"Unexpected error type: {other}"
         }
+
+    [<Fact>]
+    let ``UT-PROMPT-01: buildUserPrompt はプロンプト内に UTF-8 240バイト以内およびフルパス 240文字以内の制約指示を含める`` () =
+        let prompt = OpenRouterClient.buildUserPrompt sampleRule [ sampleCandidate1; sampleCandidate2 ]
+        prompt.Contains("240") |> should equal true
+        prompt.Contains("バイト") |> should equal true
+        prompt.Contains("UTF-8") |> should equal true
+        prompt.Contains("パス") |> should equal true
