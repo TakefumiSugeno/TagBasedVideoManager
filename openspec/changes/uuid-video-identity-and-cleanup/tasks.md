@@ -8,9 +8,9 @@
 
 ## 2. スキャン3フェーズ同期（UUID移動・リネーム・マウント変更追従と不在データ自動削除）
 
-- [ ] 2.1 [`qa-tester`] `Scanner.syncVideoDirectories` における UUID v5 移動・リネーム・マウント変更追従（`UT-07`〜`UT-09`, `DT-01`〜`DT-05`, `IT-01`〜`IT-04`）、`{THUMBNAIL_DIR}/{Id}.jpg` 基準のサムネイル存在確認と再処理スキップ（`UT-13`〜`UT-17`, `DT-06`〜`DT-10`）、および削除済み動画レコード・タグ紐付け・孤児サムネイル画像の自動削除（`UT-10`〜`UT-12`, `IT-05`〜`IT-07`）を検証する先行失敗テスト（Red）を `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs` に作成し、失敗を確認する
-- [ ] 2.2 [`pg-implementer`] `src/TagBasedVideoManager/Scanner.fs` の `syncVideoDirectories` に 3フェーズ同期（①正規化パス一致＆`FileUuid` バックフィル＆`{thumbDir}/{Id}.jpg` 解決、②UUID v5 および旧レコードフォールバックによる移動・リネーム追従とフォルダタグ追加、③不在 DB レコード・孤児サムネイル削除）を実装し、全テストを Green にする
-- [ ] 2.3 [`pg-reviewer` / `qa-reviewer` / `se-reviewer`] タスク 2 の実装コード・テストコードに対する批判的レビュー（破壊テスト実行・故障シミュレーション）を実施し、`reviews.md` に記録して `verify-gate.ps1 -Gate apply` を通過させる
+- [x] 2.1 [`qa-tester`] `Scanner.syncVideoDirectories` における UUID v5 移動・リネーム・マウント変更追従（`UT-07`〜`UT-09`, `DT-01`〜`DT-05`, `IT-01`〜`IT-04`）、`{THUMBNAIL_DIR}/{Id}.jpg` 基準のサムネイル存在確認と再処理スキップ（`UT-13`〜`UT-17`, `DT-06`〜`DT-10`）、および削除済み動画レコード・タグ紐付け・孤児サムネイル画像の自動削除（`UT-10`〜`UT-12`, `IT-05`〜`IT-07`）を検証する先行失敗テスト（Red）を `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs` に作成し、失敗を確認する
+- [x] 2.2 [`pg-implementer`] `src/TagBasedVideoManager/Scanner.fs` の `syncVideoDirectories` に 3フェーズ同期（①正規化パス一致＆`FileUuid` バックフィル＆`{thumbDir}/{Id}.jpg` 解決、②UUID v5 および旧レコードフォールバックによる移動・リネーム追従とフォルダタグ追加、③不在 DB レコード・孤児サムネイル削除）を実装し、全テストを Green にする
+- [x] 2.3 [`pg-reviewer` / `qa-reviewer` / `se-reviewer`] タスク 2 の実装コード・テストコードに対する批判的レビュー（破壊テスト実行・故障シミュレーション）を実施し、`reviews.md` に記録して `verify-gate.ps1 -Gate apply` を通過させる
 
 ## 3. ストリーミング物理ファイル不在時の HTTP 404 応答とフロントエンドエラートースト通知
 

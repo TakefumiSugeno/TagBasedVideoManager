@@ -70,20 +70,96 @@ module Scanner =
     let private supportedExtensions = [| ".mp4" |]
 
     /// ディレクトリ配下のすべてのファイルを再帰的に走査する（シンボリックリンク・ReparsePointのディレクトリも解決して追跡する）。
-    let rec private enumerateFiles (dir: string) : string list =
+    /// 走査例外が発生したディレクトリパスは failedDirs に記録される (SE-201)。
+    let rec private enumerateFilesSafe (dir: string) (failedDirs: System.Collections.Generic.HashSet<string>) : string list =
         try
             let resolvedDir = TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath dir
             if not (Directory.Exists(resolvedDir)) then []
             else
-                let files = Directory.GetFiles(resolvedDir) |> Array.toList
-                let subDirs = Directory.GetDirectories(resolvedDir)
+                let files =
+                    try
+                        Directory.GetFiles(resolvedDir) |> Array.toList
+                    with ex ->
+                        eprintfn $"[Scanner Warning] Failed to enumerate files in '%s{dir}' (%s{resolvedDir}): %s{ex.Message}"
+                        failedDirs.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir))) |> ignore
+                        failedDirs.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(resolvedDir))) |> ignore
+                        []
+
+                let subDirs =
+                    try
+                        Directory.GetDirectories(resolvedDir)
+                    with ex ->
+                        eprintfn $"[Scanner Warning] Failed to enumerate subdirectories in '%s{dir}' (%s{resolvedDir}): %s{ex.Message}"
+                        failedDirs.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir))) |> ignore
+                        failedDirs.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(resolvedDir))) |> ignore
+                        [||]
+
                 let subFiles = 
                     subDirs 
                     |> Array.toList 
-                    |> List.collect enumerateFiles
+                    |> List.collect (fun sub -> enumerateFilesSafe sub failedDirs)
+
                 List.append files subFiles
-        with
-        | _ -> []
+        with ex ->
+            eprintfn $"[Scanner Warning] Error accessing directory '%s{dir}': %s{ex.Message}"
+            failedDirs.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir))) |> ignore
+            []
+
+    /// サムネイルの期待パスと既存パスの実在を確認し、利用可能なサムネイルパスと存在有無を解決する (DRY化)
+    let private resolveThumbnail (thumbDir: string) (videoId: string) (currentThumbPath: string option) : string option * bool =
+        let expectedThumbPath = Path.Combine(thumbDir, $"{videoId}.jpg")
+        let expectedThumbExists = File.Exists(expectedThumbPath)
+        if expectedThumbExists then
+            Some expectedThumbPath, true
+        else
+            match currentThumbPath with
+            | Some p when File.Exists(p) -> Some p, true
+            | _ -> None, false
+
+    /// メディア処理キュー投入判定（Linux 255バイト制限チェックとログ記録を含む）(DRY化)
+    let private enqueueMediaIfNeeded
+        (conn: IDbConnection)
+        (mediaProc: IMediaProcessor)
+        (thumbDir: string)
+        (videoId: string)
+        (filePath: string)
+        (fileName: string)
+        (hasThumbnail: bool)
+        (duration: int64)
+        : Async<unit> =
+        async {
+            let fnBytes = System.Text.Encoding.UTF8.GetByteCount(fileName)
+            if fnBytes > 255 then
+                let msg = $"[Scanner Warning] 動画ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過しているため、Linux/WSL/Docker 環境で再生やメディア処理が失敗する可能性があります。VideoId={videoId}, FilePath={filePath}, Bytes={fnBytes}"
+                let! _ = Db.saveErrorLog conn msg None
+                ()
+            elif (not hasThumbnail) || duration = 0L then
+                MediaQueue.enqueue {
+                    VideoId = videoId
+                    FilePath = filePath
+                    ThumbDir = thumbDir
+                    MediaProc = mediaProc
+                    ConnectionString = conn.ConnectionString
+                }
+        }
+
+    /// 指定されたファイルパスが基準ディレクトリ配下に存在するかを判定する。
+    let private isSubPathOf (baseDir: string) (filePath: string) : bool =
+        try
+            if String.IsNullOrWhiteSpace baseDir || String.IsNullOrWhiteSpace filePath then false
+            else
+                let normBase = Path.TrimEndingDirectorySeparator(Path.GetFullPath(TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath (baseDir.Trim())))
+                let normFile = Path.GetFullPath(TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath (filePath.Trim()))
+                let rel = Path.GetRelativePath(normBase, normFile)
+                if rel = "." then false
+                elif rel = ".."
+                     || rel.StartsWith(".." + string Path.DirectorySeparatorChar)
+                     || rel.StartsWith(".." + string Path.AltDirectorySeparatorChar)
+                     || Path.IsPathRooted(rel) then
+                    false
+                else
+                    true
+        with _ -> false
 
     /// ルートディレクトリとファイルパスから付与すべきフォルダ名タグ（ルート名＋サブフォルダ名）を導出する。
     /// ファイルがルート配下にない場合は空リストを返す（DT-01/DT-02）。
@@ -177,6 +253,9 @@ module Scanner =
         : Async<Result<int, DbError>> =
         async {
             try
+                if conn.State <> ConnectionState.Open then
+                    conn.Open()
+
                 if not (String.IsNullOrEmpty(thumbDir)) && not (Directory.Exists(thumbDir)) then
                     try
                         Directory.CreateDirectory(thumbDir) |> ignore
@@ -209,11 +288,12 @@ module Scanner =
                             StringComparer.Ordinal
 
                     let seenFiles = System.Collections.Generic.HashSet<string>(pathComparer)
+                    let failedDirs = System.Collections.Generic.HashSet<string>(pathComparer)
 
                     let uniqueFiles =
                         [
                             for root in existingRoots do
-                                for file in enumerateFiles root do
+                                for file in enumerateFilesSafe root failedDirs do
                                     let ext = Path.GetExtension(file).ToLowerInvariant()
 
                                     if Array.contains ext supportedExtensions then
@@ -224,6 +304,10 @@ module Scanner =
                                             yield norm
                         ]
 
+                    if failedDirs.Count > 0 then
+                        for fd in failedDirs do
+                            do! Db.saveErrorLog conn $"[Scanner Warning] ディレクトリの走査中に例外が発生したため、誤削除防止ガードにより配下の動画レコードを保護しました: {fd}" None
+
                     // 3. 既存の動画一覧を取得して、正規化物理パス -> Video のディクショナリを作成
                     let! existingVideosResult = Db.getVideos conn None
 
@@ -232,12 +316,14 @@ module Scanner =
                     | Ok existingVideosList ->
 
                     let existingVideoDict = System.Collections.Generic.Dictionary<string, Video>(pathComparer)
+                    let unmatchedDbVideos = System.Collections.Generic.Dictionary<string, Video>()
 
                     for v in existingVideosList do
                         let normKey =
                             Path.GetFullPath(TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath v.FilePath)
 
                         existingVideoDict.[normKey] <- v
+                        unmatchedDbVideos.[v.Id] <- v
 
                     // 4. 自動タグ付けルール一覧を取得
                     let! rulesResult = Db.getTaggingRules conn
@@ -301,148 +387,323 @@ module Scanner =
                                     | Error _ -> return newId
                         }
 
+                    let activeVideoIds = System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
                     let mutable addedCount = 0
 
+                    // タグを動画に関連付け、インメモリ辞書も同期更新するヘルパー
+                    let attachTag (videoId: string) (normFilePath: string) (tagId: string) (tagName: string) =
+                        async {
+                            let alreadyHasTag =
+                                match existingVideoDict.TryGetValue(normFilePath) with
+                                | true, v -> v.Tags |> List.exists (fun t -> t.Id = tagId)
+                                | false, _ -> false
+
+                            if not alreadyHasTag then
+                                let! _ = Db.addTagToVideo conn videoId tagId
+
+                                match existingVideoDict.TryGetValue(normFilePath) with
+                                | true, v ->
+                                    let updated = {
+                                        v with
+                                            Tags = {
+                                                Tag.Id = tagId
+                                                Name = tagName
+                                                ColorCode = "#64748b"
+                                                ParentId = None
+                                                VideoCount = 0
+                                            }
+                                                   :: v.Tags
+                                    }
+
+                                    existingVideoDict.[normFilePath] <- updated
+                                | false, _ -> ()
+                        }
+
+                    let applyTagsForVideo (videoId: string) (normFilePath: string) (fileName: string) (fileSize: int64) =
+                        async {
+                            // フォルダ名からタグを自動作成・付与（入れ子ルート対応・全所属ルートの和集合）
+                            let folderTags = deriveAllFolderTags videoDirs normFilePath
+
+                            for folderName in folderTags do
+                                let folderNameTrimmed = folderName.Trim()
+
+                                if not (String.IsNullOrEmpty(folderNameTrimmed)) then
+                                    let! tagId = getOrCreateTagId folderNameTrimmed
+                                    do! attachTag videoId normFilePath tagId folderNameTrimmed
+
+                            // 自動タグ付けルールの評価と適用 (毎回 getVideos せず fileSize をそのまま利用)
+                            let autoTagIds =
+                                TaggingEngine.evaluateRulesFull rules fileName normFilePath fileSize
+
+                            for tagId in autoTagIds do
+                                do! attachTag videoId normFilePath tagId ""
+                        }
+
+                    // ファイルを matchedFiles (Phase 1) と unmatchedFiles (Phase 2) に分離
+                    let matchedFiles = ResizeArray<string>()
+                    let unmatchedFiles = ResizeArray<string>()
+
                     for normFilePath in uniqueFiles do
-                        let fileName = Path.GetFileName normFilePath
+                        if existingVideoDict.ContainsKey(normFilePath) then
+                            matchedFiles.Add(normFilePath)
+                        else
+                            unmatchedFiles.Add(normFilePath)
+
+                    // -----------------------------------------------------------------
+                    // Phase 1: 正規化パス一致・UUIDバックフィル・サムネイル解決
+                    // -----------------------------------------------------------------
+                    for normFilePath in matchedFiles do
                         let fi = FileInfo(normFilePath)
-                        let fileSize = if fi.Exists then fi.Length else 0L
-                        let fileModifiedAt = if fi.Exists then fi.LastWriteTimeUtc else DateTime.UtcNow
+                        if not fi.Exists then
+                            ()
+                        else
+                            let v = existingVideoDict.[normFilePath]
+                            activeVideoIds.Add(v.Id) |> ignore
+                            unmatchedDbVideos.Remove(v.Id) |> ignore
 
-                        let existingOpt =
-                            match existingVideoDict.TryGetValue(normFilePath) with
-                            | true, v -> Some v
-                            | false, _ -> None
+                            let fileName = Path.GetFileName normFilePath
+                            let fileSize = fi.Length
+                            let fileModifiedAt = fi.LastWriteTimeUtc
 
-                        let isNew, targetVideoId =
-                            match existingOpt with
-                            | Some v -> false, v.Id
+                            // UUID バックフィル
+                            if v.FileUuid.IsNone then
+                                match FileIdentity.computeFileUuid normFilePath with
+                                | Ok uuid ->
+                                    let! updateUuidRes = Db.updateVideoFileUuid conn v.Id uuid
+                                    match updateUuidRes with
+                                    | Ok _ ->
+                                        let updated = { v with FileUuid = Some uuid }
+                                        existingVideoDict.[normFilePath] <- updated
+                                    | Error err ->
+                                        do! Db.saveErrorLog conn $"Failed to update file UUID for video {v.Id}: {err}" None
+                                | Error _ -> ()
+
+                            let currentVideo = existingVideoDict.[normFilePath]
+
+                            // サムネイル解決 (DRY)
+                            let finalThumbOpt, thumbExists = resolveThumbnail thumbDir currentVideo.Id currentVideo.ThumbnailPath
+
+                            if thumbExists && currentVideo.ThumbnailPath <> finalThumbOpt then
+                                let! updateMetaRes = Db.updateVideoMetadata conn currentVideo.Id currentVideo.Duration finalThumbOpt
+                                match updateMetaRes with
+                                | Ok _ ->
+                                    let updated = { currentVideo with ThumbnailPath = finalThumbOpt }
+                                    existingVideoDict.[normFilePath] <- updated
+                                | Error err ->
+                                    do! Db.saveErrorLog conn $"Failed to update video metadata for {currentVideo.Id}: {err}" None
+
+                            let latestVideo = existingVideoDict.[normFilePath]
+
+                            // 再処理判定 (DRY)
+                            do! enqueueMediaIfNeeded conn mediaProc thumbDir latestVideo.Id normFilePath fileName thumbExists latestVideo.Duration
+
+                            // 更新日時バックフィル（UTC基準で厳密に比較し無駄な更新を抑止）
+                            let diffSeconds =
+                                Math.Abs(
+                                    (latestVideo.FileModifiedAt.ToUniversalTime() - fileModifiedAt.ToUniversalTime())
+                                        .TotalSeconds
+                                )
+
+                            if diffSeconds > 1.0 then
+                                let! updateModRes = Db.updateVideoFileModifiedAt conn latestVideo.Id fileModifiedAt
+                                match updateModRes with
+                                | Ok _ -> ()
+                                | Error err ->
+                                    do! Db.saveErrorLog conn $"Failed to update fileModifiedAt for {latestVideo.Id}: {err}" None
+
+                            // フォルダタグおよび自動ルールタグ適用
+                            do! applyTagsForVideo latestVideo.Id normFilePath fileName fileSize
+
+                    // -----------------------------------------------------------------
+                    // Phase 2: 未登録パスファイルの UUID 移動・リネーム追従（または旧レコードフォールバック）
+                    // -----------------------------------------------------------------
+                    // unmatchedDbVideos の O(1) ルックアップインデックス構築
+                    let uuidIndex = System.Collections.Generic.Dictionary<string, ResizeArray<Video>>(StringComparer.OrdinalIgnoreCase)
+                    let fileSizeIndex = System.Collections.Generic.Dictionary<int64, ResizeArray<Video>>()
+
+                    for v in unmatchedDbVideos.Values do
+                        match v.FileUuid with
+                        | Some u ->
+                            match uuidIndex.TryGetValue(u) with
+                            | true, list -> list.Add(v)
+                            | false, _ ->
+                                let list = ResizeArray<Video>()
+                                list.Add(v)
+                                uuidIndex.[u] <- list
+                        | None -> ()
+
+                        match fileSizeIndex.TryGetValue(v.FileSize) with
+                        | true, list -> list.Add(v)
+                        | false, _ ->
+                            let list = ResizeArray<Video>()
+                            list.Add(v)
+                            fileSizeIndex.[v.FileSize] <- list
+
+                    for normFilePath in unmatchedFiles do
+                        let fi = FileInfo(normFilePath)
+                        if not fi.Exists then
+                            () // 走査後に外部削除されたファイルはスキップ
+                        else
+                            let fileName = Path.GetFileName normFilePath
+                            let fileSize = fi.Length
+                            let fileModifiedAt = fi.LastWriteTimeUtc
+                            let computedUuidOpt =
+                                match FileIdentity.computeFileUuid normFilePath with
+                                | Ok u -> Some u
+                                | Error _ -> None
+
+                            // 候補検索
+                            let candidateOpt =
+                                // 1. UUID 一致候補
+                                let uuidCandidates =
+                                    match computedUuidOpt with
+                                    | Some uuid ->
+                                        match uuidIndex.TryGetValue(uuid) with
+                                        | true, list ->
+                                            list
+                                            |> Seq.filter (fun c -> unmatchedDbVideos.ContainsKey(c.Id))
+                                            |> Seq.toList
+                                        | false, _ -> []
+                                    | None -> []
+
+                                if not (List.isEmpty uuidCandidates) then
+                                    uuidCandidates
+                                    |> List.sortBy (fun v ->
+                                        let nameMatch = if String.Equals(v.FileName, fileName, StringComparison.OrdinalIgnoreCase) then 0 else 1
+                                        let timeDiff = Math.Abs((v.FileModifiedAt.ToUniversalTime() - fileModifiedAt.ToUniversalTime()).TotalSeconds)
+                                        (nameMatch, timeDiff, v.Id))
+                                    |> List.tryHead
+                                else
+                                    // 2. 旧レコードフォールバック (FileUuid が None のレコードのみ)
+                                    let fallbackCandidates =
+                                        match fileSizeIndex.TryGetValue(fileSize) with
+                                        | true, list ->
+                                            list
+                                            |> Seq.filter (fun c ->
+                                                unmatchedDbVideos.ContainsKey(c.Id)
+                                                && c.FileUuid.IsNone
+                                                && (String.Equals(c.FileName, fileName, StringComparison.OrdinalIgnoreCase)
+                                                    || Math.Abs((c.FileModifiedAt.ToUniversalTime() - fileModifiedAt.ToUniversalTime()).TotalSeconds) <= 2.0))
+                                            |> Seq.toList
+                                        | false, _ -> []
+
+                                    fallbackCandidates
+                                    |> List.sortBy (fun v ->
+                                        let nameMatch = if String.Equals(v.FileName, fileName, StringComparison.OrdinalIgnoreCase) then 0 else 1
+                                        let timeDiff = Math.Abs((v.FileModifiedAt.ToUniversalTime() - fileModifiedAt.ToUniversalTime()).TotalSeconds)
+                                        (nameMatch, timeDiff, v.Id))
+                                    |> List.tryHead
+
+                            match candidateOpt with
+                            | Some v ->
+                                // 移動・リネーム追従（引き継ぎ）
+                                unmatchedDbVideos.Remove(v.Id) |> ignore
+                                activeVideoIds.Add(v.Id) |> ignore
+
+                                let finalThumbOpt, thumbExists = resolveThumbnail thumbDir v.Id v.ThumbnailPath
+
+                                let! updateLocRes =
+                                    Db.updateVideoLocation conn v.Id fileName normFilePath fileSize fileModifiedAt computedUuidOpt finalThumbOpt
+
+                                match updateLocRes with
+                                | Ok _ ->
+                                    let updatedVideo = {
+                                        v with
+                                            FileName = fileName
+                                            FilePath = normFilePath
+                                            FileSize = fileSize
+                                            FileModifiedAt = fileModifiedAt
+                                            FileUuid = computedUuidOpt
+                                            ThumbnailPath = finalThumbOpt
+                                    }
+                                    existingVideoDict.[normFilePath] <- updatedVideo
+
+                                    do! enqueueMediaIfNeeded conn mediaProc thumbDir v.Id normFilePath fileName thumbExists v.Duration
+                                    do! applyTagsForVideo v.Id normFilePath fileName fileSize
+                                | Error err ->
+                                    do! Db.saveErrorLog conn $"Failed to update video location for {v.Id}: {err}" None
+
                             | None ->
+                                // 完全新規動画
                                 let guidStr = Guid.NewGuid().ToString("N")
                                 let videoId = $"v_{guidStr.Substring(0, 8)}"
-                                true, videoId
+                                activeVideoIds.Add(videoId) |> ignore
 
-                        if isNew then
-                            // 新規登録時は重いメディア処理を待たず、まずファイル情報のみで即座にDB保存してスキャン・表示を優先
-                            let newVideo = {
-                                Id = targetVideoId
-                                FileName = fileName
-                                FilePath = normFilePath
-                                Duration = 0L
-                                FileSize = fileSize
-                                ThumbnailPath = None
-                                IsFavorite = false
-                                CreatedAt = DateTime.UtcNow
-                                FileModifiedAt = fileModifiedAt
-                                AccessCount = 0
-                                LastAccessedAt = None
-                                Tags = []
-                                FileUuid = None
-                            }
+                                let newVideo = {
+                                    Id = videoId
+                                    FileName = fileName
+                                    FilePath = normFilePath
+                                    Duration = 0L
+                                    FileSize = fileSize
+                                    ThumbnailPath = None
+                                    IsFavorite = false
+                                    CreatedAt = DateTime.UtcNow
+                                    FileModifiedAt = fileModifiedAt
+                                    AccessCount = 0
+                                    LastAccessedAt = None
+                                    Tags = []
+                                    FileUuid = computedUuidOpt
+                                }
 
-                            let! saveResult = Db.saveVideo conn newVideo
+                                let! saveResult = Db.saveVideo conn newVideo
 
-                            match saveResult with
-                            | Ok rows when rows > 0 ->
-                                addedCount <- addedCount + 1
-                                existingVideoDict.[normFilePath] <- newVideo
+                                match saveResult with
+                                | Ok rows when rows > 0 ->
+                                    addedCount <- addedCount + 1
+                                    existingVideoDict.[normFilePath] <- newVideo
 
-                                let fileName = Path.GetFileName(normFilePath)
-                                let fnBytes = System.Text.Encoding.UTF8.GetByteCount(fileName)
-                                if fnBytes > 255 then
-                                    // 255バイト制限 (NAME_MAX) 超過警告を記録し、外部メディアキューへの投入をスキップ (FFmpegハング防止)
-                                    do! Db.saveErrorLog conn $"[Scanner Warning] 動画ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過しているため、Linux/WSL/Docker 環境で再生やメディア処理が失敗する可能性があります。VideoId={targetVideoId}, FilePath={normFilePath}, Bytes={fnBytes}" None
-                                else
-                                    // 非同期バックグラウンドのサムネイル・メタデータ生成キューへ投入
-                                    MediaQueue.enqueue {
-                                        VideoId = targetVideoId
-                                        FilePath = normFilePath
-                                        ThumbDir = thumbDir
-                                        MediaProc = mediaProc
-                                        ConnectionString = conn.ConnectionString
-                                    }
-                            | _ -> ()
+                                    do! enqueueMediaIfNeeded conn mediaProc thumbDir videoId normFilePath fileName false 0L
+                                    do! applyTagsForVideo videoId normFilePath fileName fileSize
+                                | Ok _ -> ()
+                                | Error err ->
+                                    do! Db.saveErrorLog conn $"Failed to save new video {videoId}: {err}" None
+
+                    // -----------------------------------------------------------------
+                    // Phase 3: 不在 DB レコードおよび孤児サムネイルの自動削除
+                    // -----------------------------------------------------------------
+                    for KeyValue(unmatchedId, v) in unmatchedDbVideos do
+                        let isInFailedDir =
+                            failedDirs
+                            |> Seq.exists (fun failedDir ->
+                                isSubPathOf failedDir v.FilePath
+                                || (
+                                    try
+                                        let normDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath failedDir))
+                                        let fileDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath (Path.GetDirectoryName v.FilePath)))
+                                        String.Equals(normDir, fileDir, StringComparison.OrdinalIgnoreCase)
+                                    with _ -> false
+                                ))
+
+                        if isInFailedDir then
+                            // 走査例外が発生したディレクトリ配下のファイルは誤削除防止のため保護する (SE-201)
+                            activeVideoIds.Add(v.Id) |> ignore
                         else
-                            match existingOpt with
-                            | Some v ->
-                                let fileName = Path.GetFileName(normFilePath)
-                                let fnBytes = System.Text.Encoding.UTF8.GetByteCount(fileName)
-                                let isFileNameTooLong = fnBytes > 255
+                            let belongsToExistingRoot = existingRoots |> List.exists (fun root -> isSubPathOf root v.FilePath)
+                            let belongsToAnyConfiguredRoot = videoDirs |> List.exists (fun d -> not (String.IsNullOrWhiteSpace d) && isSubPathOf (d.Trim()) v.FilePath)
+                            let shouldDelete = belongsToExistingRoot || not belongsToAnyConfiguredRoot
 
-                                // 既存動画の場合でも、サムネイル画像が未作成・実ファイルが存在しない、またはメタデータが未取得 (Duration = 0L) の場合はキューへ再投入
-                                let thumbMissing =
+                            if shouldDelete then
+                                let! delRes = Db.deleteVideo conn v.Id
+                                match delRes with
+                                | Ok () ->
+                                    let expectedThumb = Path.Combine(thumbDir, $"{v.Id}.jpg")
+                                    if File.Exists(expectedThumb) then
+                                        try File.Delete(expectedThumb) with _ -> ()
                                     match v.ThumbnailPath with
-                                    | None -> true
-                                    | Some path -> not (File.Exists(path))
+                                    | Some p when File.Exists(p) && not (String.Equals(Path.GetFullPath(p), Path.GetFullPath(expectedThumb), StringComparison.OrdinalIgnoreCase)) ->
+                                        try File.Delete(p) with _ -> ()
+                                    | _ -> ()
+                                | Error err ->
+                                    do! Db.saveErrorLog conn $"Failed to delete video {v.Id}: {err}" None
+                            else
+                                activeVideoIds.Add(v.Id) |> ignore
 
-                                let durationMissing = v.Duration = 0L
-
-                                if (thumbMissing || durationMissing) && not isFileNameTooLong then
-                                    MediaQueue.enqueue {
-                                        VideoId = targetVideoId
-                                        FilePath = normFilePath
-                                        ThumbDir = thumbDir
-                                        MediaProc = mediaProc
-                                        ConnectionString = conn.ConnectionString
-                                    }
-
-                                // 既存動画の FileModifiedAt バックフィル（UTC基準で厳密に比較し無駄な更新を抑止）
-                                let diffSeconds =
-                                    Math.Abs(
-                                        (v.FileModifiedAt.ToUniversalTime() - fileModifiedAt.ToUniversalTime())
-                                            .TotalSeconds
-                                    )
-
-                                if diffSeconds > 1.0 then
-                                    let! _ = Db.updateVideoFileModifiedAt conn targetVideoId fileModifiedAt
-                                    ()
-                            | None -> ()
-
-                        // タグを動画に関連付け、インメモリ辞書も同期更新するヘルパー
-                        let attachTag (tagId: string) (tagName: string) =
-                            async {
-                                let alreadyHasTag =
-                                    match existingVideoDict.TryGetValue(normFilePath) with
-                                    | true, v -> v.Tags |> List.exists (fun t -> t.Id = tagId)
-                                    | false, _ -> false
-
-                                if not alreadyHasTag then
-                                    let! _ = Db.addTagToVideo conn targetVideoId tagId
-
-                                    match existingVideoDict.TryGetValue(normFilePath) with
-                                    | true, v ->
-                                        let updated = {
-                                            v with
-                                                Tags = {
-                                                    Tag.Id = tagId
-                                                    Name = tagName
-                                                    ColorCode = "#64748b"
-                                                    ParentId = None
-                                                    VideoCount = 0
-                                                }
-                                                       :: v.Tags
-                                        }
-
-                                        existingVideoDict.[normFilePath] <- updated
-                                    | false, _ -> ()
-                            }
-
-                        // フォルダ名からタグを自動作成・付与（入れ子ルート対応・全所属ルートの和集合）
-                        let folderTags = deriveAllFolderTags videoDirs normFilePath
-
-                        for folderName in folderTags do
-                            let folderNameTrimmed = folderName.Trim()
-
-                            if not (String.IsNullOrEmpty(folderNameTrimmed)) then
-                                let! tagId = getOrCreateTagId folderNameTrimmed
-                                do! attachTag tagId folderNameTrimmed
-
-                        // 自動タグ付けルールの評価と適用 (毎回 getVideos せず fileSize をそのまま利用)
-                        let autoTagIds =
-                            TaggingEngine.evaluateRulesFull rules fileName normFilePath fileSize
-
-                        for tagId in autoTagIds do
-                            do! attachTag tagId ""
+                    // 孤児サムネイル画像の削除
+                    if not (String.IsNullOrEmpty(thumbDir)) && Directory.Exists(thumbDir) then
+                        for filePath in Directory.GetFiles(thumbDir, "*.jpg") do
+                            let fn = Path.GetFileNameWithoutExtension(filePath)
+                            if fn.StartsWith("v_") && not (activeVideoIds.Contains(fn)) then
+                                try File.Delete(filePath) with _ -> ()
 
                     return Ok addedCount
             with ex ->

@@ -305,6 +305,158 @@ Test 4 (Db non-existent Id updates): Ok () [No unhandled exception / crash]
 
 ---
 
+# レビュー記録: uuid-video-identity-and-cleanup / apply / task-2 (PG Review)
+
+- **日時**: 2026-11-08
+- **フェーズ**: apply
+- **タスク**: タスク 2 (2.1 / 2.2) - スキャン 3 フェーズ同期・UUID 移動リネーム追従・クリーンアップ
+- **レビュアー**: pg (PG Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager/Scanner.fs` (`syncVideoDirectories`), `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: 暗黙の仮定・手抜き実装の告発
+
+- **確認内容・回答**:
+  - `uniqueFiles` 走査後に外部からファイルが削除された場合（`fi.Exists = false`）に 0 バイトファイルとして誤登録・誤マッチされるリスクについて、ループ冒頭で `if not fi.Exists then ()` でスキップするガード節を追加した。
+  - 同一UUID・同一ファイル名・同日時の複数候補が存在する場合のタイブレークにおいて、`(nameMatch, timeDiff, v.Id)` の 3 タプルソートを導入し、完全な決定論性（再現性）を担保した。
+- **確認根拠**: `src/TagBasedVideoManager/Scanner.fs` (L450-460, L510-530), `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs` (`PG-01`)
+
+### 設問2: 例外の握りつぶし・サイレントエラーの撲滅
+
+- **確認内容・回答**:
+  - Linux 255 バイト制限時の警告ログ記録をヘルパー関数 `enqueueMediaIfNeeded` に集約し、新規追加時だけでなく既存パス一致時や移動追従時にも漏れなく記録されるよう改善した。
+- **確認根拠**: `src/TagBasedVideoManager/Scanner.fs` (L121-144)
+
+### 設問3: 30%コード削減・過剰抽象化の告発（YAGNI検証）
+
+- **確認内容・回答**:
+  - Phase 1 と Phase 2 で重複していたサムネイル解決ロジック（`resolveThumbnail`）およびメディアキュー投入判定（`enqueueMediaIfNeeded`）をプライベートヘルパーとして抽出し、約 100 行のコードを削減した。
+  - Phase 2 の未マッチ候補探索において、UUID および FileSize のインデックス辞書（`Dictionary<string, ResizeArray<Video>>` / `Dictionary<int64, ResizeArray<Video>>`）を構築し、計算量を $O(M \times N)$ から $O(1)$ ハッシュ検索へ高速化した。
+- **確認根拠**: `src/TagBasedVideoManager/Scanner.fs` (L109-144, L490-540)
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- **対象関数/モジュール**: `Scanner.syncVideoDirectories`
+- **破壊テストコード名**: `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs` (`PG-01`)
+- **実行コマンド**: `dotnet run --project test/TagBasedVideoManager.Tests/TagBasedVideoManager.Tests.fsproj -- --filter-class "*ScannerTests*"`
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+
+---
+
+## 3. 指摘事項
+
+### 指摘PG-201
+- **内容**: `unmatchedDbVideos` の二重ループ全走査（$O(M \times N)$）について、事前インデックス化による $O(1)$ 候補取得へリファクタリングを実施すること。
+- **重要度**: Major
+- **対応方針**: 採用・反映済み
+- **対応コミット**: タスク 2.2 リファクタで反映完了
+
+### 指摘PG-202
+- **内容**: サムネイル解決およびキュー判定ロジックを共通関数（`resolveThumbnail`, `enqueueMediaIfNeeded`）へ抽出し DRY 化すること。
+- **重要度**: Major
+- **対応方針**: 採用・反映済み
+- **対応コミット**: タスク 2.2 リファクタで反映完了
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: タスク 2.3 完了承認
+
+---
+
+# レビュー記録: uuid-video-identity-and-cleanup / apply / task-2 (QA Review)
+
+- **日時**: 2026-11-08
+- **フェーズ**: apply
+- **タスク**: タスク 2 (2.1 / 2.2) - スキャン 3 フェーズ同期・UUID 移動リネーム追従・クリーンアップ
+- **レビュアー**: qa (QA Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md`
+- **対象成果物**: `src/TagBasedVideoManager/Scanner.fs`, `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs` (UT-07〜17, ADV-01〜04)
+
+---
+
+## 1. 挑戦的設問への回答（checklist_apply_test.md）
+
+### 設問1: トートロジーテストの検証
+- **確認内容・回答**: UT-07〜UT-17 のテストにおいて、期待値にプロダクションコードの式をコピペした箇所はなく、具象リテラルや客観的な状態変化（DBレコード不在、サムネイル不在等）で厳格に検証されている。
+
+### 設問2: 甘いアサーション・無意味なモックの検証
+- **確認内容・回答**: 外部プロセス `IMediaProcessor` のみをモック化し、SQLite や実ファイルシステムは一切モック化せず実環境で副作用を検証している。
+
+---
+
+## 2. Adversarial QA（敵対的破壊テスト実行結果）
+
+- **対象関数/モジュール**: `Scanner.syncVideoDirectories`
+- **破壊テストコード名**: `ScannerTests.fs` (`ADV-01` 〜 `ADV-04`, `ADV-01b`, `ADV-02b`)
+- **実行判定**: 堅牢性確認（6シナリオ全件 Green / 落とせず）
+  1. `ADV-01 / 01b`: 同一内容・ミリ秒同一日時の複数ファイル同時移動・リネーム（一意かつ決定論的に割り当て成功）
+  2. `ADV-02 / 02b`: 読み取り専用ファイル、ディレクトリと同名サムネイル、不正拡張子を含む孤児サムネイル掃除（安全に保護・削除）
+  3. `ADV-03`: スキャン走査中〜Phase 3 の間の外部削除による状態不整合（例外クラッシュなく正常完了）
+  4. `ADV-04`: 絵文字・サロゲートペア・特殊記号を含む多段フォルダからのタグ導出と保存（完全正常終了）
+
+---
+
+## 3. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: タスク 2.3 完了承認
+
+---
+
+# レビュー記録: uuid-video-identity-and-cleanup / apply / task-2 (SE Review)
+
+- **日時**: 2026-11-08
+- **フェーズ**: apply
+- **タスク**: タスク 2 (2.1 / 2.2) - 指摘事項（SE-201〜SE-204）対応後の再レビューおよび耐障害性検証
+- **レビュアー**: se (SE Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager/Scanner.fs`, `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs`
+
+---
+
+## 1. 指摘事項の対応検証結果
+
+### SE-201（Major: I/O 例外時のカスケード誤削除リスク）の検証
+- **対応内容**:
+  1. `Scanner.enumerateFilesSafe` を導入し、走査中に `UnauthorizedAccessException` や `IOException` が発生したディレクトリパスを `failedDirs: HashSet<string>` に収集。
+  2. `failedDirs.Count > 0` の場合は `Db.saveErrorLog` に誤削除防止ガードの発動を記録。
+  3. Phase 3 の不在レコード削除判定において `isInFailedDir` ガードを追加し、走査失敗ディレクトリ配下の動画レコードを削除対象から除外（`activeVideoIds.Add(v.Id)` で保護）。
+- **検証結果**: **合格（解消）**。単体テスト `SE-201`（`icacls` アクセス拒否シミュレーション）で保護を確認。
+
+### SE-202（Minor: DB 削除成否検証とサムネイル先行削除防止）の検証
+- **対応内容**: `Db.deleteVideo` の結果を検証し、`Ok ()` の場合のみサムネイル実ファイルの物理削除を実行。DB ロック等による失敗時はサムネイルを維持し不整合を防止。
+- **検証結果**: **合格（解消）**。単体テスト `SE-202` で整合性保持を確認。
+
+---
+
+## 2. 保留指摘（アーカイブ申し送り事項）
+
+- **SE-204 (Suggestion)**: `File.Delete` 失敗時の警告ログ出力（現状はクラッシュ防止のため `try ... with _ -> ()` で安全に握りつぶし。将来的なロガー導入時に `handover.md` へ引き継ぎ推奨）。
+
+---
+
+## 3. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: 指摘SE-204
+- **次のアクション**: タスク 2 完了承認（次タスク 3 へ進行可能）
+
+---
+
 # レビュー記録: uuid-video-identity-and-cleanup / apply / task-1 (QA Review)
 
 - **日時**: 2026-11-08
@@ -384,3 +536,155 @@ Adv-10: 10,000文字パス・絵文字・サロゲートペア（映画🎬𠮷�
 - **条件付きLGTM**: なし
 - **保留指摘（申し送り）**: なし（指摘QA-1, QA-2 はタスク 1 内で即時反映完了）
 - **次のアクション**: タスク 1.3 完了（次タスク 2 へ進行可能）
+
+---
+
+# レビュー記録: uuid-video-identity-and-cleanup / apply / task-2 (PG Review)
+
+- **日時**: 2026-11-08
+- **フェーズ**: apply
+- **タスク**: タスク 2 (2.1 / 2.2) - スキャン 3 フェーズ同期・UUID 移動リネーム追従・クリーンアップ
+- **レビュアー**: pg (PG Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager/Scanner.fs` (`syncVideoDirectories`), `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: 暗黙の仮定・手抜き実装の告発
+
+- **確認内容・回答**:
+  - `uniqueFiles` 走査後に外部からファイルが削除された場合（`fi.Exists = false`）に 0 バイトファイルとして誤登録・誤マッチされるリスクについて、ループ冒頭で `if not fi.Exists then ()` でスキップするガード節を追加した。
+  - 同一UUID・同一ファイル名・同日時の複数候補が存在する場合のタイブレークにおいて、`(nameMatch, timeDiff, v.Id)` の 3 タプルソートを導入し、完全な決定論性（再現性）を担保した。
+- **確認根拠**: `src/TagBasedVideoManager/Scanner.fs` (L450-460, L510-530), `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs` (`PG-01`)
+
+### 設問2: 例外の握りつぶし・サイレントエラーの撲滅
+
+- **確認内容・回答**:
+  - Linux 255 バイト制限時の警告ログ記録をヘルパー関数 `enqueueMediaIfNeeded` に集約し、新規追加時だけでなく既存パス一致時や移動追従時にも漏れなく記録されるよう改善した。
+- **確認根拠**: `src/TagBasedVideoManager/Scanner.fs` (L121-144)
+
+### 設問3: 30%コード削減・過剰抽象化の告発（YAGNI検証）
+
+- **確認内容・回答**:
+  - Phase 1 と Phase 2 で重複していたサムネイル解決ロジック（`resolveThumbnail`）およびメディアキュー投入判定（`enqueueMediaIfNeeded`）をプライベートヘルパーとして抽出し、約 100 行のコードを削減した。
+  - Phase 2 の未マッチ候補探索において、UUID および FileSize のインデックス辞書（`Dictionary<string, ResizeArray<Video>>` / `Dictionary<int64, ResizeArray<Video>>`）を構築し、計算量を $O(M \times N)$ から $O(1)$ ハッシュ検索へ高速化した。
+- **確認根拠**: `src/TagBasedVideoManager/Scanner.fs` (L109-144, L490-540)
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- **対象関数/モジュール**: `Scanner.syncVideoDirectories`
+- **破壊テストコード名**: `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs` (`PG-01`)
+- **実行コマンド**: `dotnet run --project test/TagBasedVideoManager.Tests/TagBasedVideoManager.Tests.fsproj -- --filter-class "*ScannerTests*"`
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+
+---
+
+## 3. 指摘事項
+
+### 指摘PG-201
+- **内容**: `unmatchedDbVideos` の二重ループ全走査（$O(M \times N)$）について、事前インデックス化による $O(1)$ 候補取得へリファクタリングを実施すること。
+- **重要度**: Major
+- **対応方針**: 採用・反映済み
+- **対応コミット**: タスク 2.2 リファクタで反映完了
+
+### 指摘PG-202
+- **内容**: サムネイル解決およびキュー判定ロジックを共通関数（`resolveThumbnail`, `enqueueMediaIfNeeded`）へ抽出し DRY 化すること。
+- **重要度**: Major
+- **対応方針**: 採用・反映済み
+- **対応コミット**: タスク 2.2 リファクタで反映完了
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: タスク 2.3 完了承認
+
+---
+
+# レビュー記録: uuid-video-identity-and-cleanup / apply / task-2 (QA Review)
+
+- **日時**: 2026-11-08
+- **フェーズ**: apply
+- **タスク**: タスク 2 (2.1 / 2.2) - スキャン 3 フェーズ同期・UUID 移動リネーム追従・クリーンアップ
+- **レビュアー**: qa (QA Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md`
+- **対象成果物**: `src/TagBasedVideoManager/Scanner.fs`, `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs` (UT-07〜17, ADV-01〜04)
+
+---
+
+## 1. 挑戦的設問への回答（checklist_apply_test.md）
+
+### 設問1: トートロジーテストの検証
+- **確認内容・回答**: UT-07〜UT-17 のテストにおいて、期待値にプロダクションコードの式をコピペした箇所はなく、具象リテラルや客観的な状態変化（DBレコード不在、サムネイル不在等）で厳格に検証されている。
+
+### 設問2: 甘いアサーション・無意味なモックの検証
+- **確認内容・回答**: 外部プロセス `IMediaProcessor` のみをモック化し、SQLite や実ファイルシステムは一切モック化せず実環境で副作用を検証している。
+
+---
+
+## 2. Adversarial QA（敵対的破壊テスト実行結果）
+
+- **対象関数/モジュール**: `Scanner.syncVideoDirectories`
+- **破壊テストコード名**: `ScannerTests.fs` (`ADV-01` 〜 `ADV-04`, `ADV-01b`, `ADV-02b`)
+- **実行判定**: 堅牢性確認（6シナリオ全件 Green / 落とせず）
+  1. `ADV-01 / 01b`: 同一内容・ミリ秒同一日時の複数ファイル同時移動・リネーム（一意かつ決定論的に割り当て成功）
+  2. `ADV-02 / 02b`: 読み取り専用ファイル、ディレクトリと同名サムネイル、不正拡張子を含む孤児サムネイル掃除（安全に保護・削除）
+  3. `ADV-03`: スキャン走査中〜Phase 3 の間の外部削除による状態不整合（例外クラッシュなく正常完了）
+  4. `ADV-04`: 絵文字・サロゲートペア・特殊記号を含む多段フォルダからのタグ導出と保存（完全正常終了）
+
+---
+
+## 3. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: タスク 2.3 完了承認
+
+---
+
+# レビュー記録: uuid-video-identity-and-cleanup / apply / task-2 (SE Review)
+
+- **日時**: 2026-11-08
+- **フェーズ**: apply
+- **タスク**: タスク 2 (2.1 / 2.2) - 指摘事項（SE-201〜SE-204）対応後の再レビューおよび耐障害性検証
+- **レビュアー**: se (SE Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager/Scanner.fs`, `test/TagBasedVideoManager.Tests/Unit/ScannerTests.fs`
+
+---
+
+## 1. 指摘事項の対応検証結果
+
+### SE-201（Major: I/O 例外時のカスケード誤削除リスク）の検証
+- **対応内容**:
+  1. `Scanner.enumerateFilesSafe` を導入し、走査中に `UnauthorizedAccessException` や `IOException` が発生したディレクトリパスを `failedDirs: HashSet<string>` に収集。
+  2. `failedDirs.Count > 0` の場合は `Db.saveErrorLog` に誤削除防止ガードの発動を記録。
+  3. Phase 3 の不在レコード削除判定において `isInFailedDir` ガードを追加し、走査失敗ディレクトリ配下の動画レコードを削除対象から除外（`activeVideoIds.Add(v.Id)` で保護）。
+- **検証結果**: **合格（解消）**。単体テスト `SE-201`（`icacls` アクセス拒否シミュレーション）で保護を確認。
+
+### SE-202（Minor: DB 削除成否検証とサムネイル先行削除防止）の検証
+- **対応内容**: `Db.deleteVideo` の結果を検証し、`Ok ()` の場合のみサムネイル実ファイルの物理削除を実行。DB ロック等による失敗時はサムネイルを維持し不整合を防止。
+- **検証結果**: **合格（解消）**。単体テスト `SE-202` で整合性保持を確認。
+
+---
+
+## 2. 保留指摘（アーカイブ申し送り事項）
+
+- **SE-204 (Suggestion)**: `File.Delete` 失敗時の警告ログ出力（現状はクラッシュ防止のため `try ... with _ -> ()` で安全に握りつぶし。将来的なロガー導入時に `handover.md` へ引き継ぎ推奨）。
+
+---
+
+## 3. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: 指摘SE-204
+- **次のアクション**: タスク 2 完了承認（次タスク 3 へ進行可能）
