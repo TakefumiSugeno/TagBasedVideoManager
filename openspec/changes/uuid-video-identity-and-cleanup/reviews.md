@@ -352,12 +352,14 @@ Test 4 (Db non-existent Id updates): Ok () [No unhandled exception / crash]
 ## 3. 指摘事項
 
 ### 指摘PG-201
+
 - **内容**: `unmatchedDbVideos` の二重ループ全走査（$O(M \times N)$）について、事前インデックス化による $O(1)$ 候補取得へリファクタリングを実施すること。
 - **重要度**: Major
 - **対応方針**: 採用・反映済み
 - **対応コミット**: タスク 2.2 リファクタで反映完了
 
 ### 指摘PG-202
+
 - **内容**: サムネイル解決およびキュー判定ロジックを共通関数（`resolveThumbnail`, `enqueueMediaIfNeeded`）へ抽出し DRY 化すること。
 - **重要度**: Major
 - **対応方針**: 採用・反映済み
@@ -388,9 +390,11 @@ Test 4 (Db non-existent Id updates): Ok () [No unhandled exception / crash]
 ## 1. 挑戦的設問への回答（checklist_apply_test.md）
 
 ### 設問1: トートロジーテストの検証
+
 - **確認内容・回答**: UT-07〜UT-17 のテストにおいて、期待値にプロダクションコードの式をコピペした箇所はなく、具象リテラルや客観的な状態変化（DBレコード不在、サムネイル不在等）で厳格に検証されている。
 
 ### 設問2: 甘いアサーション・無意味なモックの検証
+
 - **確認内容・回答**: 外部プロセス `IMediaProcessor` のみをモック化し、SQLite や実ファイルシステムは一切モック化せず実環境で副作用を検証している。
 
 ---
@@ -430,6 +434,7 @@ Test 4 (Db non-existent Id updates): Ok () [No unhandled exception / crash]
 ## 1. 指摘事項の対応検証結果
 
 ### SE-201（Major: I/O 例外時のカスケード誤削除リスク）の検証
+
 - **対応内容**:
   1. `Scanner.enumerateFilesSafe` を導入し、走査中に `UnauthorizedAccessException` や `IOException` が発生したディレクトリパスを `failedDirs: HashSet<string>` に収集。
   2. `failedDirs.Count > 0` の場合は `Db.saveErrorLog` に誤削除防止ガードの発動を記録。
@@ -437,6 +442,7 @@ Test 4 (Db non-existent Id updates): Ok () [No unhandled exception / crash]
 - **検証結果**: **合格（解消）**。単体テスト `SE-201`（`icacls` アクセス拒否シミュレーション）で保護を確認。
 
 ### SE-202（Minor: DB 削除成否検証とサムネイル先行削除防止）の検証
+
 - **対応内容**: `Db.deleteVideo` の結果を検証し、`Ok ()` の場合のみサムネイル実ファイルの物理削除を実行。DB ロック等による失敗時はサムネイルを維持し不整合を防止。
 - **検証結果**: **合格（解消）**。単体テスト `SE-202` で整合性保持を確認。
 
@@ -471,17 +477,20 @@ Test 4 (Db non-existent Id updates): Ok () [No unhandled exception / crash]
 ## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
 
 ### 設問1: 暗黙の仮定・手抜き実装の告発
+
 - **確認内容・回答**:
   - `streamVideo` 内に存在していたテスト回避コード（`let isCustomExecutor = executor.GetType().Name.Contains("Test")`）を告発・完全削除した。
   - 単体テスト側（`HttpHandlersTests.fs`）で実在するテンポラリファイル（`Path.GetTempFileName()`）を生成・破棄する構成へ是正し、テストと本番の整合性を回復した。
 - **確認根拠**: `src/TagBasedVideoManager/HttpHandlers.fs` (L75-85), `test/TagBasedVideoManager.Tests/Unit/HttpHandlersTests.fs` (L435-495)
 
 ### 設問2: 例外の握りつぶし・サイレントエラーの撲滅
+
 - **確認内容・回答**:
   - `app.js` の `handleVideoError` において、`if (this.playbackError) return;` の多重発火抑止ガードを追加し、メディアエラーの連続発生時におけるトースト重複・多重 fetch を防止した。
 - **確認根拠**: `src/TagBasedVideoManager/wwwroot/app.js` (L965-975)
 
 ### 設問3: UI デザインモック忠実再現の検証
+
 - **確認内容・回答**:
   - `mockup.html` (L483-544) と `index.html` (L2483-2550) のレイアウト、Tailwind クラス、カラーパレット、メッセージ文言、およびアクションボタン（「プレイヤーを閉じる」「今すぐスキャン同期を実行」）が完全に一致していることを確認した。
 - **確認根拠**: `src/TagBasedVideoManager/wwwroot/index.html` (L2483-2550), `openspec/changes/uuid-video-identity-and-cleanup/mockup.html` (L483-544)
@@ -511,6 +520,7 @@ Test 4 (Db non-existent Id updates): Ok () [No unhandled exception / crash]
 ## 1. 挑戦的設問への回答（checklist_apply_test.md）
 
 ### 設問1: トートロジーテスト・甘いアサーションの撲滅
+
 - **確認内容・回答**:
   - `E2E-03` において、トースト通知とエラーオーバーレイ見出しの双方を個別に厳密アサートし、スキャン同期ボタンもヘッダーへのフォールバックを排除してオーバーレイ内の「今すぐスキャン同期を実行」ボタンを直接待機・クリックするよう厳格化した。
   - `index.html` のエラーオーバーレイを破壊した場合は確実に失敗（Red）するミューテーション耐性を確認した。
@@ -666,12 +676,14 @@ Adv-10: 10,000文字パス・絵文字・サロゲートペア（映画🎬𠮷�
 ## 3. 指摘事項
 
 ### 指摘PG-201
+
 - **内容**: `unmatchedDbVideos` の二重ループ全走査（$O(M \times N)$）について、事前インデックス化による $O(1)$ 候補取得へリファクタリングを実施すること。
 - **重要度**: Major
 - **対応方針**: 採用・反映済み
 - **対応コミット**: タスク 2.2 リファクタで反映完了
 
 ### 指摘PG-202
+
 - **内容**: サムネイル解決およびキュー判定ロジックを共通関数（`resolveThumbnail`, `enqueueMediaIfNeeded`）へ抽出し DRY 化すること。
 - **重要度**: Major
 - **対応方針**: 採用・反映済み
@@ -702,9 +714,11 @@ Adv-10: 10,000文字パス・絵文字・サロゲートペア（映画🎬𠮷�
 ## 1. 挑戦的設問への回答（checklist_apply_test.md）
 
 ### 設問1: トートロジーテストの検証
+
 - **確認内容・回答**: UT-07〜UT-17 のテストにおいて、期待値にプロダクションコードの式をコピペした箇所はなく、具象リテラルや客観的な状態変化（DBレコード不在、サムネイル不在等）で厳格に検証されている。
 
 ### 設問2: 甘いアサーション・無意味なモックの検証
+
 - **確認内容・回答**: 外部プロセス `IMediaProcessor` のみをモック化し、SQLite や実ファイルシステムは一切モック化せず実環境で副作用を検証している。
 
 ---
@@ -744,6 +758,7 @@ Adv-10: 10,000文字パス・絵文字・サロゲートペア（映画🎬𠮷�
 ## 1. 指摘事項の対応検証結果
 
 ### SE-201（Major: I/O 例外時のカスケード誤削除リスク）の検証
+
 - **対応内容**:
   1. `Scanner.enumerateFilesSafe` を導入し、走査中に `UnauthorizedAccessException` や `IOException` が発生したディレクトリパスを `failedDirs: HashSet<string>` に収集。
   2. `failedDirs.Count > 0` の場合は `Db.saveErrorLog` に誤削除防止ガードの発動を記録。
@@ -751,6 +766,7 @@ Adv-10: 10,000文字パス・絵文字・サロゲートペア（映画🎬𠮷�
 - **検証結果**: **合格（解消）**。単体テスト `SE-201`（`icacls` アクセス拒否シミュレーション）で保護を確認。
 
 ### SE-202（Minor: DB 削除成否検証とサムネイル先行削除防止）の検証
+
 - **対応内容**: `Db.deleteVideo` の結果を検証し、`Ok ()` の場合のみサムネイル実ファイルの物理削除を実行。DB ロック等による失敗時はサムネイルを維持し不整合を防止。
 - **検証結果**: **合格（解消）**。単体テスト `SE-202` で整合性保持を確認。
 
@@ -785,17 +801,20 @@ Adv-10: 10,000文字パス・絵文字・サロゲートペア（映画🎬𠮷�
 ## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
 
 ### 設問1: 暗黙の仮定・手抜き実装の告発
+
 - **確認内容・回答**:
   - `streamVideo` 内に存在していたテスト回避コード（`let isCustomExecutor = executor.GetType().Name.Contains("Test")`）を告発・完全削除した。
   - 単体テスト側（`HttpHandlersTests.fs`）で実在するテンポラリファイル（`Path.GetTempFileName()`）を生成・破棄する構成へ是正し、テストと本番の整合性を回復した。
 - **確認根拠**: `src/TagBasedVideoManager/HttpHandlers.fs` (L75-85), `test/TagBasedVideoManager.Tests/Unit/HttpHandlersTests.fs` (L435-495)
 
 ### 設問2: 例外の握りつぶし・サイレントエラーの撲滅
+
 - **確認内容・回答**:
   - `app.js` の `handleVideoError` において、`if (this.playbackError) return;` の多重発火抑止ガードを追加し、メディアエラーの連続発生時におけるトースト重複・多重 fetch を防止した。
 - **確認根拠**: `src/TagBasedVideoManager/wwwroot/app.js` (L965-975)
 
 ### 設問3: UI デザインモック忠実再現の検証
+
 - **確認内容・回答**:
   - `mockup.html` (L483-544) と `index.html` (L2483-2550) のレイアウト、Tailwind クラス、カラーパレット、メッセージ文言、およびアクションボタン（「プレイヤーを閉じる」「今すぐスキャン同期を実行」）が完全に一致していることを確認した。
 - **確認根拠**: `src/TagBasedVideoManager/wwwroot/index.html` (L2483-2550), `openspec/changes/uuid-video-identity-and-cleanup/mockup.html` (L483-544)
@@ -825,6 +844,7 @@ Adv-10: 10,000文字パス・絵文字・サロゲートペア（映画🎬𠮷�
 ## 1. 挑戦的設問への回答（checklist_apply_test.md）
 
 ### 設問1: トートロジーテスト・甘いアサーションの撲滅
+
 - **確認内容・回答**:
   - `E2E-03` において、トースト通知とエラーオーバーレイ見出しの双方を個別に厳密アサートし、スキャン同期ボタンもヘッダーへのフォールバックを排除してオーバーレイ内の「今すぐスキャン同期を実行」ボタンを直接待機・クリックするよう厳格化した。
   - `index.html` のエラーオーバーレイを破壊した場合は確実に失敗（Red）するミューテーション耐性を確認した。

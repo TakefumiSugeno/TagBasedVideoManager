@@ -20,5 +20,5 @@
 
 ## 4. 全テスト・C0/C1/C2カバレッジ・エビデンス確認とゲート検証
 
-- [ ] 4.1 自動フォーマット（`dotnet format whitespace` / `npx prettier`）および静的解析を実行し、全単体・結合・E2E テストを実行して TRX レポート・HTML カバレッジレポート（C0 80%+/差分90%+、C1 80%+/差分85%+、C2 100%）・E2E 画面キャプチャ（PNG）を `test/TestResults/` に出力・確認する
-- [ ] 4.2 `openspec validate "uuid-video-identity-and-cleanup"` および `pwsh ./openspec/scripts/verify-gate.ps1 -Gate apply -ChangeName "uuid-video-identity-and-cleanup"` を実行し、全チェックが PASS することを確認する
+- [x] 4.1 自動フォーマット（`dotnet format whitespace` / `npx prettier`）および静的解析を実行し、全単体・結合・E2E テストを実行して TRX レポート・HTML カバレッジレポート（C0 80%+/差分90%+、C1 80%+/差分85%+、C2 100%）・E2E 画面キャプチャ（PNG）を `test/TestResults/` に出力・確認する
+- [x] 4.2 `openspec validate "uuid-video-identity-and-cleanup"` および `pwsh ./openspec/scripts/verify-gate.ps1 -Gate apply -ChangeName "uuid-video-identity-and-cleanup"` を実行し、全チェックが PASS することを確認する
