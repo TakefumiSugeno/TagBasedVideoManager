@@ -4,7 +4,7 @@
 
 ### Requirement: HTTP Range Requests (HTTP 206) による動画ストリーミング配信
 
-システムは、`GET /api/videos/{id}/stream` に対する Range リクエストヘッダーを解釈し、指定されたバイト範囲のストリーミングデータと HTTP 206 Partial Content レスポンスを返却しなければならない（SHALL）。対象動画の物理ファイルがストレージ上に存在しない場合は HTTP 404 Not Found を返却しなければならない（SHALL）。また、Linux (WSL / Docker / DevContainer) 環境等においてファイル名の長さがカーネル制限（`NAME_MAX` 255バイト）を超過している場合、システムはストリーミング実行前にファイル名単体の UTF-8 バイト数を検査して直ちに HTTP 422 Unprocessable Entity とエラーコード `FILE_NAME_TOO_LONG` を含む JSON レスポンスを返却しなければならない（SHALL）。ストリーミング実行中に `PathTooLongException` や関連する例外が発生した場合も HTTP 500 クラッシュを起こしてはならず（SHALL NOT）、安全に捕捉して同様に HTTP 422 JSON を返却しなければならない（SHALL）。なお、クライアント切断（`OperationCanceledException`）時はエラーログを記録せず安全にハンドラーを終了しなければならない（SHALL）。
+システムは、`GET /api/videos/{id}/stream` の Range ヘッダーを解釈し、指定範囲のバイナリと HTTP 206 Partial Content を返却しなければならない（SHALL）。物理ファイル不在時は HTTP 404 Not Found を返却しなければならない（SHALL）。また、Linux 環境等においてファイル名がカーネル制限（`NAME_MAX` 255バイト）を超過している場合、ストリーミング前にファイル名単体の UTF-8 バイト数を検査し、直ちに HTTP 422 とエラーコード `FILE_NAME_TOO_LONG` を含む JSON を返却しなければならない（SHALL）。実行中に `PathTooLongException` 等の関連例外が発生した場合も HTTP 500 クラッシュさせず（SHALL NOT）、安全に捕捉して HTTP 422 JSON を返却しなければならない（SHALL）。クライアント切断（`OperationCanceledException`）時はエラーログを記録せず静かに終了しなければならない（SHALL）。
 
 #### Scenario: シーク再生時の部分コンテンツ要求
 

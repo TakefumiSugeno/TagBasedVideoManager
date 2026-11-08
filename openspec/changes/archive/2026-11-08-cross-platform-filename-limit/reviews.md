@@ -195,3 +195,52 @@
 - **保留指摘（申し送り）**: なし
 - **承認者**: QA Reviewer Agent & PG Reviewer Agent
 - **次のアクション**: Gate 2 検証（`verify-gate.ps1 -Gate apply`）を実行する。
+
+---
+
+# Archive フェーズ 総括レビュー記録
+
+- **日時**: 2026-11-08
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+- **レビュアー**: User Reviewer Agent / SE Reviewer Agent / PG Reviewer Agent / QA Reviewer Agent（全4ロール）
+- **対象成果物**: 実装コミット `845eddb`, `handover.md`, `reviews.md`, `design.md`, `specs/**/spec.md`, `tasks.md`
+
+---
+
+## 1. 隠された技術的負債・妥協点の自白（SE & PG Reviewer 回答）
+
+1. **今回あえて残した技術的負債と引き継ぎ状況**:
+   - `Views.fs` における `candidateCardVertical` と `candidateCardHorizontal` のメトリクス・バッジ計算ロジック重複、および `RenameProposal` の手動初期化ボイラープレートについては、回帰防止を優先して現状維持とし、`handover.md` Section 4 に将来のリファクタリング候補として明記済み。
+   - `FileScanner.fs` と `FileRenamer.fs` における Windows 超長パス（`\\?\`）処理の分散についても `handover.md` Section 4 に記録済み。
+2. **将来の機能追加で踏み抜く可能性が高い罠**:
+   - Renamer の目標閾値（240B：連番サフィックス用マージン込み）と Web サーバーの Fail-Fast 境界（255B：Linux `NAME_MAX` 上限）の 15 バイト安全マージンを安易に 255B に統一すると、衝突サフィックス付与時に 255B を再超過する罠があるため、`handover.md` Section 5 に設計意図を明記して保護。
+   - `<video>` タグの `@error` と `fetch` 調査の二段構え設計の意図を `design.md` Decision 5 に記録済み。
+
+---
+
+## 2. 初見エンジニア視点でのドキュメント検証（User Reviewer 回答）
+
+1. **設計の背景（Why）の追跡可能性**:
+   - Windows (UTF-16 260字) と Linux (UTF-8 255B) の非対称性、ボツ案（仮想マッピングやサイレント強制リネームの不採用理由）、255B 超ファイルを DB 登録維持しつつ `MediaQueue` だけスキップする理由が `design.md` および `handover.md` に図解・根拠付きで追跡可能であることを確認。
+2. **トラブルシューティング手順の十分性**:
+   - `handover.md` Section 5 に「Web プレイヤーでパスコピー → Windows 側 Renamer で 240B 以内短縮 → Web 側で再 Sync」の 3 ステップ運用手順、および `ErrorLogs` の `VideoId / FilePath / Bytes` による特定手順が具体的に文書化されていることを確認。
+
+---
+
+## 3. ロールバック・安全性の最終検証（SE & QA Reviewer 回答）
+
+1. **ロールバック（Revert）手順の検証**:
+   - SQLite DB のスキーマ変更や破壊的設定変更は一切含まれておらず、`git revert 845eddb` のみで直前の安定状態へ 100% 安全に巻き戻し可能であることを確認。
+2. **保留指摘の全件引き継ぎ確認 & テストエビデンス確認**:
+   - Propose / Apply フェーズの Cycle 1 で検出された全指摘は Cycle 2 で完全解消済み。
+   - 全 485 件のテスト（Renamer 341件、Web 144件）が 100% PASS（Skip 0件）し、カバレッジ基準（C0/C1/C2）および仕様 Scenario 100% を満たしていることを確認。
+
+---
+
+## 4. Archive 総括判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: `handover.md` に全ての負債・改善候補・運用手順が記録済み
+- **リリース可否**: 即時リリース可
+- **承認者**: User / SE / PG / QA Reviewer Agent
