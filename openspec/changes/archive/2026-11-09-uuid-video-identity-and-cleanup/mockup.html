@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="ja" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      UI Mockup - UUID v5 移動・リネーム追従 & 不在レコード自動削除 & HTTP 404
+      再生エラー通知
+    </title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js CDN -->
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              slate: {
+                850: "#172033",
+                950: "#020617",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0f172a;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #475569;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col antialiased select-none"
+    x-data="uuidMockupApp()"
+  >
+    <!-- =================================================================== -->
+    <!-- トースト通知 (index.html L3745-3809 忠実再現)                        -->
+    <!-- =================================================================== -->
+    <div
+      x-show="toast.show"
+      x-transition:enter="transition ease-out duration-300"
+      x-transition:enter-start="opacity-0 translate-y-2 sm:translate-y-0 sm:translate-x-2"
+      x-transition:enter-end="opacity-100 translate-y-0 sm:translate-x-0"
+      x-transition:leave="transition ease-in duration-200"
+      x-transition:leave-start="opacity-100"
+      x-transition:leave-end="opacity-0"
+      class="fixed top-5 right-5 z-50 max-w-md w-full bg-slate-900/95 border border-slate-800 rounded-2xl p-4 shadow-2xl backdrop-blur-md flex items-start space-x-3"
+    >
+      <div
+        class="p-2 rounded-xl flex-shrink-0"
+        :class="toast.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'"
+      >
+        <span x-show="toast.type === 'success'" class="inline-flex">
+          <svg
+            class="w-5 h-5 fill-none stroke-current"
+            viewBox="0 0 24 24"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+        </span>
+        <span x-show="toast.type !== 'success'" class="inline-flex">
+          <svg
+            class="w-5 h-5 fill-none stroke-current"
+            viewBox="0 0 24 24"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </span>
+      </div>
+
+      <div class="flex-1 min-w-0">
+        <p
+          class="text-xs font-medium text-slate-200 leading-relaxed"
+          x-text="toast.message"
+        ></p>
+        <template x-if="toast.detail">
+          <div
+            class="mt-1.5 text-xs text-slate-300 font-mono bg-black/40 p-2 rounded border border-white/10 break-all leading-relaxed whitespace-pre-wrap select-all"
+            x-text="toast.detail"
+          ></div>
+        </template>
+      </div>
+
+      <button
+        @click="toast.show = false"
+        class="text-slate-500 hover:text-slate-300 flex-shrink-0 text-sm px-1"
+        title="閉じる"
+      >
+        ✕
+      </button>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- モックアップ状態切り替えバー (検証用コントロール)                     -->
+    <!-- =================================================================== -->
+    <div
+      class="bg-indigo-950/70 border-b border-indigo-800/60 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs"
+    >
+      <div class="flex items-center space-x-2.5">
+        <span
+          class="bg-indigo-600 text-white font-bold px-2.5 py-0.5 rounded-md"
+          >Issue #23 UI Mockup</span
+        >
+        <span class="text-indigo-200 font-medium"
+          >UUID v5 移動・リネーム追従 ＆ 不在レコード削除 ＆ HTTP 404
+          エラー通知</span
+        >
+      </div>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="text-indigo-300 mr-1">状態プリセット:</span>
+        <button
+          @click="setScenario('before_sync')"
+          :class="currentScenario === 'before_sync' ? 'bg-blue-600 text-white font-semibold border-blue-400' : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'"
+          class="px-3 py-1 rounded-lg border transition-colors"
+        >
+          ① スキャン前（ファイル移動・削除直後）
+        </button>
+        <button
+          @click="setScenario('error_404')"
+          :class="currentScenario === 'error_404' ? 'bg-red-600 text-white font-semibold border-red-400' : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'"
+          class="px-3 py-1 rounded-lg border transition-colors"
+        >
+          ② 削除済み動画クリック時 (HTTP 404 Error-State)
+        </button>
+        <button
+          @click="setScenario('after_sync')"
+          :class="currentScenario === 'after_sync' ? 'bg-emerald-600 text-white font-semibold border-emerald-400' : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'"
+          class="px-3 py-1 rounded-lg border transition-colors"
+        >
+          ③ UUID スキャン同期後 (Happy Path)
+        </button>
+        <button
+          @click="setScenario('zero_state')"
+          :class="currentScenario === 'zero_state' ? 'bg-amber-600 text-white font-semibold border-amber-400' : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'"
+          class="px-3 py-1 rounded-lg border transition-colors"
+        >
+          ④ 動画 0 件 (Zero-State)
+        </button>
+      </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- アプリケーションヘッダー (index.html 忠実再現)                        -->
+    <!-- =================================================================== -->
+    <header
+      class="bg-slate-900/90 border-b border-slate-800 px-6 py-3 flex items-center justify-between sticky top-0 z-30 backdrop-blur"
+    >
+      <div class="flex items-center space-x-3">
+        <div
+          class="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow"
+        >
+          ▶
+        </div>
+        <div>
+          <h1 class="text-sm font-bold text-white tracking-wide">
+            TagBasedVideoManager
+          </h1>
+          <p class="text-[11px] text-slate-400">
+            Content UUID v5 Identity & Auto Cleanup
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <div
+          class="hidden md:flex items-center space-x-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-400"
+        >
+          <span>📁 VIDEO_DIRS:</span>
+          <code class="text-slate-200 font-mono">/videos/Library</code>
+        </div>
+
+        <button
+          @click="runUuidSync()"
+          :disabled="isSyncing"
+          class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg flex items-center space-x-2 transition-all"
+        >
+          <span :class="isSyncing ? 'animate-spin inline-block' : ''">🔄</span>
+          <span
+            x-text="isSyncing ? 'UUID同期スキャン中...' : 'ディレクトリ同期 (Scan)'"
+          ></span>
+        </button>
+      </div>
+    </header>
+
+    <!-- =================================================================== -->
+    <!-- メインコンテンツ (左サイドバー + 動画一覧グリッド)                     -->
+    <!-- =================================================================== -->
+    <div class="flex-1 flex overflow-hidden">
+      <!-- 左サイドバー: タグ一覧 -->
+      <aside
+        class="w-64 bg-slate-900/60 border-r border-slate-800 p-4 hidden md:flex flex-col space-y-4"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">
+            タグ一覧 (件数連動)
+          </h2>
+          <span
+            class="text-[11px] text-slate-500"
+            x-text="`全 ${videos.length} 動画`"
+          ></span>
+        </div>
+
+        <div class="space-y-1.5 text-xs">
+          <template x-for="tag in computedTags" :key="tag.name">
+            <div
+              class="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-900 border border-slate-800/80"
+            >
+              <div class="flex items-center space-x-2">
+                <span
+                  class="w-2.5 h-2.5 rounded-full"
+                  :style="`background-color: ${tag.color}`"
+                ></span>
+                <span
+                  class="text-slate-200 font-medium"
+                  x-text="tag.name"
+                ></span>
+              </div>
+              <span
+                class="px-2 py-0.5 rounded-full text-[11px] bg-slate-800 text-slate-300 font-mono"
+                x-text="tag.count"
+              ></span>
+            </div>
+          </template>
+        </div>
+
+        <!-- ディスク状態シミュレーション解説パネル -->
+        <div
+          class="mt-auto bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2 text-[11px] text-slate-400 leading-relaxed"
+        >
+          <div class="font-bold text-slate-200 flex items-center space-x-1.5">
+            <span>💡</span>
+            <span>現在のディスク状態</span>
+          </div>
+          <p
+            x-show="currentScenario === 'before_sync' || currentScenario === 'error_404'"
+          >
+            1. <code class="text-blue-300">sample_touring.mp4</code> は
+            <code class="text-emerald-300"
+              >FolderB/2026_renamed_touring.mp4</code
+            >
+            へ移動＆リネーム済み。<br />
+            2. <code class="text-red-300">deleted_clip.mp4</code>
+            はディスクから削除済み（スキャン前のためDBに残存）。
+          </p>
+          <p x-show="currentScenario === 'after_sync'">
+            ✓ <strong>Phase 2 (UUID v5 照合)</strong>:
+            ファイル本体無変更のまま同一UUIDで引き継ぎ完了（FFmpeg再処理スキップ、新フォルダタグ
+            <code class="text-emerald-300">FolderB</code> 追加）。<br />
+            ✓ <strong>Phase 3 (自動削除)</strong>:
+            削除済み動画のDBレコードと孤児サムネイルを完全削除。
+          </p>
+          <p x-show="currentScenario === 'zero_state'">
+            ライブラリに動画が1件も登録されていない初期状態（Zero-State）です。
+          </p>
+        </div>
+      </aside>
+
+      <!-- 右メイン領域 -->
+      <main class="flex-1 p-6 overflow-y-auto">
+        <!-- Zero-State (データ0件) -->
+        <template x-if="videos.length === 0">
+          <div
+            class="h-[65vh] flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-slate-800 rounded-3xl bg-slate-900/30"
+          >
+            <div
+              class="w-16 h-16 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-3xl mb-4"
+            >
+              📂
+            </div>
+            <h3 class="text-base font-bold text-slate-200 mb-1">
+              動画が見つかりません
+            </h3>
+            <p class="text-xs text-slate-400 max-w-md mb-5 leading-relaxed">
+              動画フォルダを同期してください。右上の「ディレクトリ同期
+              (Scan)」を実行すると、VIDEO_DIRS
+              配下の動画が自動的にスキャン・登録されます。
+            </p>
+            <button
+              @click="setScenario('after_sync')"
+              class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-xs font-semibold shadow-lg flex items-center space-x-2"
+            >
+              <span>🔄</span>
+              <span>ディレクトリ同期を実行する</span>
+            </button>
+          </div>
+        </template>
+
+        <!-- 動画一覧グリッド -->
+        <template x-if="videos.length > 0">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <template x-for="video in videos" :key="video.id">
+              <div
+                @click="openVideo(video)"
+                class="group bg-slate-900 border rounded-2xl overflow-hidden shadow-lg transition-all cursor-pointer flex flex-col"
+                :class="video.diskStatus === 'deleted' ? 'border-red-500/50 hover:border-red-400' : (video.diskStatus === 'relocated_synced' ? 'border-emerald-500/60 hover:border-emerald-400' : 'border-slate-800 hover:border-blue-500/60')"
+              >
+                <!-- サムネイル領域 -->
+                <div
+                  class="relative aspect-video bg-slate-950 flex items-center justify-center overflow-hidden"
+                >
+                  <div
+                    class="inset-0 absolute bg-gradient-to-br opacity-80"
+                    :class="video.diskStatus === 'deleted' ? 'from-red-950 via-slate-900 to-slate-950' : 'from-blue-950 via-indigo-950 to-slate-900'"
+                  ></div>
+
+                  <div class="relative z-10 text-center space-y-1 px-3">
+                    <div class="text-2xl">🎬</div>
+                    <div
+                      class="text-[11px] font-mono text-slate-300 bg-black/50 px-2 py-0.5 rounded border border-white/10"
+                      x-text="`/thumbnails/${video.id}.jpg`"
+                    ></div>
+                  </div>
+
+                  <!-- ステータスバッジ -->
+                  <div
+                    class="absolute top-2.5 left-2.5 z-20 flex flex-wrap gap-1"
+                  >
+                    <span
+                      x-show="video.diskStatus === 'moved_pending'"
+                      class="bg-amber-950/90 border border-amber-600 text-amber-300 text-[10px] font-semibold px-2 py-0.5 rounded-md"
+                    >
+                      📦 移動・リネーム済 (スキャン前)
+                    </span>
+                    <span
+                      x-show="video.diskStatus === 'deleted'"
+                      class="bg-red-950/90 border border-red-600 text-red-300 text-[10px] font-semibold px-2 py-0.5 rounded-md"
+                    >
+                      👻 実ファイル削除済 (クリックで404再現)
+                    </span>
+                    <span
+                      x-show="video.diskStatus === 'relocated_synced'"
+                      class="bg-emerald-950/90 border border-emerald-600 text-emerald-300 text-[10px] font-semibold px-2 py-0.5 rounded-md"
+                    >
+                      ✓ UUID v5 追従済 (FFmpegスキップ)
+                    </span>
+                  </div>
+
+                  <!-- お気に入りスター -->
+                  <div
+                    class="absolute top-2.5 right-2.5 z-20 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center text-sm"
+                    :class="video.isFavorite ? 'text-amber-400' : 'text-slate-500'"
+                  >
+                    ★
+                  </div>
+
+                  <!-- 再生時間 -->
+                  <span
+                    class="absolute bottom-2 right-2 z-20 bg-black/80 text-slate-100 text-[11px] font-mono px-1.5 py-0.5 rounded"
+                    x-text="video.durationText"
+                  ></span>
+                </div>
+
+                <!-- カードメタデータ領域 -->
+                <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
+                  <div class="space-y-1.5">
+                    <div
+                      class="text-sm font-bold text-white truncate"
+                      x-text="video.fileName"
+                      :title="video.fileName"
+                    ></div>
+                    <div
+                      class="text-[11px] font-mono text-slate-400 truncate"
+                      x-text="video.filePath"
+                      :title="video.filePath"
+                    ></div>
+                    <div
+                      class="text-[10px] font-mono text-indigo-300 bg-indigo-950/50 border border-indigo-800/50 px-2 py-0.5 rounded truncate"
+                      x-text="`ID: ${video.id} | UUID v5: ${video.fileUuid}`"
+                    ></div>
+                  </div>
+
+                  <!-- タグ一覧 -->
+                  <div class="flex flex-wrap gap-1.5 pt-1">
+                    <template x-for="tag in video.tags" :key="tag.name">
+                      <span
+                        class="text-[11px] px-2 py-0.5 rounded-md font-medium border"
+                        :class="tag.isNewFolder ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700' : 'bg-slate-800 text-slate-200 border-slate-700'"
+                        x-text="tag.isNewFolder ? `+ ${tag.name} (新フォルダ)` : tag.name"
+                      ></span>
+                    </template>
+                  </div>
+
+                  <!-- フッター情報 -->
+                  <div
+                    class="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400"
+                  >
+                    <span x-text="video.fileSizeText"></span>
+                    <span
+                      class="font-medium text-slate-300"
+                      x-text="`▶ 再生 ${video.accessCount} 回`"
+                    ></span>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </main>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- プレイヤーモーダル & HTTP 404 ファイル不在エラー表示                   -->
+    <!-- =================================================================== -->
+    <div
+      x-show="selectedVideo !== null"
+      x-transition.opacity
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 flex items-center justify-center p-4"
+    >
+      <div
+        class="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full overflow-hidden shadow-2xl flex flex-col"
+      >
+        <!-- モーダルヘッダー -->
+        <div
+          class="px-5 py-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between"
+        >
+          <div class="min-w-0 pr-4">
+            <h3
+              class="text-sm font-bold text-white truncate"
+              x-text="selectedVideo ? selectedVideo.fileName : ''"
+            ></h3>
+            <p
+              class="text-[11px] font-mono text-slate-400 truncate"
+              x-text="selectedVideo ? selectedVideo.filePath : ''"
+            ></p>
+          </div>
+          <button
+            @click="closePlayer()"
+            class="text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"
+          >
+            ✕ 閉じる
+          </button>
+        </div>
+
+        <!-- ビデオ再生 / エラーオーバーレイ領域 -->
+        <div
+          class="relative aspect-video bg-black flex items-center justify-center overflow-hidden"
+        >
+          <!-- 正常再生時 -->
+          <template x-if="!playbackError">
+            <div class="text-center space-y-3 p-6">
+              <div
+                class="w-16 h-16 rounded-full bg-emerald-600/20 border-2 border-emerald-500 text-emerald-400 flex items-center justify-center text-2xl mx-auto"
+              >
+                ▶
+              </div>
+              <div class="text-sm font-semibold text-white">
+                ストリーミング再生中 (HTTP 206 Partial Content)
+              </div>
+              <div
+                class="text-xs font-mono text-slate-400"
+                x-text="selectedVideo ? `GET /api/videos/${selectedVideo.id}/stream -> ${selectedVideo.filePath}` : ''"
+              ></div>
+            </div>
+          </template>
+
+          <!-- 物理ファイル不在 (HTTP 404 FILE_NOT_FOUND) エラー表示 -->
+          <template x-if="playbackError && playbackError.isNotFound">
+            <div
+              class="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-20"
+            >
+              <div
+                class="bg-slate-900 border border-red-500/80 rounded-2xl p-6 max-w-lg shadow-2xl space-y-4"
+              >
+                <div
+                  class="w-14 h-14 bg-red-950 border border-red-700 rounded-full flex items-center justify-center mx-auto text-red-400 text-2xl shadow-inner"
+                >
+                  ⚠️
+                </div>
+                <div class="space-y-1.5">
+                  <h3 class="text-lg font-bold text-white tracking-wide">
+                    動画ファイルが見つかりません (HTTP 404)
+                  </h3>
+                  <p class="text-xs text-red-300 font-semibold leading-relaxed">
+                    指定されたパスに物理ファイルが存在しません。ファイルが移動・リネーム、または削除された可能性があります。
+                  </p>
+                </div>
+
+                <div
+                  class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-left space-y-1.5 text-xs font-mono"
+                >
+                  <div class="text-slate-400 break-all">
+                    登録パス:
+                    <span
+                      class="text-slate-200 select-all"
+                      x-text="playbackError.filePath"
+                    ></span>
+                  </div>
+                  <div class="text-[11px] text-red-400 pt-1">
+                    エラーコード: <strong>FILE_NOT_FOUND (HTTP 404)</strong>
+                  </div>
+                </div>
+
+                <div
+                  class="bg-blue-950/40 border border-blue-800/50 rounded-lg p-3 text-xs text-blue-200 text-left leading-relaxed"
+                >
+                  💡 <strong>対処法:</strong> ヘッダーの<strong
+                    >「ディレクトリ同期 (Scan)」</strong
+                  >を実行すると、移動・リネームされた動画は自動的に新しいパスへ引き継がれ、削除された動画レコードは一覧から整理されます。
+                </div>
+
+                <div class="pt-2 flex justify-center space-x-3">
+                  <button
+                    @click="closePlayer()"
+                    class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-xs border border-slate-700"
+                  >
+                    プレイヤーを閉じる
+                  </button>
+                  <button
+                    @click="closePlayer(); runUuidSync();"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-xs font-semibold shadow flex items-center space-x-1.5"
+                  >
+                    <span>🔄</span>
+                    <span>今すぐスキャン同期を実行</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function uuidMockupApp() {
+        return {
+          currentScenario: "before_sync",
+          isSyncing: false,
+          selectedVideo: null,
+          playbackError: null,
+          toast: {
+            show: false,
+            type: "error",
+            message: "",
+            detail: "",
+          },
+          videos: [],
+
+          init() {
+            this.setScenario("before_sync");
+          },
+
+          get computedTags() {
+            const counts = {};
+            const colors = {
+              お気に入り作品: "#f59e0b",
+              FolderA: "#3b82f6",
+              FolderB: "#10b981",
+              車載動画: "#8b5cf6",
+            };
+            this.videos.forEach((v) => {
+              v.tags.forEach((t) => {
+                counts[t.name] = (counts[t.name] || 0) + 1;
+              });
+            });
+            return Object.keys(counts).map((name) => ({
+              name,
+              count: counts[name],
+              color: colors[name] || "#64748b",
+            }));
+          },
+
+          showToast(message, type = "success", detail = "") {
+            this.toast = { show: true, type, message, detail };
+          },
+
+          setScenario(scenario) {
+            this.currentScenario = scenario;
+            this.selectedVideo = null;
+            this.playbackError = null;
+            this.toast.show = false;
+
+            if (scenario === "before_sync" || scenario === "error_404") {
+              this.videos = [
+                {
+                  id: "v_a1b2c3d4",
+                  fileUuid: "8f9d5a12-4b6c-5e8a-9c1d-2e3f4a5b6c7d",
+                  fileName: "sample_touring.mp4",
+                  filePath: "/videos/Library/FolderA/sample_touring.mp4",
+                  durationText: "12:34",
+                  fileSizeText: "428.5 MB",
+                  isFavorite: true,
+                  accessCount: 12,
+                  diskStatus: "moved_pending",
+                  tags: [
+                    { name: "お気に入り作品", isNewFolder: false },
+                    { name: "FolderA", isNewFolder: false },
+                  ],
+                },
+                {
+                  id: "v_e5f6a7b8",
+                  fileUuid: "3c4d5e6f-1a2b-5c3d-8e9f-0a1b2c3d4e5f",
+                  fileName: "deleted_clip.mp4",
+                  filePath: "/videos/Library/FolderA/deleted_clip.mp4",
+                  durationText: "05:20",
+                  fileSizeText: "112.0 MB",
+                  isFavorite: false,
+                  accessCount: 3,
+                  diskStatus: "deleted",
+                  tags: [{ name: "FolderA", isNewFolder: false }],
+                },
+                {
+                  id: "v_99887766",
+                  fileUuid: "7a8b9c0d-2e3f-5a4b-9c8d-1e2f3a4b5c6d",
+                  fileName: "normal_drive.mp4",
+                  filePath: "/videos/Library/FolderA/normal_drive.mp4",
+                  durationText: "08:45",
+                  fileSizeText: "256.2 MB",
+                  isFavorite: false,
+                  accessCount: 5,
+                  diskStatus: "ok",
+                  tags: [
+                    { name: "車載動画", isNewFolder: false },
+                    { name: "FolderA", isNewFolder: false },
+                  ],
+                },
+              ];
+
+              if (scenario === "error_404") {
+                this.openVideo(this.videos[1]);
+              }
+            } else if (scenario === "after_sync") {
+              this.videos = [
+                {
+                  id: "v_a1b2c3d4",
+                  fileUuid: "8f9d5a12-4b6c-5e8a-9c1d-2e3f4a5b6c7d",
+                  fileName: "2026_renamed_touring.mp4",
+                  filePath: "/videos/Library/FolderB/2026_renamed_touring.mp4",
+                  durationText: "12:34",
+                  fileSizeText: "428.5 MB",
+                  isFavorite: true,
+                  accessCount: 12,
+                  diskStatus: "relocated_synced",
+                  tags: [
+                    { name: "お気に入り作品", isNewFolder: false },
+                    { name: "FolderA", isNewFolder: false },
+                    { name: "FolderB", isNewFolder: true },
+                  ],
+                },
+                {
+                  id: "v_99887766",
+                  fileUuid: "7a8b9c0d-2e3f-5a4b-9c8d-1e2f3a4b5c6d",
+                  fileName: "normal_drive.mp4",
+                  filePath: "/videos/Library/FolderA/normal_drive.mp4",
+                  durationText: "08:45",
+                  fileSizeText: "256.2 MB",
+                  isFavorite: false,
+                  accessCount: 5,
+                  diskStatus: "ok",
+                  tags: [
+                    { name: "車載動画", isNewFolder: false },
+                    { name: "FolderA", isNewFolder: false },
+                  ],
+                },
+              ];
+              this.showToast(
+                "ディレクトリ同期が完了しました（UUID引き継ぎ: 1件 / 不在レコード・サムネイル削除: 1件 / FFmpeg再生成スキップ）",
+                "success",
+              );
+            } else if (scenario === "zero_state") {
+              this.videos = [];
+            }
+          },
+
+          openVideo(video) {
+            this.selectedVideo = video;
+            if (
+              video.diskStatus === "deleted" ||
+              video.diskStatus === "moved_pending"
+            ) {
+              this.playbackError = {
+                isNotFound: true,
+                filePath: video.filePath,
+              };
+              this.showToast(
+                "⚠️ 動画ファイルが見つかりません。ファイルが移動または削除された可能性があります。",
+                "error",
+                video.filePath,
+              );
+            } else {
+              this.playbackError = null;
+            }
+          },
+
+          closePlayer() {
+            this.selectedVideo = null;
+            this.playbackError = null;
+          },
+
+          runUuidSync() {
+            this.isSyncing = true;
+            setTimeout(() => {
+              this.isSyncing = false;
+              this.setScenario("after_sync");
+            }, 400);
+          },
+        };
+      }
+    </script>
+  </body>
+</html>

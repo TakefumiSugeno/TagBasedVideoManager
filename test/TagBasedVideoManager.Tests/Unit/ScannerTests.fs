@@ -191,6 +191,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
 
@@ -240,6 +241,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
 
@@ -295,6 +297,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
 
@@ -342,6 +345,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
 
@@ -444,6 +448,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
 
@@ -721,6 +726,7 @@ type ScannerTests () =
                 TagBasedVideoManager.Domain.Video.AccessCount = 0
                 TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                 TagBasedVideoManager.Domain.Video.Tags = []
+                TagBasedVideoManager.Domain.Video.FileUuid = None
             }
             Db.saveVideo conn existingVideo |> Async.RunSynchronously |> ignore
 
@@ -994,6 +1000,203 @@ type ScannerTests () =
                 System.Threading.Thread.Sleep(100)
                 waitCount <- waitCount + 1
             processedPaths.IsEmpty |> should equal false
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``SE-201: 走査中にサブディレクトリ走査で例外が発生した場合に配下の動画レコードが保護され誤削除されないこと`` () =
+        if not (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) then ()
+        else
+            let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_se201_{Guid.NewGuid():N}")
+            let scanDir = Path.Combine(testBase, "Videos")
+            let lockedDir = Path.Combine(scanDir, "LockedDir")
+            let testDb = Path.Combine(testBase, "test.db")
+            let testThumb = Path.Combine(testBase, "thumbs")
+            try
+                Directory.CreateDirectory(scanDir) |> ignore
+                Directory.CreateDirectory(lockedDir) |> ignore
+                Directory.CreateDirectory(testThumb) |> ignore
+
+                let protectedFile = Path.Combine(lockedDir, "protected.mp4")
+                File.WriteAllText(protectedFile, "protected content")
+
+                use conn = Db.getConnection testDb
+                DbInit.initializeDatabase conn |> ignore
+
+                // DB に登録
+                let v = {
+                    Id = "v_se201"
+                    FileName = "protected.mp4"
+                    FilePath = Path.GetFullPath protectedFile
+                    Duration = 60L
+                    FileSize = (FileInfo protectedFile).Length
+                    ThumbnailPath = None
+                    IsFavorite = false
+                    CreatedAt = DateTime.UtcNow
+                    FileModifiedAt = (FileInfo protectedFile).LastWriteTimeUtc
+                    AccessCount = 0
+                    LastAccessedAt = None
+                    Tags = []
+                    FileUuid = None
+                }
+                Db.saveVideo conn v |> Async.RunSynchronously |> ignore
+
+                // icacls で lockedDir のアクセスを拒否 (*S-1-1-0 = Everyone SID)
+                let psi = System.Diagnostics.ProcessStartInfo("icacls", $"\"{lockedDir}\" /deny *S-1-1-0:(OI)(CI)(F)")
+                psi.RedirectStandardOutput <- true
+                psi.UseShellExecute <- false
+                let p = System.Diagnostics.Process.Start(psi)
+                p.WaitForExit()
+
+                try
+                    // スキャン実行（lockedDir はアクセス拒否により走査失敗する）
+                    let result = Scanner.syncVideoDirectories [scanDir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+                    result |> should equal (Ok 0 : Result<int, DbError>)
+
+                    // lockedDir 配下の protected.mp4 は誤削除防止ガードにより DB に保持されていること
+                    let videoRes = Db.getVideo conn "v_se201" |> Async.RunSynchronously
+                    match videoRes with
+                    | Ok found -> found.Id |> should equal "v_se201"
+                    | Error e -> failwithf "Expected video to be preserved, but got: %A" e
+
+                    // エラーログが記録されていること
+                    let logsRes = Db.getErrorLogs conn |> Async.RunSynchronously
+                    match logsRes with
+                    | Ok logs ->
+                        logs |> List.exists (fun l -> l.Message.Contains("誤削除防止ガード")) |> should equal true
+                    | Error e -> failwithf "Failed to get error logs: %A" e
+                finally
+                    // 権限をリセットしてクリーンアップ可能にする
+                    let resetPsi = System.Diagnostics.ProcessStartInfo("icacls", $"\"{lockedDir}\" /grant *S-1-1-0:(OI)(CI)(F)")
+                    resetPsi.RedirectStandardOutput <- true
+                    resetPsi.UseShellExecute <- false
+                    let rp = System.Diagnostics.Process.Start(resetPsi)
+                    rp.WaitForExit()
+            finally
+                if Directory.Exists(testBase) then
+                    try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``SE-202: 不在動画削除時にDB削除が成功した場合のみサムネイル物理ファイルが削除されること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_se202_{Guid.NewGuid():N}")
+        let scanDir = Path.Combine(testBase, "Videos")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(scanDir) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+
+            let absentFile = Path.Combine(scanDir, "absent.mp4")
+            let thumbPath = Path.Combine(testThumb, "v_se202.jpg")
+            File.WriteAllText(thumbPath, "dummy thumbnail content")
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            // DB に実体のない動画とサムネイルパスを登録
+            let v = {
+                Id = "v_se202"
+                FileName = "absent.mp4"
+                FilePath = Path.GetFullPath absentFile
+                Duration = 60L
+                FileSize = 1000L
+                ThumbnailPath = Some thumbPath
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+                FileUuid = None
+            }
+            Db.saveVideo conn v |> Async.RunSynchronously |> ignore
+
+            // スキャン実行（absent.mp4 は存在しないため Phase 3 で削除される）
+            let result = Scanner.syncVideoDirectories [scanDir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            result |> should equal (Ok 0 : Result<int, DbError>)
+
+            // DB からレコードが削除されていること
+            let videoRes = Db.getVideo conn "v_se202" |> Async.RunSynchronously
+            match videoRes with
+            | Error (RecordNotFound _) -> ()
+            | Ok _ -> failwith "Video record should be deleted"
+            | Error e -> failwithf "Unexpected error: %A" e
+
+            // サムネイルファイルも削除されていること
+            File.Exists(thumbPath) |> should equal false
+        finally
+            if Directory.Exists(testBase) then
+                try Directory.Delete(testBase, true) with _ -> ()
+
+    [<Fact>]
+    member _.``PG-01: 未マッチファイルのフォールバック候補探索で同名・同日時の複数候補が存在する場合にId順で決定論的にマッチすること`` () =
+        let testBase = Path.Combine(Path.GetTempPath(), $"tbvm_pg01_{Guid.NewGuid():N}")
+        let scanDir = Path.Combine(testBase, "Videos")
+        let testDb = Path.Combine(testBase, "test.db")
+        let testThumb = Path.Combine(testBase, "thumbs")
+        try
+            Directory.CreateDirectory(scanDir) |> ignore
+            Directory.CreateDirectory(testThumb) |> ignore
+
+            let movedFile = Path.Combine(scanDir, "candidate_new.mp4")
+            File.WriteAllText(movedFile, "shared content")
+            let fi = FileInfo(movedFile)
+
+            use conn = Db.getConnection testDb
+            DbInit.initializeDatabase conn |> ignore
+
+            // 同一サイズ・同名・同日時の 2 つの旧レコード（Id: v_cand_b, v_cand_a）
+            let vB = {
+                Id = "v_cand_b"
+                FileName = "candidate_new.mp4"
+                FilePath = Path.Combine(testBase, "old_b", "candidate_new.mp4")
+                Duration = 50L
+                FileSize = fi.Length
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = fi.LastWriteTimeUtc
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+                FileUuid = None
+            }
+            let vA = {
+                Id = "v_cand_a"
+                FileName = "candidate_new.mp4"
+                FilePath = Path.Combine(testBase, "old_a", "candidate_new.mp4")
+                Duration = 50L
+                FileSize = fi.Length
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = fi.LastWriteTimeUtc
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+                FileUuid = None
+            }
+            Db.saveVideo conn vB |> Async.RunSynchronously |> ignore
+            Db.saveVideo conn vA |> Async.RunSynchronously |> ignore
+
+            // スキャン実行
+            let result = Scanner.syncVideoDirectories [scanDir] testThumb mockMediaProcessor conn |> Async.RunSynchronously
+            result |> should equal (Ok 0 : Result<int, DbError>) // 新規追加ではなく引き継ぎ
+
+            // タイブレークキー (nameMatch, timeDiff, v.Id) により辞書順で若い v_cand_a が優先して引き継がれていること
+            let videoA = Db.getVideo conn "v_cand_a" |> Async.RunSynchronously
+            match videoA with
+            | Ok v ->
+                v.FilePath |> should equal (Path.GetFullPath movedFile)
+            | Error e -> failwithf "Expected v_cand_a to be matched, but got: %A" e
+
+            // v_cand_b はマッチせず削除（古いパスが config 外または非存在のため）
+            let videoB = Db.getVideo conn "v_cand_b" |> Async.RunSynchronously
+            match videoB with
+            | Error (RecordNotFound _) -> ()
+            | Ok _ -> failwith "v_cand_b should not be matched and should be cleaned up"
+            | Error e -> failwithf "Unexpected error: %A" e
         finally
             if Directory.Exists(testBase) then
                 try Directory.Delete(testBase, true) with _ -> ()

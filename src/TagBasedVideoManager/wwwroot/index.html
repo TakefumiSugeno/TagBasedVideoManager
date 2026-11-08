@@ -2483,6 +2483,70 @@
               </div>
             </div>
           </template>
+
+          <!-- 物理ファイル不在 (HTTP 404 FILE_NOT_FOUND) エラー表示 -->
+          <template x-if="playbackError && playbackError.isNotFound">
+            <div
+              class="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-20"
+            >
+              <div
+                class="bg-slate-900 border border-red-500/80 rounded-2xl p-6 max-w-lg shadow-2xl space-y-4"
+              >
+                <div
+                  class="w-14 h-14 bg-red-950 border border-red-700 rounded-full flex items-center justify-center mx-auto text-red-400 text-2xl shadow-inner"
+                >
+                  ⚠️
+                </div>
+                <div class="space-y-1.5">
+                  <h3 class="text-lg font-bold text-white tracking-wide">
+                    動画ファイルが見つかりません (HTTP 404)
+                  </h3>
+                  <p class="text-xs text-red-300 font-semibold leading-relaxed">
+                    指定されたパスに物理ファイルが存在しません。ファイルが移動・リネーム、または削除された可能性があります。
+                  </p>
+                </div>
+
+                <div
+                  class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-left space-y-1.5 text-xs font-mono"
+                >
+                  <div class="text-slate-400 break-all">
+                    登録パス:
+                    <span
+                      class="text-slate-200 select-all"
+                      x-text="playbackError.filePath"
+                    ></span>
+                  </div>
+                  <div class="text-[11px] text-red-400 pt-1">
+                    エラーコード: <strong>FILE_NOT_FOUND (HTTP 404)</strong>
+                  </div>
+                </div>
+
+                <div
+                  class="bg-blue-950/40 border border-blue-800/50 rounded-lg p-3 text-xs text-blue-200 text-left leading-relaxed"
+                >
+                  💡 <strong>対処法:</strong> ヘッダーの<strong
+                    >「ディレクトリ同期 (Scan)」</strong
+                  >を実行すると、移動・リネームされた動画は自動的に新しいパスへ引き継がれ、削除された動画レコードは一覧から整理されます。
+                </div>
+
+                <div class="pt-2 flex justify-center space-x-3">
+                  <button
+                    @click="closePlayer()"
+                    class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-xs border border-slate-700"
+                  >
+                    プレイヤーを閉じる
+                  </button>
+                  <button
+                    @click="closePlayer(); triggerScan();"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-xs font-semibold shadow flex items-center space-x-1.5"
+                  >
+                    <span>🔄</span>
+                    <span>今すぐスキャン同期を実行</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
 
         <!-- 連続視聴コントロールバー (モバイル & デスクトップ) -->

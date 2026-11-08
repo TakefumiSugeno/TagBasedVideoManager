@@ -105,6 +105,7 @@ type MobileE2ETests (output: ITestOutputHelper) =
             TagBasedVideoManager.Domain.Video.AccessCount = 5
             TagBasedVideoManager.Domain.Video.LastAccessedAt = Some DateTime.UtcNow
             TagBasedVideoManager.Domain.Video.Tags = [ animeTag; actionTag ]
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let video2 = {
             TagBasedVideoManager.Domain.Video.Id = "v_mobile_2"
@@ -119,6 +120,7 @@ type MobileE2ETests (output: ITestOutputHelper) =
             TagBasedVideoManager.Domain.Video.AccessCount = 2
             TagBasedVideoManager.Domain.Video.LastAccessedAt = Some DateTime.UtcNow
             TagBasedVideoManager.Domain.Video.Tags = [ sfTag ]
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let video3 = {
             TagBasedVideoManager.Domain.Video.Id = "v_mobile_3"
@@ -133,6 +135,7 @@ type MobileE2ETests (output: ITestOutputHelper) =
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = [ animeTag; sfTag ]
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         TagBasedVideoManager.Infrastructure.Db.saveVideo conn video1 |> Async.RunSynchronously |> ignore
         TagBasedVideoManager.Infrastructure.Db.saveVideo conn video2 |> Async.RunSynchronously |> ignore

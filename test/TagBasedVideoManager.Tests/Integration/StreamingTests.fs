@@ -25,6 +25,28 @@ type StreamingTests () =
             let dummyBytes = Array.init 100 (fun i -> byte i)
             File.WriteAllBytes(dummyVideoPath, dummyBytes)
 
+    let configureServicesWithDummyVideo (services: IServiceCollection) =
+        Program.configureServices services
+        use sp = services.BuildServiceProvider()
+        use conn = sp.GetRequiredService<System.Data.IDbConnection>()
+        DbInit.initializeDatabase conn |> ignore
+        let video = {
+            Id = "test_id"
+            FileName = "stream_test.mp4"
+            FilePath = dummyVideoPath
+            Duration = 10L
+            FileSize = 100L
+            ThumbnailPath = None
+            IsFavorite = false
+            CreatedAt = DateTime.UtcNow
+            FileModifiedAt = DateTime.UtcNow
+            AccessCount = 0
+            LastAccessedAt = None
+            Tags = []
+            FileUuid = None
+        }
+        Db.saveVideo conn video |> Async.RunSynchronously |> ignore
+
     interface IDisposable with
         member _.Dispose() =
             if File.Exists(dummyVideoPath) then
@@ -38,14 +60,8 @@ type StreamingTests () =
         let builder =
             WebHostBuilder()
                 .UseContentRoot(Directory.GetCurrentDirectory())
-                .ConfigureServices(Program.configureServices)
-                .Configure(fun app ->
-                    // テスト用に、本来のパス解決をこのダミー動画パスに差し替えるハンドラーを構成するか、
-                    // もしくはテスト用のルーティングを設定する
-                    // プロダクションコードのHttpHandlersをそのまま検証するため、
-                    // テストサーバーの起動引数に動画パスのダミー解決を組み込みます。
-                    Program.configureApp app
-                )
+                .ConfigureServices(configureServicesWithDummyVideo)
+                .Configure(Program.configureApp)
 
         // 2. テストサーバーの起動
         use server = new TestServer(builder)
@@ -75,7 +91,7 @@ type StreamingTests () =
         let builder =
             WebHostBuilder()
                 .UseContentRoot(Directory.GetCurrentDirectory())
-                .ConfigureServices(Program.configureServices)
+                .ConfigureServices(configureServicesWithDummyVideo)
                 .Configure(Program.configureApp)
 
         use server = new TestServer(builder)
@@ -97,7 +113,7 @@ type StreamingTests () =
         let builder =
             WebHostBuilder()
                 .UseContentRoot(Directory.GetCurrentDirectory())
-                .ConfigureServices(Program.configureServices)
+                .ConfigureServices(configureServicesWithDummyVideo)
                 .Configure(Program.configureApp)
 
         use server = new TestServer(builder)
@@ -145,6 +161,7 @@ type StreamingTests () =
                         AccessCount = 0
                         LastAccessedAt = None
                         Tags = []
+                        FileUuid = None
                     }
                     Db.saveVideo conn video |> Async.RunSynchronously |> ignore
                 )
@@ -159,4 +176,69 @@ type StreamingTests () =
         let body = response.Content.ReadAsStringAsync().Result
         body.Contains("\"code\":\"FILE_NAME_TOO_LONG\"") |> should equal true
         body.Contains("255") |> should equal true
+
+    [<Fact>]
+    member _.``UT-18 / IT-09: DB登録済みだが物理ファイルが存在しない動画へのストリーム要求に対してHTTP500にならずHTTP404とFILE_NOT_FOUNDを返却する`` () =
+        let missingVideoId = "vid_missing_test"
+        let missingVideoPath = Path.Combine(AppContext.BaseDirectory, "non_existent_video_12345.mp4")
+        if File.Exists(missingVideoPath) then
+            File.Delete(missingVideoPath)
+
+        let builder =
+            WebHostBuilder()
+                .UseContentRoot(Directory.GetCurrentDirectory())
+                .ConfigureServices(fun services ->
+                    Program.configureServices services
+                    use sp = services.BuildServiceProvider()
+                    use conn = sp.GetRequiredService<System.Data.IDbConnection>()
+                    DbInit.initializeDatabase conn |> ignore
+                    let video = {
+                        Id = missingVideoId
+                        FileName = "non_existent_video_12345.mp4"
+                        FilePath = missingVideoPath
+                        Duration = 120L
+                        FileSize = 100L
+                        ThumbnailPath = None
+                        IsFavorite = false
+                        CreatedAt = DateTime.UtcNow
+                        FileModifiedAt = DateTime.UtcNow
+                        AccessCount = 0
+                        LastAccessedAt = None
+                        Tags = []
+                        FileUuid = None
+                    }
+                    Db.saveVideo conn video |> Async.RunSynchronously |> ignore
+                )
+                .Configure(Program.configureApp)
+
+        use server = new TestServer(builder)
+        use client = server.CreateClient()
+
+        let response = client.GetAsync($"/api/videos/{missingVideoId}/stream").Result
+
+        response.StatusCode |> should equal HttpStatusCode.NotFound
+        let body = response.Content.ReadAsStringAsync().Result
+        body.Contains("\"code\":\"FILE_NOT_FOUND\"") |> should equal true
+        (body.Contains("non_existent_video_12345.mp4") || body.Contains(missingVideoPath)) |> should equal true
+
+    [<Fact>]
+    member _.``Adversarial QA: DB未登録の無効な動画IDに対するストリーム要求はダミーファイルへフォールバックせず404 FILE_NOT_FOUNDを返却する`` () =
+        createDummyVideoFile()
+
+        let builder =
+            WebHostBuilder()
+                .UseContentRoot(Directory.GetCurrentDirectory())
+                .ConfigureServices(configureServicesWithDummyVideo)
+                .Configure(Program.configureApp)
+
+        use server = new TestServer(builder)
+        use client = server.CreateClient()
+
+        let nonExistentId = "non_existent_video_arbitrary_id_xyz"
+        let response = client.GetAsync($"/api/videos/{nonExistentId}/stream").Result
+
+        response.StatusCode |> should equal HttpStatusCode.NotFound
+        let body = response.Content.ReadAsStringAsync().Result
+        body.Contains("\"code\":\"FILE_NOT_FOUND\"") |> should equal true
+
 

@@ -4,6 +4,7 @@ open Xunit
 open FsUnit
 open System
 open Microsoft.Data.Sqlite
+open Dapper
 open TagBasedVideoManager.Domain
 open TagBasedVideoManager.Infrastructure
 
@@ -95,6 +96,7 @@ module DbTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
 
             let! resSave = Db.saveVideo conn video
@@ -214,6 +216,7 @@ module DbTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let! _ = Db.saveVideo conn videoA
             let! _ = Db.addTagToVideo conn "v_a" "t_child"
@@ -232,6 +235,7 @@ module DbTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let! _ = Db.saveVideo conn videoB
             let! _ = Db.addTagToVideo conn "v_b" "t_parent"
@@ -283,6 +287,7 @@ module DbTests =
                     AccessCount = 0
                     LastAccessedAt = None
                     Tags = []
+                    FileUuid = None
                 }
                 let! _ = Db.saveVideo conn v
                 // 全動画に tag1, tag2 を紐付け
@@ -327,6 +332,7 @@ module DbTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let vUntagged = {
                 Id = "v_untagged"
@@ -341,6 +347,7 @@ module DbTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
 
             let! _ = Db.saveVideo conn vTagged
@@ -400,6 +407,7 @@ module DbTests =
                     AccessCount = 0
                     LastAccessedAt = None
                     Tags = []
+                    FileUuid = None
                 }
                 let! _ = Db.saveVideo conn v
                 let! _ = Db.addTagToVideo conn $"v_large_{i}" "t_a"
@@ -440,6 +448,7 @@ module DbTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let v2 = {
                 Id = "v_other"
@@ -454,6 +463,7 @@ module DbTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
 
             let! _ = Db.saveVideo conn v1
@@ -470,6 +480,241 @@ module DbTests =
                 videos.[0].Tags.Length |> should equal 1
                 videos.[0].Tags.[0].Name |> should equal "探訪"
             | Error e -> failwithf "searchVideos failed: %A" e
+        } |> Async.RunSynchronously
+
+    /// <summary>
+    /// Videos テーブルの FileUuid カラム永続化検証。
+    /// FileUuid = Some "..." および FileUuid = None の動画を保存し、正しく取得できること。
+    /// </summary>
+    [<Fact>]
+    let ``FileUuid persistence should save and load FileUuid correctly`` () =
+        async {
+            use conn = createInMemoryDb ()
+
+            let uuidVal = "8f9d5a12-4b6c-4e8a-9c1d-2e3f4a5b6c7d"
+            let vWithUuid = {
+                Id = "v_uuid_1"
+                FileName = "has_uuid.mp4"
+                FilePath = "C:\\has_uuid.mp4"
+                Duration = 60L
+                FileSize = 1024L
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+                FileUuid = Some uuidVal
+            }
+
+            let! resSave = Db.saveVideo conn vWithUuid
+            match resSave with
+            | Ok _ -> ()
+            | Error e -> failwithf "saveVideo failed: %A" e
+
+            let! resGet = Db.getVideo conn "v_uuid_1"
+            match resGet with
+            | Ok v ->
+                v.FileUuid |> should equal (Some uuidVal)
+            | Error e -> failwithf "getVideo failed: %A" e
+
+            // FileUuid = None の場合
+            let vNoUuid = {
+                Id = "v_uuid_2"
+                FileName = "no_uuid.mp4"
+                FilePath = "C:\\no_uuid.mp4"
+                Duration = 60L
+                FileSize = 1024L
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+                FileUuid = None
+            }
+            let! _ = Db.saveVideo conn vNoUuid
+            let! resGet2 = Db.getVideo conn "v_uuid_2"
+            match resGet2 with
+            | Ok v ->
+                v.FileUuid |> should equal None
+            | Error e -> failwithf "getVideo failed: %A" e
+        } |> Async.RunSynchronously
+
+    /// <summary>
+    /// updateVideoFileUuid の検証。
+    /// 既存の動画に対して FileUuid を更新できること。
+    /// </summary>
+    [<Fact>]
+    let ``updateVideoFileUuid should update FileUuid of existing video`` () =
+        async {
+            use conn = createInMemoryDb ()
+
+            let v = {
+                Id = "v_upd_uuid"
+                FileName = "to_update.mp4"
+                FilePath = "C:\\to_update.mp4"
+                Duration = 100L
+                FileSize = 2048L
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+                FileUuid = None
+            }
+            let! _ = Db.saveVideo conn v
+
+            let targetUuid = "11111111-2222-3333-4444-555555555555"
+            let! resUpd = Db.updateVideoFileUuid conn "v_upd_uuid" targetUuid
+            match resUpd with
+            | Ok () -> ()
+            | Error e -> failwithf "updateVideoFileUuid failed: %A" e
+
+            let! resGet = Db.getVideo conn "v_upd_uuid"
+            match resGet with
+            | Ok loaded ->
+                loaded.FileUuid |> should equal (Some targetUuid)
+            | Error e -> failwithf "getVideo failed: %A" e
+        } |> Async.RunSynchronously
+
+    /// <summary>
+    /// updateVideoLocation の検証。
+    /// 移動・リネームに伴い、パス、ファイル名、サイズ、更新日時、FileUuid、ThumbnailPath が更新され、
+    /// 既存の Id, 付与タグ, IsFavorite, AccessCount, Duration が完全に維持されること。
+    /// </summary>
+    [<Fact>]
+    let ``updateVideoLocation should update path metadata while preserving id tags and stats`` () =
+        async {
+            use conn = createInMemoryDb ()
+
+            // 1. タグと動画を作成
+            let tag1 = { Id = "t_preserve"; Name = "保持タグ"; ColorCode = "#123456"; ParentId = None; VideoCount = 0 }
+            let! _ = Db.saveTag conn tag1
+
+            let initialModifiedAt = DateTime.UtcNow.AddDays(-10.0)
+            let initialVideo = {
+                Id = "v_location_1"
+                FileName = "old_name.mp4"
+                FilePath = "C:\\Videos\\old_name.mp4"
+                Duration = 180L
+                FileSize = 5000000L
+                ThumbnailPath = Some "C:\\Thumbs\\old.jpg"
+                IsFavorite = true
+                CreatedAt = DateTime.UtcNow.AddDays(-20.0)
+                FileModifiedAt = initialModifiedAt
+                AccessCount = 42
+                LastAccessedAt = Some DateTime.UtcNow
+                Tags = []
+                FileUuid = None
+            }
+            let! _ = Db.saveVideo conn initialVideo
+            let! _ = Db.addTagToVideo conn "v_location_1" "t_preserve"
+            let! _ = Db.updateVideoFavorite conn "v_location_1" true
+
+            // 2. 移動・リネーム情報で updateVideoLocation を実行
+            let newFileName = "new_name.mp4"
+            let newFilePath = "D:\\MovedVideos\\SubFolder\\new_name.mp4"
+            let newFileSize = 5000000L
+            let newModifiedAt = DateTime.UtcNow.AddDays(-1.0)
+            let newUuid = Some "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            let newThumbPath = Some "D:\\NewThumbs\\v_location_1.jpg"
+
+            let! resUpd = Db.updateVideoLocation conn "v_location_1" newFileName newFilePath newFileSize newModifiedAt newUuid newThumbPath
+            match resUpd with
+            | Ok () -> ()
+            | Error e -> failwithf "updateVideoLocation failed: %A" e
+
+            // 3. 検証
+            let! resGet = Db.getVideo conn "v_location_1"
+            match resGet with
+            | Ok updated ->
+                // 更新されたフィールド
+                updated.FileName |> should equal newFileName
+                updated.FilePath |> should equal newFilePath
+                updated.FileSize |> should equal newFileSize
+                updated.FileUuid |> should equal newUuid
+                updated.ThumbnailPath |> should equal newThumbPath
+
+                // 維持されるべきフィールド
+                updated.Id |> should equal "v_location_1"
+                updated.Duration |> should equal 180L
+                updated.IsFavorite |> should equal true
+                updated.AccessCount |> should equal 42
+                updated.Tags.Length |> should equal 1
+                updated.Tags.[0].Id |> should equal "t_preserve"
+            | Error e -> failwithf "getVideo failed: %A" e
+        } |> Async.RunSynchronously
+
+    /// <summary>
+    /// deleteVideo および CASCADE 連動削除の検証 (IT-05)。
+    /// 動画を削除した際、Videos テーブルから削除されると同時に、
+    /// 外部キー制約 (ON DELETE CASCADE) により VideoTags テーブルの紐付けも連動して自動削除されること。
+    /// </summary>
+    [<Fact>]
+    let ``deleteVideo should remove video and cascade delete VideoTags (IT-05)`` () =
+        async {
+            use conn = createInMemoryDb ()
+
+            // 1. タグ2件を登録
+            let tag1 = { Id = "t_cascade_1"; Name = "タグ1"; ColorCode = "#111"; ParentId = None; VideoCount = 0 }
+            let tag2 = { Id = "t_cascade_2"; Name = "タグ2"; ColorCode = "#222"; ParentId = None; VideoCount = 0 }
+            let! _ = Db.saveTag conn tag1
+            let! _ = Db.saveTag conn tag2
+
+            // 2. 動画を登録し、タグ2件を紐付け
+            let video = {
+                Id = "v_cascade_test"
+                FileName = "cascade_test.mp4"
+                FilePath = "C:\\cascade_test.mp4"
+                Duration = 120L
+                FileSize = 1000000L
+                ThumbnailPath = Some "C:\\Thumbs\\cascade.jpg"
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+                FileUuid = Some "33333333-3333-3333-3333-333333333333"
+            }
+            let! _ = Db.saveVideo conn video
+            let! _ = Db.addTagToVideo conn "v_cascade_test" "t_cascade_1"
+            let! _ = Db.addTagToVideo conn "v_cascade_test" "t_cascade_2"
+
+            // 事前確認: VideoTags に2件存在すること
+            let countSql = "SELECT COUNT(*) FROM VideoTags WHERE VideoId = @VideoId"
+            let! countBefore = Async.AwaitTask (conn.ExecuteScalarAsync<int64>(countSql, {| VideoId = "v_cascade_test" |}))
+            countBefore |> should equal 2L
+
+            // 3. deleteVideo を実行
+            let! resDel = Db.deleteVideo conn "v_cascade_test"
+            match resDel with
+            | Ok () -> ()
+            | Error e -> failwithf "deleteVideo failed: %A" e
+
+            // 4. Videos から削除されていること
+            let! resGet = Db.getVideo conn "v_cascade_test"
+            match resGet with
+            | Error (RecordNotFound _) -> () // 正常に削除された
+            | Ok _ -> failwith "Expected RecordNotFound, but video was still found in DB"
+            | Error other -> failwithf "Unexpected error from getVideo: %A" other
+
+            // 5. VideoTags から外部キー CASCADE により連動削除されていること (IT-05)
+            let! countAfter = Async.AwaitTask (conn.ExecuteScalarAsync<int64>(countSql, {| VideoId = "v_cascade_test" |}))
+            countAfter |> should equal 0L
+
+            // 他のタグ自体（Tagsテーブル）は削除されていないこと
+            let! tagsRes = Db.getTags conn
+            match tagsRes with
+            | Ok tags ->
+                tags |> List.exists (fun t -> t.Id = "t_cascade_1") |> should be True
+                tags |> List.exists (fun t -> t.Id = "t_cascade_2") |> should be True
+            | Error e -> failwithf "getTags failed: %A" e
         } |> Async.RunSynchronously
 
 

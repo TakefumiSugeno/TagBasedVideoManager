@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Unit\DomainTests.fs" />
     <Compile Include="Unit\TaggingEngineTests.fs" />
     <Compile Include="Unit\SearchDslTests.fs" />
     <Compile Include="Unit\DbInitTests.fs" />

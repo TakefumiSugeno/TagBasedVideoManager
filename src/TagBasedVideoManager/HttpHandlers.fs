@@ -55,43 +55,41 @@ module HttpHandlers =
                 let conn = ctx.GetService<IDbConnection>()
                 let! videoResult = Db.getVideo conn id
                 
-                let filePath = 
-                    match videoResult with
-                    | Ok v ->
-                        let resolved = TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath v.FilePath
-                        if File.Exists(resolved) then resolved
-                        else v.FilePath
-                    | _ ->
-                        let testDummyPath = Path.Combine(System.AppContext.BaseDirectory, "stream_test.mp4")
-                        let resolvedDummy = TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath testDummyPath
-                        if File.Exists(resolvedDummy) then resolvedDummy
-                        else $"/app/data/videos/{id}.mp4"
+                match videoResult with
+                | Error _ ->
+                    return! (setStatusCode 404 >=> json {| code = "FILE_NOT_FOUND"; error = "動画ファイルが見つかりません。"; message = "動画ファイルが見つかりません。"; filePath = "" |}) next ctx
+                | Ok v ->
+                    let filePath = v.FilePath
+                    let fileName = Path.GetFileName(filePath)
+                    let fnBytes = System.Text.Encoding.UTF8.GetByteCount(fileName)
 
-                let fileName = Path.GetFileName(filePath)
-                let fnBytes = System.Text.Encoding.UTF8.GetByteCount(fileName)
-
-                // 1. Fail-Fast 検査: ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過している場合は即座に 422 を返却
-                if fnBytes > 255 then
-                    do! Db.saveErrorLog conn $"[Stream Fail-Fast] ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過しています。VideoId={id}, FilePath={filePath}, Bytes={fnBytes}" None |> Async.StartAsTask
-                    return! (setStatusCode 422 >=> json {| code = "FILE_NAME_TOO_LONG"; error = "ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過しているため再生できません。"; message = "ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過しているため再生できません。"; filePath = filePath; bytes = fnBytes |}) next ctx
-                else
-                    let resolvedFinalPath = TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath filePath
-                    let result = PhysicalFileResult(resolvedFinalPath, "video/mp4")
-                    result.EnableRangeProcessing <- true
-
-                    let executor = ctx.RequestServices.GetRequiredService<IActionResultExecutor<PhysicalFileResult>>()
-                    let actionContext = ActionContext(ctx, ctx.GetRouteData(), Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor())
-                    
-                    try
-                        do! executor.ExecuteAsync(actionContext, result)
-                        return! next ctx
-                    with
-                    | :? OperationCanceledException ->
-                        // クライアント切断 (タブ閉じ・シーク中断等) 時は静かにハンドラーを正常終了
-                        return! next ctx
-                    | :? PathTooLongException as ex ->
-                        do! Db.saveErrorLog conn $"[Stream Error] パスまたはファイル名超過例外が発生しました。VideoId={id}, FilePath={filePath}, Bytes={fnBytes}: {ex.Message}" (Some (ex.ToString())) |> Async.StartAsTask
+                    // 1. Fail-Fast 検査: ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過している場合は即座に 422 を返却
+                    if fnBytes > 255 then
+                        do! Db.saveErrorLog conn $"[Stream Fail-Fast] ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過しています。VideoId={id}, FilePath={filePath}, Bytes={fnBytes}" None |> Async.StartAsTask
                         return! (setStatusCode 422 >=> json {| code = "FILE_NAME_TOO_LONG"; error = "ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過しているため再生できません。"; message = "ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過しているため再生できません。"; filePath = filePath; bytes = fnBytes |}) next ctx
+                    else
+                        let resolvedFinalPath = TagBasedVideoManager.Domain.PathHelper.resolvePhysicalPath filePath
+                        let executor = ctx.RequestServices.GetRequiredService<IActionResultExecutor<PhysicalFileResult>>()
+                        let actionContext = ActionContext(ctx, ctx.GetRouteData(), Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor())
+
+                        if not (File.Exists(resolvedFinalPath)) then
+                            return! (setStatusCode 404 >=> json {| code = "FILE_NOT_FOUND"; error = "動画ファイルが見つかりません。"; message = "動画ファイルが見つかりません。"; filePath = filePath |}) next ctx
+                        else
+                            let result = PhysicalFileResult(resolvedFinalPath, "video/mp4")
+                            result.EnableRangeProcessing <- true
+
+                            try
+                                do! executor.ExecuteAsync(actionContext, result)
+                                return! next ctx
+                            with
+                            | :? OperationCanceledException ->
+                                // クライアント切断 (タブ閉じ・シーク中断等) 時は静かにハンドラーを正常終了
+                                return! next ctx
+                            | :? FileNotFoundException as ex ->
+                                return! (setStatusCode 404 >=> json {| code = "FILE_NOT_FOUND"; error = "動画ファイルが見つかりません。"; message = "動画ファイルが見つかりません。"; filePath = filePath |}) next ctx
+                            | :? PathTooLongException as ex ->
+                                do! Db.saveErrorLog conn $"[Stream Error] パスまたはファイル名超過例外が発生しました。VideoId={id}, FilePath={filePath}, Bytes={fnBytes}: {ex.Message}" (Some (ex.ToString())) |> Async.StartAsTask
+                                return! (setStatusCode 422 >=> json {| code = "FILE_NAME_TOO_LONG"; error = "ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過しているため再生できません。"; message = "ファイル名が Linux の 255 バイト制限 (NAME_MAX) を超過しているため再生できません。"; filePath = filePath; bytes = fnBytes |}) next ctx
             }
 
     /// 再生回数を記録するAPIハンドラー

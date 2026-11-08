@@ -962,8 +962,13 @@ function videoManager() {
       this.playbackError = null;
     },
 
+    closePlayer() {
+      this.closeVideo();
+    },
+
     async handleVideoError(event) {
       if (!this.selectedVideo) return;
+      if (this.playbackError) return; // 多重発火抑止ガード
       if (!event || !event.target || !event.target.src) return;
 
       try {
@@ -973,6 +978,23 @@ function videoManager() {
         });
 
         if (!this.selectedVideo) return;
+
+        if (res.status === 404) {
+          const data = await res.json().catch(() => null);
+          this.playbackError = {
+            isNotFound: true,
+            message:
+              (data && (data.message || data.error)) ||
+              "動画ファイルが見つかりません。",
+            filePath: (data && data.filePath) || this.selectedVideo.filePath,
+          };
+          this.showToast(
+            "⚠️ 動画ファイルが見つかりません。ファイルが移動または削除された可能性があります。",
+            "error",
+            this.playbackError.filePath,
+          );
+          return;
+        }
 
         if (res.status === 422) {
           const data = await res.json().catch(() => null);
@@ -999,8 +1021,13 @@ function videoManager() {
             return;
           }
         }
+
+        if (!res.ok) {
+          this.showToast("⚠️ 動画の再生中にエラーが発生しました。", "error");
+        }
       } catch (e) {
         console.error("Error checking video stream:", e);
+        this.showToast("⚠️ 動画の再生中にエラーが発生しました。", "error");
       }
     },
 

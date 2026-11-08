@@ -3,6 +3,7 @@ namespace TagBasedVideoManager.Tests.Unit
 open Xunit
 open FsUnit
 open System
+open System.IO
 open System.Data
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Http
@@ -187,6 +188,7 @@ module HttpHandlersTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let! _ = Db.saveVideo conn testVideo
             let! _ = Db.addTagToVideo conn "v_test_1" "t_test_1"
@@ -337,6 +339,7 @@ module HttpHandlersTests =
                     AccessCount = 5
                     LastAccessedAt = Some (DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc))
                     Tags = [ existingTag ]
+                    FileUuid = None
                 }
                 let! vidRes = Db.saveVideo conn existingVideo
                 match vidRes with
@@ -407,6 +410,7 @@ module HttpHandlersTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let! saveRes = Db.saveVideo conn longVideo
             match saveRes with
@@ -432,79 +436,94 @@ module HttpHandlersTests =
     [<Fact>]
     let ``streamVideo は ExecuteAsync 実行時に PathTooLongException が発生した場合 HTTP 422 JSON を返却する (UT-WEB-03)`` () =
         task {
-            use conn = createInMemoryDb ()
-            let normalVideo = {
-                Id = "v_pathtoolong_1"
-                FileName = "sample.mp4"
-                FilePath = @"/videos/sample.mp4"
-                Duration = 120L
-                FileSize = 1024L
-                ThumbnailPath = None
-                IsFavorite = false
-                CreatedAt = DateTime.UtcNow
-                FileModifiedAt = DateTime.UtcNow
-                AccessCount = 0
-                LastAccessedAt = None
-                Tags = []
-            }
-            let! saveRes = Db.saveVideo conn normalVideo
-            match saveRes with
-            | Ok _ -> ()
-            | Error e -> failwithf "Failed to save video: %A" e
+            let tempFile = Path.GetTempFileName()
+            try
+                use conn = createInMemoryDb ()
+                let (fileName: string) = Path.GetFileName(tempFile)
+                let fnBytes = System.Text.Encoding.UTF8.GetByteCount(fileName)
+                let normalVideo = {
+                    Id = "v_pathtoolong_1"
+                    FileName = fileName
+                    FilePath = tempFile
+                    Duration = 120L
+                    FileSize = 1024L
+                    ThumbnailPath = None
+                    IsFavorite = false
+                    CreatedAt = DateTime.UtcNow
+                    FileModifiedAt = DateTime.UtcNow
+                    AccessCount = 0
+                    LastAccessedAt = None
+                    Tags = []
+                    FileUuid = None
+                }
+                let! saveRes = Db.saveVideo conn normalVideo
+                match saveRes with
+                | Ok _ -> ()
+                | Error e -> failwithf "Failed to save video: %A" e
 
-            let throwingExecutor =
-                TestPhysicalFileResultExecutor(fun _ _ ->
-                    Task.FromException(System.IO.PathTooLongException("The specified path, file name, or both are too long."))
-                )
-            let (ctx, stream) = setupTestContextWithExecutor conn (Some (throwingExecutor :> IActionResultExecutor<PhysicalFileResult>))
-            let handler = HttpHandlers.streamVideo normalVideo.Id
-            let next : HttpFunc = fun c -> task { return Some c }
+                let throwingExecutor =
+                    TestPhysicalFileResultExecutor(fun _ _ ->
+                        Task.FromException(System.IO.PathTooLongException("The specified path, file name, or both are too long."))
+                    )
+                let (ctx, stream) = setupTestContextWithExecutor conn (Some (throwingExecutor :> IActionResultExecutor<PhysicalFileResult>))
+                let handler = HttpHandlers.streamVideo normalVideo.Id
+                let next : HttpFunc = fun c -> task { return Some c }
 
-            let! resCtxOpt = handler next ctx
-            resCtxOpt.IsSome |> should be True
-            let resCtx = resCtxOpt.Value
-            resCtx.Response.StatusCode |> should equal 422
+                let! resCtxOpt = handler next ctx
+                resCtxOpt.IsSome |> should be True
+                let resCtx = resCtxOpt.Value
+                resCtx.Response.StatusCode |> should equal 422
 
-            let! body = readResponseBody stream
-            body.Contains("\"code\":\"FILE_NAME_TOO_LONG\"") |> should be True
-            body.Contains("\"bytes\":10") |> should be True
-            body.Contains("\"filePath\":\"/videos/sample.mp4\"") |> should be True
+                let! body = readResponseBody stream
+                body.Contains("\"code\":\"FILE_NAME_TOO_LONG\"") |> should be True
+                body.Contains($"\"bytes\":{fnBytes}") |> should be True
+                body.Contains("\"filePath\":") |> should be True
+            finally
+                if File.Exists(tempFile) then
+                    try File.Delete(tempFile) with | _ -> ()
         } :> Task
 
     [<Fact>]
     let ``streamVideo は ExecuteAsync 実行時に OperationCanceledException が発生した場合 例外を投げずに静かに終了する (UT-WEB-04)`` () =
         task {
-            use conn = createInMemoryDb ()
-            let normalVideo = {
-                Id = "v_canceled_1"
-                FileName = "sample.mp4"
-                FilePath = @"/videos/sample.mp4"
-                Duration = 120L
-                FileSize = 1024L
-                ThumbnailPath = None
-                IsFavorite = false
-                CreatedAt = DateTime.UtcNow
-                FileModifiedAt = DateTime.UtcNow
-                AccessCount = 0
-                LastAccessedAt = None
-                Tags = []
-            }
-            let! saveRes = Db.saveVideo conn normalVideo
-            match saveRes with
-            | Ok _ -> ()
-            | Error e -> failwithf "Failed to save video: %A" e
+            let tempFile = Path.GetTempFileName()
+            try
+                use conn = createInMemoryDb ()
+                let fileName = Path.GetFileName(tempFile)
+                let normalVideo = {
+                    Id = "v_canceled_1"
+                    FileName = fileName
+                    FilePath = tempFile
+                    Duration = 120L
+                    FileSize = 1024L
+                    ThumbnailPath = None
+                    IsFavorite = false
+                    CreatedAt = DateTime.UtcNow
+                    FileModifiedAt = DateTime.UtcNow
+                    AccessCount = 0
+                    LastAccessedAt = None
+                    Tags = []
+                    FileUuid = None
+                }
+                let! saveRes = Db.saveVideo conn normalVideo
+                match saveRes with
+                | Ok _ -> ()
+                | Error e -> failwithf "Failed to save video: %A" e
 
-            let throwingExecutor =
-                TestPhysicalFileResultExecutor(fun _ _ ->
-                    Task.FromException(System.OperationCanceledException("The client has disconnected."))
-                )
-            let (ctx, _stream) = setupTestContextWithExecutor conn (Some (throwingExecutor :> IActionResultExecutor<PhysicalFileResult>))
-            let handler = HttpHandlers.streamVideo normalVideo.Id
-            let next : HttpFunc = fun c -> task { return Some c }
+                let throwingExecutor =
+                    TestPhysicalFileResultExecutor(fun _ _ ->
+                        Task.FromException(System.OperationCanceledException("The client has disconnected."))
+                    )
+                let (ctx, _stream) = setupTestContextWithExecutor conn (Some (throwingExecutor :> IActionResultExecutor<PhysicalFileResult>))
+                let handler = HttpHandlers.streamVideo normalVideo.Id
+                let next : HttpFunc = fun c -> task { return Some c }
 
-            // 例外がスローされず正常終了すること
-            let! resCtxOpt = handler next ctx
-            resCtxOpt.IsSome |> should be True
+                // 例外がスローされず正常終了すること
+                let! resCtxOpt = handler next ctx
+                resCtxOpt.IsSome |> should be True
+            finally
+                if File.Exists(tempFile) then
+                    try File.Delete(tempFile) with | _ -> ()
         } :> Task
 
     [<Fact>]
@@ -525,6 +544,7 @@ module HttpHandlersTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let! saveRes = Db.saveVideo conn longVideo
             match saveRes with
