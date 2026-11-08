@@ -2396,17 +2396,92 @@
         <!-- 動画再生画面 -->
 
         <div
-          class="flex-1 md:flex-initial aspect-video bg-black flex items-center justify-center overflow-hidden"
+          class="flex-1 md:flex-initial aspect-video bg-black flex items-center justify-center overflow-hidden relative"
         >
           <template x-if="selectedVideo">
             <video
               id="mainPlayer"
               :src="`/api/videos/${selectedVideo.id}/stream`"
+              @error="handleVideoError($event)"
               controls
               autoplay
               playsinline
               class="w-full h-full object-contain max-h-[75vh]"
             ></video>
+          </template>
+
+          <!-- Linux 255バイト制限超過 再生エラーオーバーレイ (mockup.html 準拠) -->
+          <template x-if="playbackError && playbackError.isLongFilename">
+            <div
+              class="absolute inset-0 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-20"
+            >
+              <div
+                class="bg-slate-900 border border-red-500/80 rounded-2xl p-6 max-w-lg shadow-2xl space-y-4"
+              >
+                <div
+                  class="w-14 h-14 bg-red-950 border border-red-700 rounded-full flex items-center justify-center mx-auto text-red-400 text-2xl shadow-inner"
+                >
+                  ⚠️
+                </div>
+                <div class="space-y-1.5">
+                  <h3 class="text-lg font-bold text-white tracking-wide">
+                    動画を再生できません
+                  </h3>
+                  <p class="text-xs text-red-300 font-semibold leading-relaxed">
+                    ファイル名が Linux (Docker/WSL) の 255 バイト制限 (NAME_MAX)
+                    を超過しています。
+                  </p>
+                </div>
+
+                <div
+                  class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-left space-y-1.5 text-xs font-mono"
+                >
+                  <div class="text-slate-400 truncate">
+                    ファイルパス:
+                    <span
+                      class="text-slate-200 select-all"
+                      x-text="playbackError.filePath"
+                    ></span>
+                  </div>
+                  <div class="flex items-center space-x-3 pt-1 text-[11px]">
+                    <span class="text-red-400"
+                      >UTF-8バイト数:
+                      <strong x-text="`${playbackError.bytes} バイト`"></strong
+                    ></span>
+                    <span class="text-slate-500">/</span>
+                    <span class="text-slate-400"
+                      >Linux カーネル上限:
+                      <strong>255 バイト</strong> (約85文字)</span
+                    >
+                  </div>
+                </div>
+
+                <div
+                  class="bg-blue-950/40 border border-blue-800/50 rounded-lg p-3 text-xs text-blue-200 text-left leading-relaxed"
+                >
+                  💡 <strong>対処法:</strong> ホスト OS (Windows) 上の
+                  <strong>AI File Renamer</strong>
+                  を起動して該当フォルダをスキャンし、短縮新ファイル名へリネームを行ってください。
+                </div>
+
+                <!-- 操作導線: パスコピーボタン -->
+                <div class="pt-2 flex justify-center space-x-3">
+                  <button
+                    @click="closeVideo()"
+                    class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-xs border border-slate-700"
+                  >
+                    プレイヤーを閉じる
+                  </button>
+                  <button
+                    @click="copyFilePath(playbackError.filePath)"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-xs font-semibold shadow flex items-center space-x-1.5"
+                  >
+                    <span>📋</span>
+                    <span>ファイルパスをコピー</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </template>
         </div>
 

@@ -15,11 +15,15 @@ module OpenRouterClient =
         "提供されたファイル一覧に対し、指定の命名規則に従って安全で簡潔なファイル名を生成してください。\n" +
         "出力は必ず指定されたJSONフォーマットのみを返し、余計な解説文やMarkdownタグを含めないでください。"
 
-    let private buildUserPrompt (rule: NamingRule) (candidates: ScanCandidate list) =
+    let buildUserPrompt (rule: NamingRule) (candidates: ScanCandidate list) =
         let sb = StringBuilder()
         sb.AppendLine($"【命名規則】: {rule.Name}") |> ignore
         sb.AppendLine($"【命名パターン】: {rule.Pattern}") |> ignore
         sb.AppendLine($"【命名指示】: {rule.PromptInstruction}") |> ignore
+        sb.AppendLine() |> ignore
+        sb.AppendLine("【制約要件】:") |> ignore
+        sb.AppendLine("- 生成する新ファイル名は、Linux のファイル名制限 (NAME_MAX 255B) に対応するため、UTF-8 エンコーディングで必ず 240 バイト以内（日本語で約75文字以内）に収めてください。") |> ignore
+        sb.AppendLine("- 同時に、Windows のパス長制限 (MAX_PATH 260字) に対応するため、フルパス（親ディレクトリパス＋新ファイル名）が必ず 240 文字以内になるように短縮してください。") |> ignore
         sb.AppendLine() |> ignore
         sb.AppendLine("【ファイル一覧】:") |> ignore
         candidates
@@ -180,8 +184,11 @@ module OpenRouterClient =
                                                 OriginalFileName = candidate.FileName
                                                 DirectoryPath = candidate.DirectoryPath
                                                 OriginalLength = candidate.PathLength
+                                                OriginalFileNameBytes = candidate.FileNameBytes
+                                                OriginalViolation = candidate.Violation
                                                 ProposedFileName = propName
                                                 ProposedLength = proposedPath.Length
+                                                ProposedFileNameBytes = Encoding.UTF8.GetByteCount(propName)
                                                 AiComment = normalizeAiComment comment
                                                 IsSelected = true
                                                 LastWriteTime = candidate.LastWriteTime
@@ -240,8 +247,11 @@ module OpenRouterClient =
                 OriginalFileName = c.FileName
                 DirectoryPath = c.DirectoryPath
                 OriginalLength = c.PathLength
+                OriginalFileNameBytes = c.FileNameBytes
+                OriginalViolation = c.Violation
                 ProposedFileName = c.FileName // 初期状態は元ファイル名（手動編集用）
                 ProposedLength = c.PathLength
+                ProposedFileNameBytes = c.FileNameBytes
                 AiComment = None              // 勝手な固定コメントを捏造しない
                 IsSelected = true
                 LastWriteTime = c.LastWriteTime
@@ -394,8 +404,11 @@ module OpenRouterClient =
                                 OriginalFileName = candidate.FileName
                                 DirectoryPath = candidate.DirectoryPath
                                 OriginalLength = candidate.PathLength
+                                OriginalFileNameBytes = candidate.FileNameBytes
+                                OriginalViolation = candidate.Violation
                                 ProposedFileName = finalPropName
                                 ProposedLength = proposedPath.Length
+                                ProposedFileNameBytes = Encoding.UTF8.GetByteCount(finalPropName)
                                 AiComment = Some comment
                                 IsSelected = true
                                 LastWriteTime = candidate.LastWriteTime

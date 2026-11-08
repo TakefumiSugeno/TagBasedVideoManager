@@ -1619,5 +1619,94 @@ type E2ETests (output: ITestOutputHelper) =
                     try File.Delete(dummyVideoFile2) with | _ -> ()
         }
 
+    [<Fact>]
+    member _.``E2E: 255 bytes filename exceeding video playback triggers HTTP 422 and displays error overlay with copy path action`` () = task {
+        let dbPath = Path.Combine(Path.GetTempPath(), $"e2e_filename_limit_{Guid.NewGuid()}.db")
+        let dummyVideoDir = Path.Combine(Path.GetTempPath(), $"e2e_filename_limit_vids_{Guid.NewGuid()}")
+        Directory.CreateDirectory(dummyVideoDir) |> ignore
+
+        // 256バイト超のファイル名 (日本語ひらがな1文字3バイト: 86文字*3 = 258B + ".mp4" 4B = 262B)
+        let longName = String('あ', 86) + ".mp4"
+        let dummyVideoFile = Path.Combine(dummyVideoDir, longName)
+        File.WriteAllBytes(dummyVideoFile, [| 0uy; 1uy; 2uy; 3uy |])
+
+        do
+            use conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}")
+            conn.Open()
+            let _ = TagBasedVideoManager.Infrastructure.DbInit.initializeDatabase conn |> ignore
+            let v: TagBasedVideoManager.Domain.Video = {
+                TagBasedVideoManager.Domain.Video.Id = Guid.NewGuid().ToString()
+                TagBasedVideoManager.Domain.Video.FileName = longName
+                TagBasedVideoManager.Domain.Video.FilePath = dummyVideoFile
+                TagBasedVideoManager.Domain.Video.Duration = 10L
+                TagBasedVideoManager.Domain.Video.FileSize = 4L
+                TagBasedVideoManager.Domain.Video.ThumbnailPath = None
+                TagBasedVideoManager.Domain.Video.IsFavorite = false
+                TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
+                TagBasedVideoManager.Domain.Video.AccessCount = 0
+                TagBasedVideoManager.Domain.Video.LastAccessedAt = None
+                TagBasedVideoManager.Domain.Video.Tags = []
+            }
+            let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn v |> Async.RunSynchronously
+            ()
+
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools()
+
+        let host, url = startTestServer dbPath
+        do! host.StartAsync()
+
+        try
+            use! playwright = Playwright.CreateAsync()
+            let! browser = playwright.Chromium.LaunchAsync(BrowserTypeLaunchOptions(Headless = true))
+            let! context = browser.NewContextAsync(BrowserNewContextOptions(Permissions = [| "clipboard-read"; "clipboard-write" |]))
+            let! page = context.NewPageAsync()
+            let! _ = page.GotoAsync(url)
+
+            // 動画カードが表示されるのを待機
+            let! _ = page.WaitForSelectorAsync("div[x-show=\"viewMode === 'grid'\"] > div")
+            let cards = page.Locator("div[x-show=\"viewMode === 'grid'\"] > div")
+
+            // カードをクリックして動画再生モーダルを開く
+            do! cards.Nth(0).ClickAsync()
+
+            // プレイヤー中央のエラーオーバーレイが表示されるまで待機（最大5秒）
+            let overlay = page.Locator("text=動画を再生できません")
+            do! overlay.WaitForAsync(LocatorWaitForOptions(Timeout = 5000.0f))
+
+            let! overlayVisible = overlay.IsVisibleAsync()
+            overlayVisible |> should equal true
+
+            // エラーオーバーレイ内の文言検証
+            let! overlayDesc = page.Locator("text=Linux (Docker/WSL) の 255 バイト制限").IsVisibleAsync()
+            overlayDesc |> should equal true
+
+            // トースト通知（「Linux 255バイト制限超過のため再生できません」）が表示されていることを検証
+            let toast = page.Locator("text=Linux 255バイト制限超過のため再生できません")
+            let! toastVisible = toast.IsVisibleAsync()
+            toastVisible |> should equal true
+
+            // ファイルパスのコピーボタンが存在しクリック可能
+            let copyBtn = page.Locator("button:has-text('ファイルパスをコピー')")
+            let! copyBtnVisible = copyBtn.IsVisibleAsync()
+            copyBtnVisible |> should equal true
+            do! copyBtn.ClickAsync()
+
+            // コピー後、クリップボード成功トーストが表示されることを検証
+            let copyToast = page.Locator("text=ファイルパスをクリップボードにコピーしました！")
+            do! copyToast.WaitForAsync(LocatorWaitForOptions(Timeout = 3000.0f))
+            let! copyToastVisible = copyToast.IsVisibleAsync()
+            copyToastVisible |> should equal true
+
+            do! browser.CloseAsync()
+
+        finally
+            host.Dispose()
+            if File.Exists(dbPath) then
+                try File.Delete(dbPath) with | _ -> ()
+            if Directory.Exists(dummyVideoDir) then
+                try Directory.Delete(dummyVideoDir, true) with | _ -> ()
+    }
+
 
 

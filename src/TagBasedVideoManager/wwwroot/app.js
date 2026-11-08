@@ -14,6 +14,8 @@ function videoManager() {
 
     selectedVideo: null,
 
+    playbackError: null, // 再生エラー情報 { isLongFilename: bool, message: string, filePath: string, bytes: number }
+
     viewMode: "grid", // 'grid' または 'list'
 
     mobileViewMode: "grid", // 'grid' または 'compact'
@@ -927,6 +929,8 @@ function videoManager() {
 
     playVideo(video) {
       if (video) {
+        this.playbackError = null;
+
         video.accessCount = (video.accessCount || 0) + 1;
 
         video.lastAccessedAt = new Date().toISOString();
@@ -955,6 +959,68 @@ function videoManager() {
       }
 
       this.selectedVideo = null;
+      this.playbackError = null;
+    },
+
+    async handleVideoError(event) {
+      if (!this.selectedVideo) return;
+      if (!event || !event.target || !event.target.src) return;
+
+      try {
+        const streamUrl = `/api/videos/${this.selectedVideo.id}/stream`;
+        const res = await fetch(streamUrl, {
+          headers: { Range: "bytes=0-0" },
+        });
+
+        if (!this.selectedVideo) return;
+
+        if (res.status === 422) {
+          const data = await res.json().catch(() => null);
+          if (data && data.code === "FILE_NAME_TOO_LONG") {
+            const calculatedBytes =
+              data.bytes ||
+              (this.selectedVideo.fileName
+                ? new TextEncoder().encode(this.selectedVideo.fileName).length
+                : 0);
+            this.playbackError = {
+              isLongFilename: true,
+              message:
+                data.message ||
+                data.error ||
+                "ファイル名がLinuxの255バイト制限を超過しています。",
+              filePath: data.filePath || this.selectedVideo.filePath,
+              bytes: calculatedBytes,
+            };
+            this.showToast(
+              "⚠️ Linux 255バイト制限超過のため再生できません。ファイル名を短縮してください。",
+              "error",
+              this.playbackError.filePath,
+            );
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("Error checking video stream:", e);
+      }
+    },
+
+    copyFilePath(filePath) {
+      const path =
+        filePath || (this.selectedVideo && this.selectedVideo.filePath) || "";
+      if (path && navigator.clipboard) {
+        navigator.clipboard
+          .writeText(path)
+          .then(() => {
+            this.showToast(
+              "ファイルパスをクリップボードにコピーしました！",
+              "success",
+            );
+          })
+          .catch((err) => {
+            console.error("Failed to copy path:", err);
+            this.showToast("ファイルパスのコピーに失敗しました。", "error");
+          });
+      }
     },
 
     clearVideoAccess(videoId) {

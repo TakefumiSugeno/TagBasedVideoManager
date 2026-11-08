@@ -2,6 +2,7 @@ namespace TagBasedVideoManager.Renamer
 
 open System
 open System.IO
+open System.Text
 open Elmish
 open TagBasedVideoManager.Renamer
 
@@ -18,6 +19,7 @@ and Model = {
     Settings: RenamerSettings
     CurrentThreshold: int         // UIで変更可能なセッション限定閾値 (非保存)
     FilterNonJapaneseOnly: bool   // 日本語を含まないファイル名のみ抽出するフラグ (セッション限定, 非保存)
+    FilterConstraint: ConstraintFilter // 表示フィルタ (セッション限定, 非保存)
     SelectedRuleId: string
 
     // 状態
@@ -46,6 +48,7 @@ and Msg =
     | SettingsLoaded of Result<RenamerSettings, RenamerError>
     | ThresholdChanged of int
     | ToggleFilterNonJapaneseOnly of bool
+    | SetConstraintFilter of ConstraintFilter
     | TargetDirectoryChanged of string
     | RuleSelected of string
     | ModelSelected of string
@@ -117,6 +120,17 @@ module State =
         proposals
         |> List.choose (fun p -> Map.tryFind p.OriginalFullPath candidateMap)
 
+    /// 現在の表示フィルタ設定に従ってリネーム候補リストを絞り込む
+    let getFilteredCandidates (filter: ConstraintFilter) (candidates: RenameProposal list) : RenameProposal list =
+        match filter with
+        | FilterAll -> candidates
+        | FilterLinuxOnly ->
+            candidates |> List.filter (fun c -> c.OriginalViolation = LinuxFileNameOnly)
+        | FilterWindowsOnly ->
+            candidates |> List.filter (fun c -> c.OriginalViolation = WindowsPathOnly)
+        | FilterBothOnly ->
+            candidates |> List.filter (fun c -> c.OriginalViolation = BothViolated)
+
     let private createAsyncPipelineCmd
         (apiKey: string)
         (modelName: string)
@@ -170,8 +184,11 @@ module State =
                                                 OriginalFileName = candidate.FileName
                                                 DirectoryPath = candidate.DirectoryPath
                                                 OriginalLength = candidate.PathLength
+                                                OriginalFileNameBytes = candidate.FileNameBytes
+                                                OriginalViolation = candidate.Violation
                                                 ProposedFileName = candidate.FileName
                                                 ProposedLength = candidate.PathLength
+                                                ProposedFileNameBytes = candidate.FileNameBytes
                                                 AiComment = Some $"（AI提案取得失敗: {err}）"
                                                 IsSelected = true
                                                 LastWriteTime = candidate.LastWriteTime
@@ -199,6 +216,7 @@ module State =
             Settings = initialSettings
             CurrentThreshold = initialSettings.PathLengthThreshold
             FilterNonJapaneseOnly = false
+            FilterConstraint = FilterAll
             SelectedRuleId = firstRuleId
             IsScanning = false
             IsRequestingAi = false
@@ -250,6 +268,10 @@ module State =
         | ToggleFilterNonJapaneseOnly isChecked ->
             // セッション内一時変更（Settings.save は呼ばない）
             { model with FilterNonJapaneseOnly = isChecked }, Cmd.none
+
+        | SetConstraintFilter filter ->
+            // セッション内一時変更（Settings.save は呼ばない）
+            { model with FilterConstraint = filter }, Cmd.none
 
         | TargetDirectoryChanged newDir ->
             let updatedSettings = { model.Settings with TargetDirectory = newDir }
@@ -462,7 +484,10 @@ module State =
                 |> List.map (fun c ->
                     if c.OriginalFullPath = fullPath then
                         let newProposedPath = Path.Combine(c.DirectoryPath, newName)
-                        { c with ProposedFileName = newName; ProposedLength = newProposedPath.Length }
+                        { c with
+                            ProposedFileName = newName
+                            ProposedLength = newProposedPath.Length
+                            ProposedFileNameBytes = Encoding.UTF8.GetByteCount(newName) }
                     else c
                 )
             { model with Candidates = updated }, Cmd.none

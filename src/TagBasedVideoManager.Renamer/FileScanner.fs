@@ -2,6 +2,7 @@ namespace TagBasedVideoManager.Renamer
 
 open System
 open System.IO
+open System.Text
 open System.Collections.Generic
 
 module FileScanner =
@@ -73,33 +74,55 @@ module FileScanner =
                             let files = Directory.EnumerateFiles(currentDir, "*.*", SearchOption.TopDirectoryOnly)
                             for file in files do
                                 try
+                                    let fileName = Path.GetFileName(file)
                                     let baseName = Path.GetFileNameWithoutExtension(file)
+                                    let fnBytes = Encoding.UTF8.GetByteCount(fileName)
+                                    let isPathLong = file.Length >= threshold
+                                    let isNameLong = fnBytes >= 240
+
                                     let isTarget =
                                         isVideoFile file
-                                        && file.Length >= threshold
+                                        && (isPathLong || isNameLong)
                                         && (not filterNonJapaneseOnly || not (containsJapanese baseName))
 
                                     if isTarget then
                                         let fi = FileInfo(file)
+                                        let violation =
+                                            if isPathLong && isNameLong then BothViolated
+                                            elif isNameLong then LinuxFileNameOnly
+                                            else WindowsPathOnly
                                         candidates.Add({
                                             FullPath = file
                                             FileName = fi.Name
                                             DirectoryPath = fi.DirectoryName
                                             PathLength = file.Length
+                                            FileNameBytes = fnBytes
+                                            Violation = violation
                                             FileSizeBytes = fi.Length
                                             LastWriteTime = fi.LastWriteTime
                                         })
                                 with
                                 | :? UnauthorizedAccessException -> ()
                                 | :? PathTooLongException ->
-                                    candidates.Add({
-                                        FullPath = file
-                                        FileName = Path.GetFileName(file)
-                                        DirectoryPath = Path.GetDirectoryName(file)
-                                        PathLength = file.Length
-                                        FileSizeBytes = 0L
-                                        LastWriteTime = DateTime.MinValue
-                                    })
+                                    if isVideoFile file then
+                                        let fileName = Path.GetFileName(file)
+                                        let fnBytes = Encoding.UTF8.GetByteCount(fileName)
+                                        let isPathLong = file.Length >= threshold
+                                        let isNameLong = fnBytes >= 240
+                                        let violation =
+                                            if isPathLong && isNameLong then BothViolated
+                                            elif isNameLong then LinuxFileNameOnly
+                                            else WindowsPathOnly
+                                        candidates.Add({
+                                            FullPath = file
+                                            FileName = fileName
+                                            DirectoryPath = Path.GetDirectoryName(file)
+                                            PathLength = file.Length
+                                            FileNameBytes = fnBytes
+                                            Violation = violation
+                                            FileSizeBytes = 0L
+                                            LastWriteTime = DateTime.MinValue
+                                        })
                                 | _ -> ()
                         with
                         | :? UnauthorizedAccessException -> ()

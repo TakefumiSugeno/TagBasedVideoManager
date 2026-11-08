@@ -35,8 +35,11 @@ module StateTests =
             OriginalFileName = "VeryLongPath.mp4"
             DirectoryPath = "C:\\Videos"
             OriginalLength = 26
+            OriginalFileNameBytes = 16
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "Short.mp4"
             ProposedLength = 19
+            ProposedFileNameBytes = 9
             AiComment = None
             IsAiProposed = true
             IsAiProcessing = false
@@ -61,8 +64,11 @@ module StateTests =
             OriginalFileName = "v1.mp4"
             DirectoryPath = "C:\\Videos"
             OriginalLength = 15
+            OriginalFileNameBytes = 6
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "n1.mp4"
             ProposedLength = 15
+            ProposedFileNameBytes = 6
             AiComment = None
             IsAiProposed = true
             IsAiProcessing = false
@@ -89,8 +95,11 @@ module StateTests =
             OriginalFileName = "v1.mp4"
             DirectoryPath = "C:\\Videos"
             OriginalLength = 15
+            OriginalFileNameBytes = 6
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "n1.mp4"
             ProposedLength = 15
+            ProposedFileNameBytes = 6
             AiComment = None
             IsAiProposed = true
             IsAiProcessing = false
@@ -155,8 +164,11 @@ module StateTests =
             OriginalFileName = "Short.mp4"
             DirectoryPath = "C:\\Videos"
             OriginalLength = 20
+            OriginalFileNameBytes = 9
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "Short.mp4"
             ProposedLength = 20
+            ProposedFileNameBytes = 9
             AiComment = None
             IsAiProposed = true
             IsAiProcessing = false
@@ -168,8 +180,11 @@ module StateTests =
             OriginalFileName = "VeryLongLongName.mp4"
             DirectoryPath = "C:\\Videos"
             OriginalLength = 35
+            OriginalFileNameBytes = 20
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "VeryLongLongName.mp4"
             ProposedLength = 35
+            ProposedFileNameBytes = 20
             AiComment = None
             IsAiProposed = true
             IsAiProcessing = false
@@ -233,6 +248,8 @@ module StateTests =
             FileName = "very_long_file_name_over_limit_testing_sample.mp4"
             DirectoryPath = "E:\\test"
             PathLength = 265
+            FileNameBytes = 47
+            Violation = WindowsPathOnly
             FileSizeBytes = 1024L
             LastWriteTime = DateTime(2025, 8, 12)
         }
@@ -262,8 +279,11 @@ module StateTests =
             OriginalFileName = "long_path_that_was_over_limit_sample_1.mp4"
             DirectoryPath = "C:\\Videos"
             OriginalLength = 250
+            OriginalFileNameBytes = 43
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "short1.mp4"
             ProposedLength = 20
+            ProposedFileNameBytes = 10
             AiComment = None
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
@@ -275,8 +295,11 @@ module StateTests =
             OriginalFileName = "long_path_that_was_over_limit_sample_2.mp4"
             DirectoryPath = "C:\\Videos"
             OriginalLength = 260
+            OriginalFileNameBytes = 43
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "still_somewhat_long_file_name_that_exceeds_threshold.mp4"
             ProposedLength = 245
+            ProposedFileNameBytes = 55
             AiComment = None
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
@@ -288,8 +311,11 @@ module StateTests =
             OriginalFileName = "unselected_long_file.mp4"
             DirectoryPath = "C:\\Videos"
             OriginalLength = 255
+            OriginalFileNameBytes = 24
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "unselected_long_file.mp4"
             ProposedLength = 255
+            ProposedFileNameBytes = 24
             AiComment = None
             IsSelected = false
             LastWriteTime = DateTime.UtcNow
@@ -370,6 +396,8 @@ module StateTests =
             FileName = "long_test_sample.mp4"
             DirectoryPath = "C:\\Videos"
             PathLength = 30
+            FileNameBytes = 20
+            Violation = WindowsPathOnly
             FileSizeBytes = 2048L
             LastWriteTime = DateTime(2025, 1, 1)
         }
@@ -378,6 +406,9 @@ module StateTests =
         initial.OriginalFileName |> should equal candidate.FileName
         initial.DirectoryPath |> should equal candidate.DirectoryPath
         initial.OriginalLength |> should equal candidate.PathLength
+        initial.OriginalFileNameBytes |> should equal candidate.FileNameBytes
+        initial.OriginalViolation |> should equal candidate.Violation
+        initial.ProposedFileNameBytes |> should equal candidate.FileNameBytes
         initial.ProposedFileName |> should equal candidate.FileName
         initial.ProposedLength |> should equal candidate.PathLength
         initial.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
@@ -394,8 +425,11 @@ module StateTests =
             OriginalFileName = "v1.mp4"
             DirectoryPath = "C:\\Videos"
             OriginalLength = 15
+            OriginalFileNameBytes = 6
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "v1.mp4"
             ProposedLength = 15
+            ProposedFileNameBytes = 6
             AiComment = Some "（待機中...）"
             IsAiProposed = false
             IsAiProcessing = false
@@ -419,8 +453,11 @@ module StateTests =
             OriginalFileName = "v1.mp4"
             DirectoryPath = "C:\\Videos"
             OriginalLength = 250
+            OriginalFileNameBytes = 6
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "v1.mp4"
             ProposedLength = 250
+            ProposedFileNameBytes = 6
             AiComment = Some "（待機中...）"
             IsAiProposed = false
             IsAiProcessing = true
@@ -464,8 +501,11 @@ module StateTests =
             OriginalFileName = "v1.mp4"
             DirectoryPath = "C:\\Videos"
             OriginalLength = 250
+            OriginalFileNameBytes = 6
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "v1.mp4"
             ProposedLength = 250
+            ProposedFileNameBytes = 6
             AiComment = Some "（待機中...）"
             IsAiProposed = false
             IsAiProcessing = true
@@ -500,6 +540,8 @@ module StateTests =
             FileName = "a.mp4"
             DirectoryPath = "C:\\"
             PathLength = 8
+            FileNameBytes = 5
+            Violation = WindowsPathOnly
             FileSizeBytes = 100L
             LastWriteTime = DateTime.UtcNow
         }
@@ -508,6 +550,8 @@ module StateTests =
             FileName = "very_long_path_sample_file_12345.mp4"
             DirectoryPath = "C:\\"
             PathLength = 40
+            FileNameBytes = 36
+            Violation = WindowsPathOnly
             FileSizeBytes = 100L
             LastWriteTime = DateTime.UtcNow
         }
@@ -516,6 +560,8 @@ module StateTests =
             FileName = "middle_length_path.mp4"
             DirectoryPath = "C:\\"
             PathLength = 25
+            FileNameBytes = 22
+            Violation = WindowsPathOnly
             FileSizeBytes = 100L
             LastWriteTime = DateTime.UtcNow
         }
@@ -664,6 +710,65 @@ module StateTests =
         validationModel.ErrorMessage |> should not' (equal None)
         validationModel.ErrorMessage.Value |> should contain "No runtime"
         validationCmd.IsEmpty |> should equal false
+
+    [<Fact>]
+    let ``UT-STATE-FILTER-01: SetConstraintFilter は表示フィルタの状態を更新し、各制約種別に応じた候補絞り込みを可能にする`` () =
+        let initialModel, _ = State.init ()
+        initialModel.FilterConstraint |> should equal FilterAll
+
+        // 1. FilterLinuxOnly への切り替え
+        let modelLinux, _ = State.update (SetConstraintFilter FilterLinuxOnly) initialModel
+        modelLinux.FilterConstraint |> should equal FilterLinuxOnly
+
+        // 2. FilterWindowsOnly への切り替え
+        let modelWin, _ = State.update (SetConstraintFilter FilterWindowsOnly) modelLinux
+        modelWin.FilterConstraint |> should equal FilterWindowsOnly
+
+        // 3. FilterBothOnly への切り替え
+        let modelBoth, _ = State.update (SetConstraintFilter FilterBothOnly) modelWin
+        modelBoth.FilterConstraint |> should equal FilterBothOnly
+
+        // 4. FilterAll への復帰
+        let modelAll, _ = State.update (SetConstraintFilter FilterAll) modelBoth
+        modelAll.FilterConstraint |> should equal FilterAll
+
+        // 5. State.getFilteredCandidates による候補絞り込み実動検証
+        let dummyCandidate violation name = {
+            OriginalFullPath = $"C:\\videos\\{name}.mp4"
+            OriginalFileName = $"{name}.mp4"
+            DirectoryPath = "C:\\videos"
+            OriginalLength = 50
+            OriginalFileNameBytes = 50
+            OriginalViolation = violation
+            ProposedFileName = $"{name}.mp4"
+            ProposedLength = 50
+            ProposedFileNameBytes = 50
+            AiComment = None
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            IsAiProposed = false
+            IsAiProcessing = false
+        }
+        let candidates = [
+            dummyCandidate LinuxFileNameOnly "linux_only"
+            dummyCandidate WindowsPathOnly "windows_only"
+            dummyCandidate BothViolated "both_violated"
+        ]
+
+        let filteredAll = State.getFilteredCandidates FilterAll candidates
+        filteredAll.Length |> should equal 3
+
+        let filteredLinux = State.getFilteredCandidates FilterLinuxOnly candidates
+        filteredLinux.Length |> should equal 1
+        filteredLinux.Head.OriginalViolation |> should equal LinuxFileNameOnly
+
+        let filteredWindows = State.getFilteredCandidates FilterWindowsOnly candidates
+        filteredWindows.Length |> should equal 1
+        filteredWindows.Head.OriginalViolation |> should equal WindowsPathOnly
+
+        let filteredBoth = State.getFilteredCandidates FilterBothOnly candidates
+        filteredBoth.Length |> should equal 1
+        filteredBoth.Head.OriginalViolation |> should equal BothViolated
 
 
 

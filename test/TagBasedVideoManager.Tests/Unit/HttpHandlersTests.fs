@@ -10,6 +10,8 @@ open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Logging
 open Microsoft.Data.Sqlite
 open Giraffe
+open Microsoft.AspNetCore.Mvc
+open Microsoft.AspNetCore.Mvc.Infrastructure
 open TagBasedVideoManager
 open TagBasedVideoManager.Domain
 open TagBasedVideoManager.Infrastructure
@@ -69,13 +71,24 @@ module HttpHandlersTests =
         | Error msg -> failwithf "Failed to initialize: %s" msg
 
     /// <summary>
+    /// 例外スローまたはダミー実行を行うテスト用 PhysicalFileResultExecutor 実装。
+    /// </summary>
+    type private TestPhysicalFileResultExecutor(executeAction: ActionContext -> PhysicalFileResult -> Task) =
+        interface IActionResultExecutor<PhysicalFileResult> with
+            member _.ExecuteAsync(context: ActionContext, result: PhysicalFileResult) : Task =
+                executeAction context result
+
+    /// <summary>
     /// HttpContext および Response Body ストリームを初期化するヘルパー。
     /// </summary>
-    let private setupTestContext (conn: IDbConnection) =
+    let private setupTestContextWithExecutor (conn: IDbConnection) (executorOpt: IActionResultExecutor<PhysicalFileResult> option) =
         let services = ServiceCollection()
         services.AddSingleton<IDbConnection>(conn) |> ignore
         services.AddSingleton<IMediaProcessor>(DummyMediaProcessor()) |> ignore
         services.AddGiraffe() |> ignore
+        match executorOpt with
+        | Some executor -> services.AddSingleton<IActionResultExecutor<PhysicalFileResult>>(executor) |> ignore
+        | None -> ()
         let serviceProvider = services.BuildServiceProvider()
 
         let ctx = DefaultHttpContext()
@@ -83,6 +96,12 @@ module HttpHandlersTests =
         let memoryStream = new System.IO.MemoryStream()
         ctx.Response.Body <- memoryStream
         (ctx, memoryStream)
+
+    /// <summary>
+    /// HttpContext および Response Body ストリームを初期化するヘルパー。
+    /// </summary>
+    let private setupTestContext (conn: IDbConnection) =
+        setupTestContextWithExecutor conn None
 
     /// <summary>
     /// MemoryStream から文字列レスポンスを読み取るヘルパー。
@@ -368,3 +387,170 @@ module HttpHandlersTests =
                 | Error e -> failwithf "Failed to fetch tags from DB: %A" e
             } :> Task
         )
+
+    [<Fact>]
+    let ``streamVideo はファイル名 UTF-8 バイト数が 255B を超過している場合 Fail-Fast で HTTP 422 JSON を返却する (UT-WEB-01)`` () =
+        task {
+            use conn = createInMemoryDb ()
+            // 86文字のひらがな（86 * 3 = 258バイト）+ ".mp4" (4バイト) = 262バイト (> 255B)
+            let longFileName = String('あ', 86) + ".mp4"
+            let longVideo = {
+                Id = "v_long_name_1"
+                FileName = longFileName
+                FilePath = @"/videos/" + longFileName
+                Duration = 120L
+                FileSize = 1024L
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+            }
+            let! saveRes = Db.saveVideo conn longVideo
+            match saveRes with
+            | Ok _ -> ()
+            | Error e -> failwithf "Failed to save video: %A" e
+
+            let (ctx, stream) = setupTestContext conn
+            let handler = HttpHandlers.streamVideo longVideo.Id
+            let next : HttpFunc = fun c -> task { return Some c }
+
+            let! resCtxOpt = handler next ctx
+            resCtxOpt.IsSome |> should be True
+            let resCtx = resCtxOpt.Value
+            resCtx.Response.StatusCode |> should equal 422
+
+            let! body = readResponseBody stream
+            body.Contains("\"code\":\"FILE_NAME_TOO_LONG\"") |> should be True
+            body.Contains("255") |> should be True
+            body.Contains("\"bytes\":262") |> should be True
+            body.Contains("\"filePath\":") |> should be True
+        } :> Task
+
+    [<Fact>]
+    let ``streamVideo は ExecuteAsync 実行時に PathTooLongException が発生した場合 HTTP 422 JSON を返却する (UT-WEB-03)`` () =
+        task {
+            use conn = createInMemoryDb ()
+            let normalVideo = {
+                Id = "v_pathtoolong_1"
+                FileName = "sample.mp4"
+                FilePath = @"/videos/sample.mp4"
+                Duration = 120L
+                FileSize = 1024L
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+            }
+            let! saveRes = Db.saveVideo conn normalVideo
+            match saveRes with
+            | Ok _ -> ()
+            | Error e -> failwithf "Failed to save video: %A" e
+
+            let throwingExecutor =
+                TestPhysicalFileResultExecutor(fun _ _ ->
+                    Task.FromException(System.IO.PathTooLongException("The specified path, file name, or both are too long."))
+                )
+            let (ctx, stream) = setupTestContextWithExecutor conn (Some (throwingExecutor :> IActionResultExecutor<PhysicalFileResult>))
+            let handler = HttpHandlers.streamVideo normalVideo.Id
+            let next : HttpFunc = fun c -> task { return Some c }
+
+            let! resCtxOpt = handler next ctx
+            resCtxOpt.IsSome |> should be True
+            let resCtx = resCtxOpt.Value
+            resCtx.Response.StatusCode |> should equal 422
+
+            let! body = readResponseBody stream
+            body.Contains("\"code\":\"FILE_NAME_TOO_LONG\"") |> should be True
+            body.Contains("\"bytes\":10") |> should be True
+            body.Contains("\"filePath\":\"/videos/sample.mp4\"") |> should be True
+        } :> Task
+
+    [<Fact>]
+    let ``streamVideo は ExecuteAsync 実行時に OperationCanceledException が発生した場合 例外を投げずに静かに終了する (UT-WEB-04)`` () =
+        task {
+            use conn = createInMemoryDb ()
+            let normalVideo = {
+                Id = "v_canceled_1"
+                FileName = "sample.mp4"
+                FilePath = @"/videos/sample.mp4"
+                Duration = 120L
+                FileSize = 1024L
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+            }
+            let! saveRes = Db.saveVideo conn normalVideo
+            match saveRes with
+            | Ok _ -> ()
+            | Error e -> failwithf "Failed to save video: %A" e
+
+            let throwingExecutor =
+                TestPhysicalFileResultExecutor(fun _ _ ->
+                    Task.FromException(System.OperationCanceledException("The client has disconnected."))
+                )
+            let (ctx, _stream) = setupTestContextWithExecutor conn (Some (throwingExecutor :> IActionResultExecutor<PhysicalFileResult>))
+            let handler = HttpHandlers.streamVideo normalVideo.Id
+            let next : HttpFunc = fun c -> task { return Some c }
+
+            // 例外がスローされず正常終了すること
+            let! resCtxOpt = handler next ctx
+            resCtxOpt.IsSome |> should be True
+        } :> Task
+
+    [<Fact>]
+    let ``streamVideo は ファイル名255B超動画に対して OS コール (ExecuteAsync) を呼び出さずに Fail-Fast で HTTP 422 JSON を返却する (UT-WEB-05)`` () =
+        task {
+            use conn = createInMemoryDb ()
+            let longFileName = String('あ', 86) + ".mp4"
+            let longVideo = {
+                Id = "v_fnf_long_1"
+                FileName = longFileName
+                FilePath = @"/videos/" + longFileName
+                Duration = 120L
+                FileSize = 1024L
+                ThumbnailPath = None
+                IsFavorite = false
+                CreatedAt = DateTime.UtcNow
+                FileModifiedAt = DateTime.UtcNow
+                AccessCount = 0
+                LastAccessedAt = None
+                Tags = []
+            }
+            let! saveRes = Db.saveVideo conn longVideo
+            match saveRes with
+            | Ok _ -> ()
+            | Error e -> failwithf "Failed to save video: %A" e
+
+            let mutable executorCalled = false
+            let throwingExecutor =
+                TestPhysicalFileResultExecutor(fun _ _ ->
+                    executorCalled <- true
+                    Task.FromException(System.IO.FileNotFoundException("Could not find file on Linux."))
+                )
+            let (ctx, stream) = setupTestContextWithExecutor conn (Some (throwingExecutor :> IActionResultExecutor<PhysicalFileResult>))
+            let handler = HttpHandlers.streamVideo longVideo.Id
+            let next : HttpFunc = fun c -> task { return Some c }
+
+            let! resCtxOpt = handler next ctx
+            resCtxOpt.IsSome |> should be True
+            let resCtx = resCtxOpt.Value
+            resCtx.Response.StatusCode |> should equal 422
+
+            // Fail-Fast により OS コール (PhysicalFileResultExecutor) は呼び出されないこと
+            executorCalled |> should be False
+
+            let! body = readResponseBody stream
+            body.Contains("\"code\":\"FILE_NAME_TOO_LONG\"") |> should be True
+            body.Contains("\"bytes\":262") |> should be True
+            body.Contains("\"filePath\":") |> should be True
+        } :> Task

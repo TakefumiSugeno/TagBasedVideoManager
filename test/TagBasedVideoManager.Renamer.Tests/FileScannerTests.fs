@@ -2,6 +2,7 @@ namespace TagBasedVideoManager.Renamer.Tests
 
 open System
 open System.IO
+open System.Text
 open Xunit
 open FsUnit
 open TagBasedVideoManager.Renamer
@@ -184,8 +185,11 @@ module FileScannerTests =
             OriginalFileName = "AAA_Middle.mp4"
             DirectoryPath = "C:/Videos/Sub"
             OriginalLength = 28
+            OriginalFileNameBytes = 14
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "2026-09-28_AAA.mp4"
             ProposedLength = 20
+            ProposedFileNameBytes = 18
             AiComment = None
             IsAiProposed = true
             IsAiProcessing = false
@@ -197,8 +201,11 @@ module FileScannerTests =
             OriginalFileName = "BBB_Longest_File_Name_Here.mp4"
             DirectoryPath = "C:/Videos/Sub"
             OriginalLength = 45
+            OriginalFileNameBytes = 31
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "2026-09-28_BBB.mp4"
             ProposedLength = 20
+            ProposedFileNameBytes = 18
             AiComment = None
             IsAiProposed = true
             IsAiProcessing = false
@@ -210,8 +217,11 @@ module FileScannerTests =
             OriginalFileName = "CCC_Short.mp4"
             DirectoryPath = "C:/Videos"
             OriginalLength = 23
+            OriginalFileNameBytes = 13
+            OriginalViolation = WindowsPathOnly
             ProposedFileName = "2026-09-28_CCC.mp4"
             ProposedLength = 20
+            ProposedFileNameBytes = 18
             AiComment = None
             IsAiProposed = true
             IsAiProcessing = false
@@ -304,6 +314,80 @@ module FileScannerTests =
                 names |> should contain "sample_english_video.mp4"
                 names |> should contain "日本語タイトル動画_01.mp4"
                 candidates.Length |> should equal 3
+        finally
+            cleanup root
+
+    [<Fact>]
+    let ``UT-REN-01〜07: scanLongPaths は Windows長パスとLinux長ファイル名の二重制約による包括抽出と違反種別判定を行う`` () =
+        let root, subDir = createTestEnvironment ()
+        try
+            // 1. UT-REN-07: 極小値（通常ファイル: パス長短、バイト数少） -> 抽出対象外
+            let normalFile = Path.Combine(root, "short.mp4")
+            File.WriteAllText(normalFile, "dummy")
+
+            // 2. UT-REN-03: パス長は短いが、ファイル名 UTF-8 バイト数が 240B 以上 (80文字ひらがな = 240B + 4 = 244B) -> LinuxFileNameOnly
+            let linuxOnlyName = String('あ', 80) + ".mp4"
+            let linuxOnlyFile = Path.Combine(root, linuxOnlyName)
+            File.WriteAllText(linuxOnlyFile, "dummy")
+
+            // 3. UT-REN-05: Linux上限境界値 255B (83文字ひらがな * 3 + 6文字英数 = 255B) -> LinuxFileNameOnly
+            let linux255Name = String('い', 83) + "12.mp4"
+            let linux255File = Path.Combine(root, linux255Name)
+            File.WriteAllText(linux255File, "dummy")
+
+            // 4. UT-REN-06: Linux上限超過 256B (84文字ひらがな * 3 = 252B + ".mp4" = 256B) -> LinuxFileNameOnly
+            let linux256Name = String('う', 84) + ".mp4"
+            let linux256File = Path.Combine(root, linux256Name)
+            File.WriteAllText(linux256File, "dummy")
+
+            // 5. UT-REN-02: パス長 ≧ 240字 だが、ファイル名単体は英数字で < 240B -> WindowsPathOnly
+            let targetPathLen = 245
+            let neededLen = targetPathLen - root.Length - 1 - 5 // "\win_short.mp4"
+            let paddingDirName = if neededLen > 0 then String('a', min neededLen 100) else "pad"
+            let padDir = Path.Combine(root, paddingDirName)
+            Directory.CreateDirectory(padDir) |> ignore
+            let remainingLen = targetPathLen - padDir.Length - 1 - 4
+            let winFileName = (if remainingLen > 0 then String('b', remainingLen) else "b") + ".mp4"
+            let winLongPathFile = Path.Combine(padDir, winFileName)
+            File.WriteAllText(winLongPathFile, "dummy")
+
+            // 6. UT-REN-04: パス長 ≧ 240字 かつ ファイル名 ≧ 240B -> BothViolated
+            let bothName = String('え', 80) + ".mp4" // 244B
+            let neededBothLen = max 1 (245 - root.Length - 1 - bothName.Length)
+            let bothDir = Path.Combine(root, String('c', neededBothLen))
+            Directory.CreateDirectory(bothDir) |> ignore
+            let bothFile = Path.Combine(bothDir, bothName)
+            File.WriteAllText(bothFile, "dummy")
+
+            let threshold = 240
+
+            let result = FileScanner.scanLongPaths root threshold false
+            match result with
+            | Error err -> failwith $"scanLongPaths failed: {err}"
+            | Ok candidates ->
+                // normalFile は抽出されないこと (UT-REN-07)
+                candidates |> List.exists (fun c -> c.FullPath = normalFile) |> should equal false
+
+                // LinuxFileNameOnly が抽出され、Violation が判定されていること (UT-REN-03, 05, 06)
+                let cLinux = candidates |> List.find (fun c -> c.FullPath = linuxOnlyFile)
+                cLinux.Violation |> should equal LinuxFileNameOnly
+                cLinux.FileNameBytes |> should equal 244
+
+                let cLinux255 = candidates |> List.find (fun c -> c.FullPath = linux255File)
+                cLinux255.Violation |> should equal LinuxFileNameOnly
+                cLinux255.FileNameBytes |> should equal 255
+
+                let cLinux256 = candidates |> List.find (fun c -> c.FullPath = linux256File)
+                cLinux256.Violation |> should equal LinuxFileNameOnly
+                cLinux256.FileNameBytes |> should equal 256
+
+                // WindowsPathOnly が抽出され判定されていること (UT-REN-02)
+                let cWin = candidates |> List.find (fun c -> c.FullPath = winLongPathFile)
+                cWin.Violation |> should equal WindowsPathOnly
+
+                // BothViolated が抽出され判定されていること (UT-REN-04)
+                let cBoth = candidates |> List.find (fun c -> c.FullPath = bothFile)
+                cBoth.Violation |> should equal BothViolated
         finally
             cleanup root
 

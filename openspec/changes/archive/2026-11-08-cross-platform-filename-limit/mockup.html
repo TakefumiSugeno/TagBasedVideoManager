@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="ja" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      UI Mockup - Linux NAME_MAX (255B) & Windows MAX_PATH (260字)
+      クロスプラットフォーム対応
+    </title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js CDN -->
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              fluent: {
+                bg: "#18181b",
+                surface: "#202023",
+                card: "#27272a",
+                border: "#3f3f46",
+                accent: "#2563eb",
+                accentHover: "#3b82f6",
+                text: "#f4f4f5",
+                subtext: "#a1a1aa",
+                danger: "#ef4444",
+                dangerDark: "#450a0a",
+                dangerBorder: "#b91c1c",
+                warning: "#fbbf24",
+                success: "#10b981",
+                successDark: "#064e3b",
+                successBorder: "#065f46",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #18181b;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #3f3f46;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #52525b;
+      }
+      .font-mono-fluent {
+        font-family:
+          "Cascadia Mono", Consolas, "Meiryo UI", "Yu Gothic UI", monospace;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-slate-950 text-fluent-text font-sans p-3 sm:p-6 flex flex-col items-center min-h-screen antialiased select-none"
+    x-data="mockupApp()"
+  >
+    <!-- コピートースト (画面上部中央) -->
+    <div
+      x-show="showCopyToast"
+      x-transition
+      class="fixed top-6 bg-emerald-900 border border-emerald-600 text-emerald-100 px-4 py-2 rounded-xl shadow-2xl text-xs font-semibold z-50 flex items-center space-x-2"
+    >
+      <span>✓</span>
+      <span>ファイルパスをクリップボードにコピーしました！</span>
+    </div>
+
+    <!-- タブ切り替えコントロール (Renamer デスクトップ vs Web プレイヤー) -->
+    <div
+      class="w-full max-w-6xl mb-4 flex items-center justify-between bg-zinc-900 border border-zinc-800 px-4 py-2.5 rounded-xl shadow-lg"
+    >
+      <div class="flex items-center space-x-3">
+        <span class="text-sm font-bold text-blue-400"
+          >⚡ Cross-Platform Filename Limit Mockup</span
+        >
+        <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded"
+          >Issue #27</span
+        >
+      </div>
+      <div class="flex items-center space-x-2">
+        <button
+          @click="activeTab = 'renamer'"
+          :class="activeTab === 'renamer' ? 'bg-blue-600 text-white font-semibold' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'"
+          class="px-4 py-1.5 rounded-lg text-xs transition-colors flex items-center space-x-1.5"
+        >
+          <span>🖥️</span>
+          <span>AI File Renamer (デスクトップ GUI)</span>
+        </button>
+        <button
+          @click="activeTab = 'web'"
+          :class="activeTab === 'web' ? 'bg-blue-600 text-white font-semibold' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'"
+          class="px-4 py-1.5 rounded-lg text-xs transition-colors flex items-center space-x-1.5"
+        >
+          <span>🌐</span>
+          <span>Web プレイヤー & エラーオーバーレイ</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- VIEW 1: AI File Renamer (Avalonia.FuncUI 忠実再現)                      -->
+    <!-- ===================================================================== -->
+    <div
+      x-show="activeTab === 'renamer'"
+      class="w-full max-w-6xl bg-fluent-bg border border-fluent-border rounded-xl shadow-2xl overflow-hidden flex flex-col h-[88vh] max-h-[880px]"
+    >
+      <!-- Titlebar -->
+      <div
+        class="bg-fluent-surface border-b border-fluent-border px-4 py-2 flex items-center justify-between flex-shrink-0"
+      >
+        <div class="flex items-center space-x-3">
+          <div
+            class="w-5 h-5 rounded bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white shadow"
+          >
+            ▶
+          </div>
+          <span class="text-xs font-semibold text-fluent-text tracking-wide"
+            >TagBasedVideoManager.Renamer - AI File Renamer (Cross-Platform
+            NAME_MAX)</span
+          >
+        </div>
+        <div class="flex items-center space-x-2 text-xs text-fluent-subtext">
+          <span
+            class="bg-blue-950/80 border border-blue-800/80 text-blue-300 px-2 py-0.5 rounded text-[11px]"
+            >Linux 255B & Win 260字 包括検知</span
+          >
+          <div class="flex space-x-1 pl-2">
+            <span class="w-3 h-3 rounded-full bg-zinc-600 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-zinc-600 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-red-600 inline-block"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div
+        class="bg-fluent-surface/90 border-b border-fluent-border p-3.5 flex flex-col space-y-2.5 flex-shrink-0"
+      >
+        <!-- Row 1: Target Folder & Action Buttons -->
+        <div class="flex items-center space-x-3">
+          <div class="flex-1 flex items-center space-x-2">
+            <span class="text-xs text-fluent-subtext whitespace-nowrap"
+              >走査フォルダ:</span
+            >
+            <input
+              type="text"
+              readonly
+              value="D:\Videos\Anime"
+              class="flex-1 bg-zinc-900 border border-fluent-border rounded px-3 py-1 text-xs text-zinc-200 font-mono-fluent focus:outline-none"
+            />
+            <button
+              class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1 rounded text-xs border border-zinc-700"
+            >
+              参照...
+            </button>
+          </div>
+          <button
+            class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1 rounded text-xs font-semibold shadow flex items-center space-x-1.5"
+          >
+            <span>▶</span>
+            <span>リネーム対象抽出＆AI提案を実行</span>
+          </button>
+          <button
+            disabled
+            class="bg-zinc-800 text-zinc-600 px-3 py-1 rounded text-xs border border-zinc-800 cursor-not-allowed"
+          >
+            AI提案を中止
+          </button>
+          <button
+            class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1 rounded text-xs border border-zinc-700"
+          >
+            ⚙ 命名規則
+          </button>
+        </div>
+
+        <!-- Row 2: Filter Options & 画面から一時変更可能な二重閾値入力ボックス -->
+        <div
+          class="flex items-center justify-between pt-1 border-t border-zinc-800/80 text-xs"
+        >
+          <div class="flex items-center space-x-4">
+            <!-- 表示フィルタ -->
+            <div class="flex items-center space-x-2">
+              <span class="text-zinc-400 font-medium">🔍 表示フィルタ:</span>
+              <select
+                x-model="selectedConstraintFilter"
+                class="bg-zinc-900 border border-blue-500/60 rounded px-2.5 py-1 text-xs text-blue-300 font-medium focus:outline-none focus:border-blue-400 cursor-pointer shadow-inner"
+              >
+                <option
+                  value="All"
+                  x-text="`すべて (全${candidates.length}件)`"
+                ></option>
+                <option
+                  value="LinuxOnly"
+                  x-text="`🐧 Linuxファイル名超過のみ (${countByViolation('LinuxOnly')}件)`"
+                ></option>
+                <option
+                  value="WindowsOnly"
+                  x-text="`🪟 Windowsパス長超過のみ (${countByViolation('WindowsOnly')}件)`"
+                ></option>
+                <option
+                  value="BothOnly"
+                  x-text="`⚠️ 両方超過 (${countByViolation('BothOnly')}件)`"
+                ></option>
+                <option value="EmptySimulation">
+                  🎯 該当なし (Empty State テスト: 0件)
+                </option>
+              </select>
+            </div>
+
+            <!-- 抽出閾値 (画面から即座に変更可能: ユーザーQA対応) -->
+            <div
+              class="flex items-center space-x-3 bg-zinc-900/90 border border-zinc-800 px-3 py-1 rounded-lg"
+            >
+              <div class="flex items-center space-x-1.5">
+                <span class="text-zinc-400">パス長閾値:</span>
+                <input
+                  type="number"
+                  x-model.number="pathThreshold"
+                  min="10"
+                  max="260"
+                  class="w-14 bg-zinc-950 border border-zinc-700 focus:border-blue-500 rounded px-1.5 py-0.5 text-center text-xs font-mono-fluent text-white focus:outline-none"
+                  title="Windows MAX_PATH (260字) に対する抽出基準文字数 (一時変更可)"
+                />
+                <span class="text-zinc-400">字</span>
+              </div>
+              <span class="text-zinc-600">|</span>
+              <div class="flex items-center space-x-1.5">
+                <span class="text-zinc-400">Linuxバイト閾値:</span>
+                <input
+                  type="number"
+                  x-model.number="byteThreshold"
+                  min="10"
+                  max="255"
+                  class="w-14 bg-zinc-950 border border-zinc-700 focus:border-blue-500 rounded px-1.5 py-0.5 text-center text-xs font-mono-fluent text-white focus:outline-none"
+                  title="Linux NAME_MAX (255バイト) に対する抽出基準バイト数 (一時変更可)"
+                />
+                <span class="text-zinc-400">B</span>
+              </div>
+            </div>
+
+            <!-- 日本語除外フィルタ -->
+            <label
+              class="flex items-center space-x-1.5 cursor-pointer text-zinc-400 hover:text-zinc-200"
+            >
+              <input
+                type="checkbox"
+                class="rounded bg-zinc-800 border-zinc-700 text-blue-600"
+              />
+              <span>ファイル名に日本語を含まないもののみ抽出</span>
+            </label>
+          </div>
+
+          <!-- 表示モード切り替え -->
+          <div class="flex items-center space-x-2">
+            <span class="text-zinc-500">レイアウト:</span>
+            <button
+              @click="viewMode = 'vertical'"
+              :class="viewMode === 'vertical' ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400'"
+              class="px-2 py-0.5 rounded text-[11px]"
+            >
+              上下並び
+            </button>
+            <button
+              @click="viewMode = 'horizontal'"
+              :class="viewMode === 'horizontal' ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400'"
+              class="px-2 py-0.5 rounded text-[11px]"
+            >
+              左右並び
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Candidate List (BEFORE / AFTER Cards & Empty State) -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+        <!-- Empty State (0件時の安心案内表示) -->
+        <template x-if="filteredCandidates.length === 0">
+          <div
+            class="h-full flex flex-col items-center justify-center py-16 text-center space-y-4"
+          >
+            <div
+              class="w-16 h-16 rounded-full bg-emerald-950/80 border border-emerald-700 flex items-center justify-center text-3xl text-emerald-400 shadow-inner"
+            >
+              🎉
+            </div>
+            <div class="space-y-1">
+              <h4 class="text-base font-bold text-white tracking-wide">
+                対象ファイルはありません
+              </h4>
+              <p class="text-xs text-zinc-400 max-w-md leading-relaxed">
+                現在の閾値・フィルタ条件に合致する制限超過ファイルは存在しません。<br />
+                すべてのファイルが Windows (<span
+                  x-text="`${pathThreshold}字`"
+                ></span
+                >) および Linux (<span x-text="`${byteThreshold}B`"></span>)
+                の安全制限をクリアしています。
+              </p>
+            </div>
+            <button
+              @click="selectedConstraintFilter = 'All'"
+              class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs px-4 py-1.5 rounded-lg border border-zinc-700"
+            >
+              フィルタを「すべて」に戻す
+            </button>
+          </div>
+        </template>
+
+        <!-- 候補カード一覧 -->
+        <template
+          x-for="(item, idx) in filteredCandidates"
+          :key="item.originalName"
+        >
+          <div
+            class="bg-fluent-surface border border-fluent-border hover:border-zinc-600 rounded-lg p-3.5 transition-all shadow flex flex-col space-y-2.5"
+          >
+            <!-- Card Header: Checkbox & Directory Path -->
+            <div class="flex items-center justify-between text-xs">
+              <div class="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked
+                  class="rounded bg-zinc-800 border-zinc-700 text-blue-600 w-4 h-4"
+                />
+                <span
+                  class="text-zinc-400 font-mono-fluent truncate max-w-2xl"
+                  x-text="item.directory"
+                ></span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <!-- 違反種別バッジ (折り返し防止: whitespace-nowrap) -->
+                <template x-if="getViolation(item) === 'LinuxOnly'">
+                  <span
+                    class="bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap"
+                  >
+                    🐧 Linux: ファイル名超過 (<span
+                      x-text="item.originalBytes"
+                    ></span
+                    >B / 上限255B)
+                  </span>
+                </template>
+                <template x-if="getViolation(item) === 'WindowsOnly'">
+                  <span
+                    class="bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap"
+                  >
+                    🪟 Windows: パス長超過 (<span
+                      x-text="item.originalLength"
+                    ></span
+                    >字 / 上限260字)
+                  </span>
+                </template>
+                <template x-if="getViolation(item) === 'BothOnly'">
+                  <span
+                    class="bg-rose-950 text-rose-300 border border-rose-800 px-2 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap"
+                  >
+                    ⚠️ 両方超過 (Win:<span x-text="item.originalLength"></span
+                    >字 / Linux:<span x-text="item.originalBytes"></span>B)
+                  </span>
+                </template>
+              </div>
+            </div>
+
+            <!-- MODE A: 上下並び (Vertical) -->
+            <div
+              x-show="viewMode === 'vertical'"
+              class="flex flex-col space-y-2"
+            >
+              <!-- BEFORE 行 (ファイル名開始位置を左寄せ・AFTERと完全一致) -->
+              <div
+                class="flex items-center bg-zinc-900 border border-zinc-800/80 rounded px-3 py-1.5 text-xs"
+              >
+                <div
+                  class="w-[195px] shrink-0 flex items-center space-x-1.5 whitespace-nowrap"
+                >
+                  <span class="font-bold text-red-400">BEFORE</span>
+                  <span
+                    class="text-[10px] text-zinc-400 font-mono-fluent bg-zinc-950/70 border border-zinc-800 px-1.5 py-0.5 rounded"
+                    x-text="`(${item.originalLength}字 / ${item.originalBytes}B)`"
+                  ></span>
+                </div>
+                <span
+                  class="font-mono-fluent text-zinc-300 select-all truncate flex-1 px-2.5 py-1 border border-transparent"
+                  x-text="item.originalName"
+                ></span>
+              </div>
+
+              <!-- AFTER 行 (ファイル名開始位置を左寄せ・BEFOREと完全一致) -->
+              <div
+                class="flex items-center bg-zinc-900 border border-zinc-700/90 rounded px-3 py-1.5 text-xs"
+              >
+                <div
+                  class="w-[195px] shrink-0 flex items-center space-x-1.5 whitespace-nowrap"
+                >
+                  <span class="font-bold" :class="getAfterTextColor(item)"
+                    >AFTER</span
+                  >
+                  <span
+                    class="text-[10px] px-1.5 py-0.5 rounded font-mono-fluent whitespace-nowrap font-medium"
+                    :class="getAfterBadgeStyle(item)"
+                    x-text="getAfterBadgeText(item)"
+                  ></span>
+                </div>
+                <input
+                  type="text"
+                  x-model="item.proposedName"
+                  @input="recalculateProposal(item)"
+                  class="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1 text-xs text-white font-mono-fluent focus:outline-none focus:border-blue-500 shadow-inner"
+                />
+              </div>
+
+              <!-- AI COMMENT 行 -->
+              <div
+                class="bg-blue-950/30 border border-blue-900/40 rounded px-3 py-1.5 text-xs flex items-start space-x-2"
+              >
+                <span
+                  class="text-blue-400 font-semibold shrink-0 whitespace-nowrap"
+                  >🌐 AI COMMENT:</span
+                >
+                <span
+                  class="text-zinc-300 leading-relaxed"
+                  x-text="item.aiComment"
+                ></span>
+              </div>
+            </div>
+
+            <!-- MODE B: 左右並び (Horizontal) -->
+            <div
+              x-show="viewMode === 'horizontal'"
+              class="grid grid-cols-2 gap-3"
+            >
+              <!-- 左: BEFORE -->
+              <div
+                class="bg-zinc-900 border border-zinc-800 rounded p-2.5 text-xs space-y-1"
+              >
+                <div
+                  class="flex justify-between items-center text-red-400 font-bold whitespace-nowrap"
+                >
+                  <span>BEFORE</span>
+                  <span
+                    class="text-[10px] font-mono-fluent text-zinc-400 bg-zinc-950/70 border border-zinc-800 px-1.5 py-0.5 rounded"
+                    x-text="`${item.originalLength}字 / ${item.originalBytes}B`"
+                  ></span>
+                </div>
+                <div
+                  class="font-mono-fluent text-zinc-300 break-all"
+                  x-text="item.originalName"
+                ></div>
+              </div>
+              <!-- 右: AFTER (折り返し防止) -->
+              <div
+                class="bg-zinc-900 border border-zinc-700 rounded p-2.5 text-xs space-y-1"
+              >
+                <div
+                  class="flex justify-between items-center font-bold whitespace-nowrap"
+                >
+                  <span :class="getAfterTextColor(item)">AFTER</span>
+                  <span
+                    class="text-[11px] px-2 py-0.5 rounded font-mono-fluent whitespace-nowrap font-medium"
+                    :class="getAfterBadgeStyle(item)"
+                    x-text="getAfterBadgeText(item)"
+                  ></span>
+                </div>
+                <input
+                  type="text"
+                  x-model="item.proposedName"
+                  @input="recalculateProposal(item)"
+                  class="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-white font-mono-fluent focus:outline-none focus:border-blue-500 shadow-inner"
+                />
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Footer -->
+      <div
+        class="bg-fluent-surface border-t border-fluent-border px-4 py-3 flex items-center justify-between text-xs flex-shrink-0"
+      >
+        <div class="flex items-center space-x-3 text-fluent-subtext">
+          <span
+            >抽出候補:
+            <strong
+              class="text-white"
+              x-text="`${filteredCandidates.length}件`"
+            ></strong>
+            (全件選択)</span
+          >
+          <span>|</span>
+          <span class="text-emerald-400">✓ AI提案完了</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button
+            class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded text-xs border border-zinc-700"
+          >
+            元に戻す (Undo)
+          </button>
+          <button
+            class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-xs font-semibold shadow"
+          >
+            リネームのみ実行
+          </button>
+          <button
+            class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-1.5 rounded text-xs font-semibold shadow"
+          >
+            リネームしてコンテナ再起動
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- VIEW 2: Web Video Player (エラーオーバーレイ & トースト通知 忠実再現)   -->
+    <!-- ===================================================================== -->
+    <div
+      x-show="activeTab === 'web'"
+      class="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden flex flex-col h-[82vh] relative"
+    >
+      <!-- Web ヘッダー -->
+      <div
+        class="bg-slate-950 border-b border-slate-800 px-5 py-3 flex items-center justify-between"
+      >
+        <div class="flex items-center space-x-3">
+          <span class="text-base font-bold text-white tracking-wide"
+            >🎬 TagBasedVideoManager - Web Player</span
+          >
+          <span
+            class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700"
+            >Docker / WSL 運用環境</span
+          >
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="text-xs text-slate-400">シミュレーション:</span>
+          <button
+            @click="simulatePlaybackError = false"
+            :class="!simulatePlaybackError ? 'bg-emerald-600 text-white font-semibold' : 'bg-slate-800 text-slate-400'"
+            class="px-2.5 py-1 rounded text-xs"
+          >
+            正常再生
+          </button>
+          <button
+            @click="simulatePlaybackError = true"
+            :class="simulatePlaybackError ? 'bg-red-600 text-white font-semibold' : 'bg-slate-800 text-slate-400'"
+            class="px-2.5 py-1 rounded text-xs"
+          >
+            NAME_MAX超過エラー (HTTP 422)
+          </button>
+        </div>
+      </div>
+
+      <!-- メインプレイヤー領域 -->
+      <div
+        class="flex-1 bg-black flex items-center justify-center relative overflow-hidden"
+      >
+        <!-- 正常再生時: ダミービデオ画面 -->
+        <template x-if="!simulatePlaybackError">
+          <div
+            class="w-full h-full flex flex-col items-center justify-center text-slate-600 space-y-3"
+          >
+            <div
+              class="w-20 h-20 rounded-full border-2 border-slate-700 flex items-center justify-center text-2xl text-slate-400"
+            >
+              ▶
+            </div>
+            <div class="text-sm font-mono text-slate-400">
+              ストリーミング再生中 (HTTP 206 Partial Content)
+            </div>
+          </div>
+        </template>
+
+        <!-- 再生エラー時: プレイヤー中央エラーオーバーレイ -->
+        <template x-if="simulatePlaybackError">
+          <div
+            class="absolute inset-0 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-20"
+          >
+            <div
+              class="bg-slate-900 border border-red-500/80 rounded-2xl p-6 max-w-lg shadow-2xl space-y-4"
+            >
+              <div
+                class="w-14 h-14 bg-red-950 border border-red-700 rounded-full flex items-center justify-center mx-auto text-red-400 text-2xl shadow-inner"
+              >
+                ⚠️
+              </div>
+              <div class="space-y-1.5">
+                <h3 class="text-lg font-bold text-white tracking-wide">
+                  動画を再生できません
+                </h3>
+                <p class="text-xs text-red-300 font-semibold leading-relaxed">
+                  ファイル名が Linux (Docker/WSL) の 255 バイト制限 (NAME_MAX)
+                  を超過しています。
+                </p>
+              </div>
+
+              <div
+                class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-left space-y-1.5 text-xs font-mono"
+              >
+                <div class="text-slate-400 truncate">
+                  ファイルパス:
+                  <span
+                    class="text-slate-200 select-all"
+                    x-text="sampleErrorPath"
+                  ></span>
+                </div>
+                <div class="flex items-center space-x-3 pt-1 text-[11px]">
+                  <span class="text-red-400"
+                    >UTF-8バイト数: <strong>274 バイト</strong></span
+                  >
+                  <span class="text-slate-500">/</span>
+                  <span class="text-slate-400"
+                    >Linux カーネル上限:
+                    <strong>255 バイト</strong> (約85文字)</span
+                  >
+                </div>
+              </div>
+
+              <div
+                class="bg-blue-950/40 border border-blue-800/50 rounded-lg p-3 text-xs text-blue-200 text-left leading-relaxed"
+              >
+                💡 <strong>対処法:</strong> ホスト OS (Windows) 上の
+                <strong>AI File Renamer</strong>
+                を起動して該当フォルダをスキャンし、短縮新ファイル名へリネームを行ってください。
+              </div>
+
+              <!-- 操作導線: パスコピーボタン -->
+              <div class="pt-2 flex justify-center space-x-3">
+                <button
+                  class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-xs border border-slate-700"
+                >
+                  プレイヤーを閉じる
+                </button>
+                <button
+                  @click="copyFilePath()"
+                  class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-xs font-semibold shadow flex items-center space-x-1.5"
+                >
+                  <span>📋</span>
+                  <span>ファイルパスをコピー</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- トースト通知 (画面右下) -->
+      <template x-if="simulatePlaybackError">
+        <div
+          class="absolute bottom-5 right-5 bg-red-950 border border-red-700 text-red-200 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 z-30 max-w-md animate-bounce"
+        >
+          <span class="text-lg">⚠️</span>
+          <div class="text-xs">
+            <div class="font-bold">再生エラー (HTTP 422)</div>
+            <div class="text-red-300 text-[11px]">
+              ファイル名が Linux の 255 バイト制限を超過しています。
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- プレイヤーコントロールバー -->
+      <div
+        class="bg-slate-950 border-t border-slate-800 px-4 py-3 flex items-center justify-between text-xs text-slate-400"
+      >
+        <div class="flex items-center space-x-2">
+          <span>⏮️ 前へ</span>
+          <span>⏭️ 次へ</span>
+        </div>
+        <span>00:00 / 24:15</span>
+        <span>全画面 ⛶</span>
+      </div>
+    </div>
+
+    <script>
+      function mockupApp() {
+        return {
+          activeTab: "renamer",
+          viewMode: "vertical",
+          selectedConstraintFilter: "All",
+          pathThreshold: 240,
+          byteThreshold: 240,
+          simulatePlaybackError: true,
+          showCopyToast: false,
+          sampleErrorPath:
+            "D:\\Videos\\Anime\\2026-Fall\\【第01話】魔法少女マジカルスターズ_リターンズ_第1期放送記念特別先行上映版_オリジナル高画質フルHD解像度版.mp4",
+
+          candidates: [
+            {
+              directory: "D:\\Videos\\Anime\\2026-Fall",
+              originalName:
+                "【第01話】魔法少女マジカルスターズ_リターンズ_第1期放送記念特別先行上映版_オリジナル高画質フルHD解像度版.mp4",
+              originalLength: 72,
+              originalBytes: 274,
+              proposedName: "2026-10-01_魔法少女マジカルスターズ_01.mp4",
+              proposedLength: 30,
+              proposedBytes: 68,
+              aiComment:
+                "Linuxの255バイト制限 (274B) を超過していたため、シリーズ名と話数番号のみを残して簡潔に短縮しました。",
+            },
+            {
+              directory:
+                "D:\\Videos\\Anime\\Collection\\SubGroup\\Specials\\2025\\Archived\\LongDirectoryStructure\\Season01",
+              originalName: "Episode01_Special.mp4",
+              originalLength: 252,
+              originalBytes: 20,
+              proposedName: "Ep01_Spec.mp4",
+              proposedLength: 242,
+              proposedBytes: 13,
+              aiComment:
+                "WindowsのMAX_PATH (260文字) に抵触する深層パスのため、ファイル名を極小に短縮しました。",
+            },
+            {
+              directory:
+                "D:\\Videos\\Anime\\Collection\\SubGroup\\Specials\\2025\\Archived\\Season02",
+              originalName:
+                "超弩級戦艦ヤマト_新章発進編_第12話_限定公開プレミアムエディション_字幕付き完全版.mp4",
+              originalLength: 248,
+              originalBytes: 268,
+              proposedName: "2026-05-10_超弩級戦艦ヤマト_新章_12.mp4",
+              proposedLength: 215,
+              proposedBytes: 52,
+              aiComment:
+                "Windowsパス長 (248字) とLinuxファイル名 (268B) の両方に抵触していたため、日付プレフィックスを付与して両方安全に収まるよう要約しました。",
+            },
+          ],
+
+          getViolation(item) {
+            const isPath = item.originalLength >= this.pathThreshold;
+            const isByte = item.originalBytes >= this.byteThreshold;
+            if (isPath && isByte) return "BothOnly";
+            if (isPath) return "WindowsOnly";
+            if (isByte) return "LinuxOnly";
+            return "Safe";
+          },
+
+          countByViolation(kind) {
+            return this.candidates.filter((c) => this.getViolation(c) === kind)
+              .length;
+          },
+
+          get filteredCandidates() {
+            if (this.selectedConstraintFilter === "EmptySimulation") {
+              return [];
+            }
+            // 閾値を超過している対象のみ抽出
+            const targets = this.candidates.filter(
+              (c) => this.getViolation(c) !== "Safe",
+            );
+            if (this.selectedConstraintFilter === "All") {
+              return targets;
+            }
+            return targets.filter(
+              (c) => this.getViolation(c) === this.selectedConstraintFilter,
+            );
+          },
+
+          copyFilePath() {
+            navigator.clipboard.writeText(this.sampleErrorPath);
+            this.showCopyToast = true;
+            setTimeout(() => {
+              this.showCopyToast = false;
+            }, 3000);
+          },
+
+          getAfterTextColor(item) {
+            if (
+              item.proposedBytes <= this.byteThreshold &&
+              item.proposedLength < this.pathThreshold
+            ) {
+              return "text-emerald-400";
+            }
+            if (
+              item.proposedBytes <= 255 &&
+              item.proposedLength < this.pathThreshold
+            ) {
+              return "text-amber-400";
+            }
+            return "text-red-400";
+          },
+
+          getAfterBadgeStyle(item) {
+            if (
+              item.proposedBytes <= this.byteThreshold &&
+              item.proposedLength < this.pathThreshold
+            ) {
+              return "bg-emerald-950 text-emerald-300 border border-emerald-800";
+            }
+            if (
+              item.proposedBytes <= 255 &&
+              item.proposedLength < this.pathThreshold
+            ) {
+              return "bg-amber-950 text-amber-300 border border-amber-800";
+            }
+            return "bg-red-950 text-red-300 border border-red-800";
+          },
+
+          getAfterBadgeText(item) {
+            if (
+              item.proposedBytes <= this.byteThreshold &&
+              item.proposedLength < this.pathThreshold
+            ) {
+              return `✓ 安全 (${item.proposedLength}字 / ${item.proposedBytes}B)`;
+            }
+            if (
+              item.proposedBytes <= 255 &&
+              item.proposedLength < this.pathThreshold
+            ) {
+              return `⚠️ 注意 (${item.proposedLength}字 / ${item.proposedBytes}B)`;
+            }
+            if (
+              item.proposedBytes > 255 &&
+              item.proposedLength >= this.pathThreshold
+            ) {
+              return `⚠️ 両方危険 (${item.proposedLength}字 / ${item.proposedBytes}B)`;
+            }
+            if (item.proposedBytes > 255) {
+              return `⚠️ Linux危険 (${item.proposedLength}字 / ${item.proposedBytes}B)`;
+            }
+            return `⚠️ Win危険 (${item.proposedLength}字 / ${item.proposedBytes}B)`;
+          },
+
+          recalculateProposal(item) {
+            let bytes = 0;
+            for (let i = 0; i < item.proposedName.length; i++) {
+              const code = item.proposedName.charCodeAt(i);
+              bytes += code > 0x7f ? 3 : 1;
+            }
+            item.proposedBytes = bytes;
+            item.proposedLength =
+              item.directory.length + 1 + item.proposedName.length;
+          },
+        };
+      }
+    </script>
+  </body>
+</html>
