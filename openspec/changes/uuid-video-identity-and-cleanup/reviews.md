@@ -457,6 +457,86 @@ Test 4 (Db non-existent Id updates): Ok () [No unhandled exception / crash]
 
 ---
 
+# レビュー記録: uuid-video-identity-and-cleanup / apply / task-3 (PG Review)
+
+- **日時**: 2026-11-08
+- **フェーズ**: apply
+- **タスク**: タスク 3 (3.1 / 3.2) - ストリーミング物理ファイル不在時の HTTP 404 応答とフロントエンドエラートースト通知
+- **レビュアー**: pg (PG Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager/HttpHandlers.fs`, `src/TagBasedVideoManager/wwwroot/app.js`, `src/TagBasedVideoManager/wwwroot/index.html`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: 暗黙の仮定・手抜き実装の告発
+- **確認内容・回答**:
+  - `streamVideo` 内に存在していたテスト回避コード（`let isCustomExecutor = executor.GetType().Name.Contains("Test")`）を告発・完全削除した。
+  - 単体テスト側（`HttpHandlersTests.fs`）で実在するテンポラリファイル（`Path.GetTempFileName()`）を生成・破棄する構成へ是正し、テストと本番の整合性を回復した。
+- **確認根拠**: `src/TagBasedVideoManager/HttpHandlers.fs` (L75-85), `test/TagBasedVideoManager.Tests/Unit/HttpHandlersTests.fs` (L435-495)
+
+### 設問2: 例外の握りつぶし・サイレントエラーの撲滅
+- **確認内容・回答**:
+  - `app.js` の `handleVideoError` において、`if (this.playbackError) return;` の多重発火抑止ガードを追加し、メディアエラーの連続発生時におけるトースト重複・多重 fetch を防止した。
+- **確認根拠**: `src/TagBasedVideoManager/wwwroot/app.js` (L965-975)
+
+### 設問3: UI デザインモック忠実再現の検証
+- **確認内容・回答**:
+  - `mockup.html` (L483-544) と `index.html` (L2483-2550) のレイアウト、Tailwind クラス、カラーパレット、メッセージ文言、およびアクションボタン（「プレイヤーを閉じる」「今すぐスキャン同期を実行」）が完全に一致していることを確認した。
+- **確認根拠**: `src/TagBasedVideoManager/wwwroot/index.html` (L2483-2550), `openspec/changes/uuid-video-identity-and-cleanup/mockup.html` (L483-544)
+
+---
+
+## 2. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: タスク 3.3 完了承認
+
+---
+
+# レビュー記録: uuid-video-identity-and-cleanup / apply / task-3 (QA Review)
+
+- **日時**: 2026-11-08
+- **フェーズ**: apply
+- **タスク**: タスク 3 (3.1 / 3.2) - ストリーミング物理ファイル不在時の HTTP 404 応答とフロントエンドエラートースト通知
+- **レビュアー**: qa (QA Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md`
+- **対象成果物**: `test/TagBasedVideoManager.Tests/Integration/StreamingTests.fs`, `test/TagBasedVideoManager.Tests/E2E/E2ETests.fs`, `src/TagBasedVideoManager/HttpHandlers.fs`
+
+---
+
+## 1. 挑戦的設問への回答（checklist_apply_test.md）
+
+### 設問1: トートロジーテスト・甘いアサーションの撲滅
+- **確認内容・回答**:
+  - `E2E-03` において、トースト通知とエラーオーバーレイ見出しの双方を個別に厳密アサートし、スキャン同期ボタンもヘッダーへのフォールバックを排除してオーバーレイ内の「今すぐスキャン同期を実行」ボタンを直接待機・クリックするよう厳格化した。
+  - `index.html` のエラーオーバーレイを破壊した場合は確実に失敗（Red）するミューテーション耐性を確認した。
+- **確認根拠**: `test/TagBasedVideoManager.Tests/E2E/E2ETests.fs` (L1780-1825)
+
+---
+
+## 2. Adversarial QA（敵対的破壊テスト実行結果）
+
+- **対象関数/モジュール**: `HttpHandlers.streamVideo`
+- **破壊テスト内容**: DB 未登録の無効な動画 ID に対するストリーム要求が、ダミーファイルへフォールバックせず確実に HTTP 404 `FILE_NOT_FOUND` を返すことの検証
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+  - `StreamingTests` 4件全件 Pass（0 failed）
+  - `E2E-03` 2件全件 Pass（0 failed、エビデンス画像出力確認）
+
+---
+
+## 3. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: タスク 3 完了承認（次タスク 4: 全体検証・ゲート検証へ進行可能）
+
+---
+
 # レビュー記録: uuid-video-identity-and-cleanup / apply / task-1 (QA Review)
 
 - **日時**: 2026-11-08
@@ -688,3 +768,83 @@ Adv-10: 10,000文字パス・絵文字・サロゲートペア（映画🎬𠮷�
 - **条件付きLGTM**: なし
 - **保留指摘（申し送り）**: 指摘SE-204
 - **次のアクション**: タスク 2 完了承認（次タスク 3 へ進行可能）
+
+---
+
+# レビュー記録: uuid-video-identity-and-cleanup / apply / task-3 (PG Review)
+
+- **日時**: 2026-11-08
+- **フェーズ**: apply
+- **タスク**: タスク 3 (3.1 / 3.2) - ストリーミング物理ファイル不在時の HTTP 404 応答とフロントエンドエラートースト通知
+- **レビュアー**: pg (PG Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager/HttpHandlers.fs`, `src/TagBasedVideoManager/wwwroot/app.js`, `src/TagBasedVideoManager/wwwroot/index.html`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: 暗黙の仮定・手抜き実装の告発
+- **確認内容・回答**:
+  - `streamVideo` 内に存在していたテスト回避コード（`let isCustomExecutor = executor.GetType().Name.Contains("Test")`）を告発・完全削除した。
+  - 単体テスト側（`HttpHandlersTests.fs`）で実在するテンポラリファイル（`Path.GetTempFileName()`）を生成・破棄する構成へ是正し、テストと本番の整合性を回復した。
+- **確認根拠**: `src/TagBasedVideoManager/HttpHandlers.fs` (L75-85), `test/TagBasedVideoManager.Tests/Unit/HttpHandlersTests.fs` (L435-495)
+
+### 設問2: 例外の握りつぶし・サイレントエラーの撲滅
+- **確認内容・回答**:
+  - `app.js` の `handleVideoError` において、`if (this.playbackError) return;` の多重発火抑止ガードを追加し、メディアエラーの連続発生時におけるトースト重複・多重 fetch を防止した。
+- **確認根拠**: `src/TagBasedVideoManager/wwwroot/app.js` (L965-975)
+
+### 設問3: UI デザインモック忠実再現の検証
+- **確認内容・回答**:
+  - `mockup.html` (L483-544) と `index.html` (L2483-2550) のレイアウト、Tailwind クラス、カラーパレット、メッセージ文言、およびアクションボタン（「プレイヤーを閉じる」「今すぐスキャン同期を実行」）が完全に一致していることを確認した。
+- **確認根拠**: `src/TagBasedVideoManager/wwwroot/index.html` (L2483-2550), `openspec/changes/uuid-video-identity-and-cleanup/mockup.html` (L483-544)
+
+---
+
+## 2. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: タスク 3.3 完了承認
+
+---
+
+# レビュー記録: uuid-video-identity-and-cleanup / apply / task-3 (QA Review)
+
+- **日時**: 2026-11-08
+- **フェーズ**: apply
+- **タスク**: タスク 3 (3.1 / 3.2) - ストリーミング物理ファイル不在時の HTTP 404 応答とフロントエンドエラートースト通知
+- **レビュアー**: qa (QA Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md`
+- **対象成果物**: `test/TagBasedVideoManager.Tests/Integration/StreamingTests.fs`, `test/TagBasedVideoManager.Tests/E2E/E2ETests.fs`, `src/TagBasedVideoManager/HttpHandlers.fs`
+
+---
+
+## 1. 挑戦的設問への回答（checklist_apply_test.md）
+
+### 設問1: トートロジーテスト・甘いアサーションの撲滅
+- **確認内容・回答**:
+  - `E2E-03` において、トースト通知とエラーオーバーレイ見出しの双方を個別に厳密アサートし、スキャン同期ボタンもヘッダーへのフォールバックを排除してオーバーレイ内の「今すぐスキャン同期を実行」ボタンを直接待機・クリックするよう厳格化した。
+  - `index.html` のエラーオーバーレイを破壊した場合は確実に失敗（Red）するミューテーション耐性を確認した。
+- **確認根拠**: `test/TagBasedVideoManager.Tests/E2E/E2ETests.fs` (L1780-1825)
+
+---
+
+## 2. Adversarial QA（敵対的破壊テスト実行結果）
+
+- **対象関数/モジュール**: `HttpHandlers.streamVideo`
+- **破壊テスト内容**: DB 未登録の無効な動画 ID に対するストリーム要求が、ダミーファイルへフォールバックせず確実に HTTP 404 `FILE_NOT_FOUND` を返すことの検証
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+  - `StreamingTests` 4件全件 Pass（0 failed）
+  - `E2E-03` 2件全件 Pass（0 failed、エビデンス画像出力確認）
+
+---
+
+## 3. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: タスク 3 完了承認（次タスク 4: 全体検証・ゲート検証へ進行可能）

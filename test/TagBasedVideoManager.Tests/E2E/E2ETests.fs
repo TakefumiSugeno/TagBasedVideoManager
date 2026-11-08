@@ -1724,5 +1724,109 @@ type E2ETests (output: ITestOutputHelper) =
                 try Directory.Delete(dummyVideoDir, true) with | _ -> ()
     }
 
+    [<Fact>]
+    member _.``E2E-03: 物理ファイル不在動画の再生試行時にHTTP404エラーオーバーレイとトーストが表示されスキャン同期でカードが整理されること`` () = task {
+        let dbPath = Path.Combine(Path.GetTempPath(), $"e2e_del_test_{Guid.NewGuid():N}.db")
+        let dummyVideoDir = Path.Combine(Path.GetTempPath(), $"e2e_del_test_vids_{Guid.NewGuid():N}")
+        Directory.CreateDirectory(dummyVideoDir) |> ignore
+
+        let dummyVideoFile = Path.Combine(dummyVideoDir, "e2e_del_test.mp4")
+        File.WriteAllBytes(dummyVideoFile, [| 0uy; 1uy; 2uy; 3uy |])
+
+        let projectRoot = findProjectRoot (DirectoryInfo(AppContext.BaseDirectory))
+        let resultsDir = Path.Combine(projectRoot, "test", "TestResults")
+        if not (Directory.Exists(resultsDir)) then
+            Directory.CreateDirectory(resultsDir) |> ignore
+        let screenshotNotFound = Path.Combine(resultsDir, "e2e_03_file_not_found.png")
+        let screenshotAfterSync = Path.Combine(resultsDir, "e2e_03_after_sync.png")
+
+        do
+            use conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}")
+            conn.Open()
+            let _ = TagBasedVideoManager.Infrastructure.DbInit.initializeDatabase conn |> ignore
+            let v: TagBasedVideoManager.Domain.Video = {
+                TagBasedVideoManager.Domain.Video.Id = Guid.NewGuid().ToString()
+                TagBasedVideoManager.Domain.Video.FileName = "e2e_del_test.mp4"
+                TagBasedVideoManager.Domain.Video.FilePath = dummyVideoFile
+                TagBasedVideoManager.Domain.Video.Duration = 10L
+                TagBasedVideoManager.Domain.Video.FileSize = 4L
+                TagBasedVideoManager.Domain.Video.ThumbnailPath = None
+                TagBasedVideoManager.Domain.Video.IsFavorite = false
+                TagBasedVideoManager.Domain.Video.CreatedAt = DateTime.UtcNow
+                TagBasedVideoManager.Domain.Video.FileModifiedAt = DateTime.UtcNow
+                TagBasedVideoManager.Domain.Video.AccessCount = 0
+                TagBasedVideoManager.Domain.Video.LastAccessedAt = None
+                TagBasedVideoManager.Domain.Video.Tags = []
+                TagBasedVideoManager.Domain.Video.FileUuid = None
+            }
+            let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn v |> Async.RunSynchronously
+            ()
+
+        // 登録後にディスク上の動画ファイルを物理削除
+        if File.Exists(dummyVideoFile) then
+            File.Delete(dummyVideoFile)
+
+        Environment.SetEnvironmentVariable("VIDEO_DIRS", dummyVideoDir)
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools()
+
+        let host, url = startTestServer dbPath
+        do! host.StartAsync()
+
+        try
+            use! playwright = Playwright.CreateAsync()
+            let! browser = playwright.Chromium.LaunchAsync(BrowserTypeLaunchOptions(Headless = true))
+            let! context = browser.NewContextAsync(BrowserNewContextOptions())
+            let! page = context.NewPageAsync()
+            let! _ = page.GotoAsync(url)
+
+            // 動画カードが表示されるのを待機
+            let! _ = page.WaitForSelectorAsync("div[x-show=\"viewMode === 'grid'\"] > div")
+            let cards = page.Locator("div[x-show=\"viewMode === 'grid'\"] > div")
+
+            // カードをクリックして動画再生を試行
+            do! cards.Nth(0).ClickAsync()
+
+            // 検証 1: トースト通知とエラーオーバーレイ見出しの両方が表示されることを個別にアサートする
+            let toastLocator = page.Locator("text=動画ファイルが見つかりません。ファイルが移動または削除された可能性があります。").First
+            do! toastLocator.WaitForAsync(LocatorWaitForOptions(Timeout = 5000.0f))
+            let! isToastVisible = toastLocator.IsVisibleAsync()
+            isToastVisible |> should equal true
+
+            let overlayHeading = page.Locator("text=動画ファイルが見つかりません (HTTP 404)").First
+            do! overlayHeading.WaitForAsync(LocatorWaitForOptions(Timeout = 5000.0f))
+            let! isOverlayHeadingVisible = overlayHeading.IsVisibleAsync()
+            isOverlayHeadingVisible |> should equal true
+
+            // スクリーンショット保存 1
+            let! _ = page.ScreenshotAsync(PageScreenshotOptions(Path = screenshotNotFound))
+
+            // エラーオーバーレイ内のボタン「今すぐスキャン同期を実行」を直接クリックしてスキャンを実行する
+            let overlayBtn = page.Locator("button:has-text('今すぐスキャン同期を実行')").First
+            do! overlayBtn.WaitForAsync(LocatorWaitForOptions(Timeout = 5000.0f))
+
+            let scanResponseTask = page.WaitForResponseAsync("**/api/scan")
+            do! overlayBtn.ClickAsync()
+            let! _ = scanResponseTask
+
+            // 検証 2: スキャン完了後、削除された動画カードが画面一覧から消去されること
+            do! page.WaitForTimeoutAsync(1000.0f)
+            let! cardCount = cards.CountAsync()
+            cardCount |> should equal 0
+
+            // スクリーンショット保存 2
+            let! _ = page.ScreenshotAsync(PageScreenshotOptions(Path = screenshotAfterSync))
+
+            do! browser.CloseAsync()
+
+        finally
+            Environment.SetEnvironmentVariable("VIDEO_DIRS", null)
+            host.Dispose()
+            if File.Exists(dbPath) then
+                try File.Delete(dbPath) with | _ -> ()
+            if Directory.Exists(dummyVideoDir) then
+                try Directory.Delete(dummyVideoDir, true) with | _ -> ()
+    }
+
+
 
 

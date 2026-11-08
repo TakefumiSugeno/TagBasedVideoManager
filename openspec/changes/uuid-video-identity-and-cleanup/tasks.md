@@ -14,9 +14,9 @@
 
 ## 3. ストリーミング物理ファイル不在時の HTTP 404 応答とフロントエンドエラートースト通知
 
-- [ ] 3.1 [`qa-tester`] 物理ファイル不在の動画に対する `GET /api/videos/{id}/stream` が HTTP 500 にならず HTTP 404 と `FILE_NOT_FOUND` JSON を返す結合テスト（`UT-18`, `IT-09`）を `test/TagBasedVideoManager.Tests/Integration/StreamingTests.fs` に、再生試行時のエラートースト表示と再スキャン後のカード消去を検証する E2E テスト（`E2E-01`〜`E2E-04`）を `test/TagBasedVideoManager.E2E/` に先行作成（Red）し、失敗を確認する
-- [ ] 3.2 [`pg-implementer`] `src/TagBasedVideoManager/HttpHandlers.fs` の `streamVideo` に物理ファイル不在時の HTTP 404 応答を実装し、`mockup.html` に準拠して `src/TagBasedVideoManager/wwwroot/app.js` の `handleVideoError` および `src/TagBasedVideoManager/wwwroot/index.html` に HTTP 404 エラートースト通知とプレイヤーエラーオーバーレイ（スキャン同期実行導線付き）を実装して結合テスト・E2E テストを Green にする
-- [ ] 3.3 [`pg-reviewer` / `qa-reviewer`] タスク 3 の実装コード・テストコードに対する批判的レビューを実施し、`reviews.md` に記録して `verify-gate.ps1 -Gate apply` を通過させる
+- [x] 3.1 [`qa-tester`] 物理ファイル不在の動画に対する `GET /api/videos/{id}/stream` が HTTP 500 にならず HTTP 404 と `FILE_NOT_FOUND` JSON を返す結合テスト（`UT-18`, `IT-09`）を `test/TagBasedVideoManager.Tests/Integration/StreamingTests.fs` に、再生試行時のエラートースト表示と再スキャン後のカード消去を検証する E2E テスト（`E2E-01`〜`E2E-04`）を `test/TagBasedVideoManager.E2E/` に先行作成（Red）し、失敗を確認する
+- [x] 3.2 [`pg-implementer`] `src/TagBasedVideoManager/HttpHandlers.fs` の `streamVideo` に物理ファイル不在時の HTTP 404 応答を実装し、`mockup.html` に準拠して `src/TagBasedVideoManager/wwwroot/app.js` の `handleVideoError` および `src/TagBasedVideoManager/wwwroot/index.html` に HTTP 404 エラートースト通知とプレイヤーエラーオーバーレイ（スキャン同期実行導線付き）を実装して結合テスト・E2E テストを Green にする
+- [x] 3.3 [`pg-reviewer` / `qa-reviewer`] タスク 3 の実装コード・テストコードに対する批判的レビューを実施し、`reviews.md` に記録して `verify-gate.ps1 -Gate apply` を通過させる
 
 ## 4. 全テスト・C0/C1/C2カバレッジ・エビデンス確認とゲート検証
 
