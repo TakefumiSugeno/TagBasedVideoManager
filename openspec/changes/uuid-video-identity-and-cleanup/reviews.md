@@ -547,6 +547,74 @@ Test 4 (Db non-existent Id updates): Ok () [No unhandled exception / crash]
 
 ---
 
+# レビュー記録: uuid-video-identity-and-cleanup / archive / all-roles (Archive 総括レビュー)
+
+- **日時**: 2026-11-09
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー（全 4 ロールによる最終検証）
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+- **対象成果物**:
+  - `openspec/changes/uuid-video-identity-and-cleanup/` 全成果物 (`proposal.md`, `design.md`, `tasks.md`, `reviews.md`, `handover.md`)
+  - メイン仕様書: `openspec/specs/video-scanner/spec.md`, `openspec/specs/video-library/spec.md`
+  - プロダクションコード: `src/TagBasedVideoManager/Domain.fs`, `Db.fs`, `Scanner.fs`, `HttpHandlers.fs`, `wwwroot/app.js`, `wwwroot/index.html`
+  - ドキュメント: `README.md`
+  - テスト結果エビデンス: `test/TagBasedVideoManager.Tests/TestResults/TestRun_2026-11-08_19_31_29/` (504件 100% Green)
+
+---
+
+## 1. 隠された技術的負債・妥協点の自白（悪魔の代弁者）
+
+### 担当: SE Reviewer ＆ PG Reviewer
+
+1. **今回あえて残した技術的負債**:
+   - `Scanner.fs` Phase 3 における `File.Delete` 失敗時の例外サイレント無視（ファイルロック等によるスキャン全体の中断を防止するための安全策。直ちに機能破綻せず、`handover.md` 第 3 節 SE-204 に記録済み）。
+   - `Db.updateVideoLocation` 等において更新対象行が 0 件の場合の戻り値 `Ok ()`（既存の `Db.fs` 関数群全体とイデオムを統一。`handover.md` 第 3 節 PG-3 に記録済み）。
+   - 10 万件規模を見据えた `Videos.FileUuid` の SQLite インデックス追加や孤児サムネイル遅延削除バッチ化（`handover.md` 第 4 節に記録済み）。
+2. **将来の機能追加で踏み抜く可能性が高い罠**:
+   - `Scanner.fs` の Phase 1 / Phase 2 でマッチした動画は即座に `unmatchedDbVideos.Remove(v.Id)` で除外する必要があり、忘れると Phase 3 で物理削除カスケード連動により実在動画が誤削除される。
+   - `Scanner.syncVideoDirectories` の戻り値 `addedCount` は完全新規 INSERT 件数のみをカウントする契約であり、安易に移動追従をカウントに含めると多数のテストが壊れる。
+   - 外部キー CASCADE は `Db.getConnection` の `Foreign Keys=True` に依存しており、生接続を新規作成すると外部キーが無効化される。
+
+---
+
+## 2. 初見エンジニア視点でのドキュメント検証（Whyの欠落告発）
+
+### 担当: User Reviewer
+
+1. **設計背景（Why）の追跡可能性**:
+   - 大容量動画でファイル全件 SHA-256 ではなく先頭・中間・末尾 64KB サンプリング（192KB）を採用した理由（I/O ハング防止とミリ秒処理速度維持）、および同一内容コピーファイルによる既存レコードの誤上書きを防ぐための Phase 1 パス一致先行確定アーキテクチャの Why が、`handover.md` に明文化されたことを確認。
+   - `README.md` L217 に残存していた旧マウント仕様の注意書き（「再登録されるためDB再作成推奨」）を告発・削除し、マウント変更時も自動引き継ぎされる新仕様へ完全に整合させた。
+2. **トラブルシューティング手順の十分性**:
+   - `handover.md` に「6. トラブルシューティング・運用調査手順」が新設され、404 発生時のコンテナマウント切り分け、走査保護ガード（SE-201）発動時の `ErrorLogs` 調査 SQL、および `FileUuid` 重複・照合 SQL が完全にドキュメント化されたことを確認。
+
+---
+
+## 3. ロールバック・安全性の最終検証
+
+### 担当: SE Reviewer ＆ QA Reviewer
+
+1. **ロールバック（Revert）手順の検証**:
+   - `Videos.FileUuid` は NULL 許容の追加カラムであり、前方互換・後方互換を完全に維持。
+   - 万一マージ後に `git revert` した場合でも、旧コードは `FileUuid` を無視してそのまま正常動作し、手動 DDL や DB リストアは一切不要で安全に巻き戻し可能。
+2. **保留指摘の全件引き継ぎ確認**:
+   - Apply フェーズ等で保留とした指摘（SE-204, PG-3, SE-4）が漏れなく `handover.md` 第 3 節に転記されていることを確認。
+3. **テスト網羅性と客観的エビデンス**:
+   - 全 504 件テスト 100% Pass（失敗 0 / スキップ 0）、C0 82.4% / 差分 90%+ / C2 100% 達成。
+   - TRX テストレポート、HTML カバレッジレポート、および E2E 画面キャプチャ（`e2e_03_file_not_found.png`, `e2e_03_after_sync.png`）の出力を確認。
+
+---
+
+## 4. 総合判定
+
+- **LGTM**: **true**
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: `handover.md` に全ての設計背景（Why）、技術的負債、保留指摘、および運用トラブルシューティング手順が記録済み
+- **リリース可否**: **即時リリース可**
+- **承認者**: User Reviewer, SE Reviewer, PG Reviewer, QA Reviewer Agent
+- **次のアクション**: Gate 3 検証を通過させ、変更のアーカイブおよび PR 作成を実行可能
+
+---
+
 # レビュー記録: uuid-video-identity-and-cleanup / apply / task-1 (QA Review)
 
 - **日時**: 2026-11-08
@@ -868,3 +936,71 @@ Adv-10: 10,000文字パス・絵文字・サロゲートペア（映画🎬𠮷�
 - **条件付きLGTM**: なし
 - **保留指摘（申し送り）**: なし
 - **次のアクション**: タスク 3 完了承認（次タスク 4: 全体検証・ゲート検証へ進行可能）
+
+---
+
+# レビュー記録: uuid-video-identity-and-cleanup / archive / all-roles (Archive 総括レビュー)
+
+- **日時**: 2026-11-09
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー（全 4 ロールによる最終検証）
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+- **対象成果物**:
+  - `openspec/changes/uuid-video-identity-and-cleanup/` 全成果物 (`proposal.md`, `design.md`, `tasks.md`, `reviews.md`, `handover.md`)
+  - メイン仕様書: `openspec/specs/video-scanner/spec.md`, `openspec/specs/video-library/spec.md`
+  - プロダクションコード: `src/TagBasedVideoManager/Domain.fs`, `Db.fs`, `Scanner.fs`, `HttpHandlers.fs`, `wwwroot/app.js`, `wwwroot/index.html`
+  - ドキュメント: `README.md`
+  - テスト結果エビデンス: `test/TagBasedVideoManager.Tests/TestResults/TestRun_2026-11-08_19_31_29/` (504件 100% Green)
+
+---
+
+## 1. 隠された技術的負債・妥協点の自白（悪魔の代弁者）
+
+### 担当: SE Reviewer ＆ PG Reviewer
+
+1. **今回あえて残した技術的負債**:
+   - `Scanner.fs` Phase 3 における `File.Delete` 失敗時の例外サイレント無視（ファイルロック等によるスキャン全体の中断を防止するための安全策。直ちに機能破綻せず、`handover.md` 第 3 節 SE-204 に記録済み）。
+   - `Db.updateVideoLocation` 等において更新対象行が 0 件の場合の戻り値 `Ok ()`（既存の `Db.fs` 関数群全体とイデオムを統一。`handover.md` 第 3 節 PG-3 に記録済み）。
+   - 10 万件規模を見据えた `Videos.FileUuid` の SQLite インデックス追加や孤児サムネイル遅延削除バッチ化（`handover.md` 第 4 節に記録済み）。
+2. **将来の機能追加で踏み抜く可能性が高い罠**:
+   - `Scanner.fs` の Phase 1 / Phase 2 でマッチした動画は即座に `unmatchedDbVideos.Remove(v.Id)` で除外する必要があり、忘れると Phase 3 で物理削除カスケード連動により実在動画が誤削除される。
+   - `Scanner.syncVideoDirectories` の戻り値 `addedCount` は完全新規 INSERT 件数のみをカウントする契約であり、安易に移動追従をカウントに含めると多数のテストが壊れる。
+   - 外部キー CASCADE は `Db.getConnection` の `Foreign Keys=True` に依存しており、生接続を新規作成すると外部キーが無効化される。
+
+---
+
+## 2. 初見エンジニア視点でのドキュメント検証（Whyの欠落告発）
+
+### 担当: User Reviewer
+
+1. **設計背景（Why）の追跡可能性**:
+   - 大容量動画でファイル全件 SHA-256 ではなく先頭・中間・末尾 64KB サンプリング（192KB）を採用した理由（I/O ハング防止とミリ秒処理速度維持）、および同一内容コピーファイルによる既存レコードの誤上書きを防ぐための Phase 1 パス一致先行確定アーキテクチャの Why が、`handover.md` に明文化されたことを確認。
+   - `README.md` L217 に残存していた旧マウント仕様の注意書き（「再登録されるためDB再作成推奨」）を告発・削除し、マウント変更時も自動引き継ぎされる新仕様へ完全に整合させた。
+2. **トラブルシューティング手順の十分性**:
+   - `handover.md` に「6. トラブルシューティング・運用調査手順」が新設され、404 発生時のコンテナマウント切り分け、走査保護ガード（SE-201）発動時の `ErrorLogs` 調査 SQL、および `FileUuid` 重複・照合 SQL が完全にドキュメント化されたことを確認。
+
+---
+
+## 3. ロールバック・安全性の最終検証
+
+### 担当: SE Reviewer ＆ QA Reviewer
+
+1. **ロールバック（Revert）手順の検証**:
+   - `Videos.FileUuid` は NULL 許容の追加カラムであり、前方互換・後方互換を完全に維持。
+   - 万一マージ後に `git revert` した場合でも、旧コードは `FileUuid` を無視してそのまま正常動作し、手動 DDL や DB リストアは一切不要で安全に巻き戻し可能。
+2. **保留指摘の全件引き継ぎ確認**:
+   - Apply フェーズ等で保留とした指摘（SE-204, PG-3, SE-4）が漏れなく `handover.md` 第 3 節に転記されていることを確認。
+3. **テスト網羅性と客観的エビデンス**:
+   - 全 504 件テスト 100% Pass（失敗 0 / スキップ 0）、C0 82.4% / 差分 90%+ / C2 100% 達成。
+   - TRX テストレポート、HTML カバレッジレポート、および E2E 画面キャプチャ（`e2e_03_file_not_found.png`, `e2e_03_after_sync.png`）の出力を確認。
+
+---
+
+## 4. 総合判定
+
+- **LGTM**: **true**
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: `handover.md` に全ての設計背景（Why）、技術的負債、保留指摘、および運用トラブルシューティング手順が記録済み
+- **リリース可否**: **即時リリース可**
+- **承認者**: User Reviewer, SE Reviewer, PG Reviewer, QA Reviewer Agent
+- **次のアクション**: Gate 3 検証を通過させ、変更のアーカイブおよび PR 作成を実行可能
