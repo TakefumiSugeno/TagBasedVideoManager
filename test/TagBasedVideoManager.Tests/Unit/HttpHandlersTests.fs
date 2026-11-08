@@ -187,6 +187,7 @@ module HttpHandlersTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let! _ = Db.saveVideo conn testVideo
             let! _ = Db.addTagToVideo conn "v_test_1" "t_test_1"
@@ -337,6 +338,7 @@ module HttpHandlersTests =
                     AccessCount = 5
                     LastAccessedAt = Some (DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc))
                     Tags = [ existingTag ]
+                    FileUuid = None
                 }
                 let! vidRes = Db.saveVideo conn existingVideo
                 match vidRes with
@@ -407,6 +409,7 @@ module HttpHandlersTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let! saveRes = Db.saveVideo conn longVideo
             match saveRes with
@@ -446,6 +449,7 @@ module HttpHandlersTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let! saveRes = Db.saveVideo conn normalVideo
             match saveRes with
@@ -488,6 +492,7 @@ module HttpHandlersTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let! saveRes = Db.saveVideo conn normalVideo
             match saveRes with
@@ -525,6 +530,7 @@ module HttpHandlersTests =
                 AccessCount = 0
                 LastAccessedAt = None
                 Tags = []
+                FileUuid = None
             }
             let! saveRes = Db.saveVideo conn longVideo
             match saveRes with

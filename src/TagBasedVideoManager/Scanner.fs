@@ -337,6 +337,7 @@ module Scanner =
                                 AccessCount = 0
                                 LastAccessedAt = None
                                 Tags = []
+                                FileUuid = None
                             }
 
                             let! saveResult = Db.saveVideo conn newVideo

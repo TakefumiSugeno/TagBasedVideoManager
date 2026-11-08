@@ -191,6 +191,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
 
@@ -240,6 +241,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
 
@@ -295,6 +297,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
 
@@ -342,6 +345,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
 
@@ -444,6 +448,7 @@ type ScannerTests () =
             TagBasedVideoManager.Domain.Video.AccessCount = 0
             TagBasedVideoManager.Domain.Video.LastAccessedAt = None
             TagBasedVideoManager.Domain.Video.Tags = []
+            TagBasedVideoManager.Domain.Video.FileUuid = None
         }
         let _ = Db.saveVideo conn existingVideo |> Async.RunSynchronously
 
@@ -721,6 +726,7 @@ type ScannerTests () =
                 TagBasedVideoManager.Domain.Video.AccessCount = 0
                 TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                 TagBasedVideoManager.Domain.Video.Tags = []
+                TagBasedVideoManager.Domain.Video.FileUuid = None
             }
             Db.saveVideo conn existingVideo |> Async.RunSynchronously |> ignore
 

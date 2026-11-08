@@ -145,6 +145,7 @@ type StreamingTests () =
                         AccessCount = 0
                         LastAccessedAt = None
                         Tags = []
+                        FileUuid = None
                     }
                     Db.saveVideo conn video |> Async.RunSynchronously |> ignore
                 )

@@ -57,6 +57,7 @@ type RuleTests () =
             AccessCount = 0
             LastAccessedAt = None
             Tags = []
+            FileUuid = None
         }
         let _ = Db.saveVideo conn testVideo |> Async.RunSynchronously
 

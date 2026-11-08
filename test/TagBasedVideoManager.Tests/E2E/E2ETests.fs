@@ -257,6 +257,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn dummyVideo |> Async.RunSynchronously
                 ()
@@ -367,6 +368,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let video2 = {
                     TagBasedVideoManager.Domain.Video.Id = "v_test2"
@@ -381,6 +383,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn video1 |> Async.RunSynchronously
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn video2 |> Async.RunSynchronously
@@ -509,6 +512,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let video2 = {
                     TagBasedVideoManager.Domain.Video.Id = "v_test2"
@@ -523,6 +527,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn video1 |> Async.RunSynchronously
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn video2 |> Async.RunSynchronously
@@ -655,7 +660,8 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
-                 }
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
+                }
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn dummyVideo |> Async.RunSynchronously
                 ()
 
@@ -886,6 +892,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn video1 |> Async.RunSynchronously
                 ()
@@ -1006,6 +1013,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let video2 = {
                     TagBasedVideoManager.Domain.Video.Id = "v_test2"
@@ -1020,6 +1028,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn video1 |> Async.RunSynchronously
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn video2 |> Async.RunSynchronously
@@ -1163,6 +1172,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 5
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = Some DateTime.UtcNow
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn v1 |> Async.RunSynchronously
                 ()
@@ -1260,6 +1270,7 @@ type E2ETests (output: ITestOutputHelper) =
                         TagBasedVideoManager.Domain.Video.AccessCount = 0
                         TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                         TagBasedVideoManager.Domain.Video.Tags = []
+                        TagBasedVideoManager.Domain.Video.FileUuid = None
                     }
                     let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn v |> Async.RunSynchronously
                     ()
@@ -1367,6 +1378,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 5
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let v2 = {
                     TagBasedVideoManager.Domain.Video.Id = "v_sort_2"
@@ -1381,6 +1393,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 10
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn v1 |> Async.RunSynchronously
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn v2 |> Async.RunSynchronously
@@ -1543,6 +1556,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let v2 = {
                     TagBasedVideoManager.Domain.Video.Id = "v_mod_2"
@@ -1557,6 +1571,7 @@ type E2ETests (output: ITestOutputHelper) =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = []
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn v1 |> Async.RunSynchronously
                 let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn v2 |> Async.RunSynchronously
@@ -1647,6 +1662,7 @@ type E2ETests (output: ITestOutputHelper) =
                 TagBasedVideoManager.Domain.Video.AccessCount = 0
                 TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                 TagBasedVideoManager.Domain.Video.Tags = []
+                TagBasedVideoManager.Domain.Video.FileUuid = None
             }
             let _ = TagBasedVideoManager.Infrastructure.Db.saveVideo conn v |> Async.RunSynchronously
             ()

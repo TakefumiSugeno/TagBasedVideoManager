@@ -21,6 +21,7 @@ type private VideoDbDto = {
     FileModifiedAt: string
     AccessCount: int
     LastAccessedAt: string
+    FileUuid: string
 }
 
 [<CLIMutable>]
@@ -98,6 +99,9 @@ module Db =
                         else dt
                     Some utcDt
                 | false, _ -> None
+        let fileUuid =
+            if String.IsNullOrWhiteSpace(dto.FileUuid) then None
+            else Some dto.FileUuid
         {
             Id = dto.Id
             FileName = dto.FileName
@@ -111,6 +115,7 @@ module Db =
             AccessCount = dto.AccessCount
             LastAccessedAt = lastAccessedAt
             Tags = []
+            FileUuid = fileUuid
         }
 
     /// データベース接続を取得する
@@ -122,7 +127,7 @@ module Db =
                 if not (String.IsNullOrEmpty(dir)) && not (Directory.Exists(dir)) then
                     Directory.CreateDirectory(dir) |> ignore
             with _ -> ()
-        new SqliteConnection($"Data Source={dbPath}")
+        new SqliteConnection($"Data Source={dbPath};Foreign Keys=True")
 
     let importTags (conn: IDbConnection) (tags: Tag list) : Async<Result<Tag list, DbError>> =
         async {
@@ -243,7 +248,7 @@ module Db =
     let getVideos (conn: IDbConnection) (searchQuery: string option) : Async<Result<Video list, DbError>> =
         async {
             try
-                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt FROM Videos"
+                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt, FileUuid FROM Videos"
                 let! dtos = Async.AwaitTask (conn.QueryAsync<VideoDbDto>(sql))
                 let videos = dtos |> Seq.map dtoToVideo |> Seq.toList
                 return! attachTagsBatch conn videos
@@ -255,7 +260,7 @@ module Db =
     let getVideo (conn: IDbConnection) (videoId: string) : Async<Result<Video, DbError>> =
         async {
             try
-                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt FROM Videos WHERE Id = @Id"
+                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt, FileUuid FROM Videos WHERE Id = @Id"
                 let! dto = Async.AwaitTask (conn.QuerySingleOrDefaultAsync<VideoDbDto>(sql, {| Id = videoId |}))
                 if box dto = null then
                     return Error (RecordNotFound $"Video with id {videoId} not found")
@@ -291,7 +296,7 @@ module Db =
         async {
             try
                 let mutable sql = """
-                    SELECT DISTINCT v.Id, v.FileName, v.FilePath, v.Duration, v.FileSize, v.ThumbnailPath, v.IsFavorite, v.CreatedAt, v.FileModifiedAt, v.AccessCount, v.LastAccessedAt
+                    SELECT DISTINCT v.Id, v.FileName, v.FilePath, v.Duration, v.FileSize, v.ThumbnailPath, v.IsFavorite, v.CreatedAt, v.FileModifiedAt, v.AccessCount, v.LastAccessedAt, v.FileUuid
                     FROM Videos v
                 """
                 let parameters = DynamicParameters()
@@ -454,8 +459,8 @@ module Db =
         async {
             try
                 let sql = """
-                    INSERT OR IGNORE INTO Videos (Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt)
-                    VALUES (@Id, @FileName, @FilePath, @Duration, @FileSize, @ThumbnailPath, @IsFavorite, @CreatedAt, @FileModifiedAt, @AccessCount, @LastAccessedAt)
+                    INSERT OR IGNORE INTO Videos (Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt, FileUuid)
+                    VALUES (@Id, @FileName, @FilePath, @Duration, @FileSize, @ThumbnailPath, @IsFavorite, @CreatedAt, @FileModifiedAt, @AccessCount, @LastAccessedAt, @FileUuid)
                 """
                 let task = conn.ExecuteAsync(sql, {|
                     Id = video.Id
@@ -469,6 +474,7 @@ module Db =
                     FileModifiedAt = video.FileModifiedAt.ToUniversalTime().ToString("o")
                     AccessCount = video.AccessCount
                     LastAccessedAt = match video.LastAccessedAt with Some d -> d.ToString("o") | None -> null
+                    FileUuid = Option.toObj video.FileUuid
                 |})
                 let! rows = Async.AwaitTask task
                 return Ok rows
@@ -581,6 +587,56 @@ module Db =
                 return Ok ()
             with
             | ex -> return Error (QueryError ex.Message)
+        }
+
+    /// 動画の FileUuid を更新する
+    let updateVideoFileUuid (conn: IDbConnection) (videoId: string) (fileUuid: string) : Async<Result<unit, DbError>> =
+        async {
+            try
+                let sql = "UPDATE Videos SET FileUuid = @FileUuid WHERE Id = @Id"
+                let! _ = Async.AwaitTask (conn.ExecuteAsync(sql, {| Id = videoId; FileUuid = fileUuid |}))
+                return Ok ()
+            with ex ->
+                return Error (QueryError ex.Message)
+        }
+
+    /// 動画の移動・リネームに伴う位置情報・メタデータを更新する
+    let updateVideoLocation (conn: IDbConnection) (videoId: string) (fileName: string) (filePath: string) (fileSize: int64) (fileModifiedAt: DateTime) (fileUuid: string option) (thumbnailPath: string option) : Async<Result<unit, DbError>> =
+        async {
+            try
+                let sql = """
+                    UPDATE Videos
+                    SET FileName = @FileName,
+                        FilePath = @FilePath,
+                        FileSize = @FileSize,
+                        FileModifiedAt = @FileModifiedAt,
+                        FileUuid = @FileUuid,
+                        ThumbnailPath = @ThumbnailPath
+                    WHERE Id = @Id
+                """
+                let! _ = Async.AwaitTask (conn.ExecuteAsync(sql, {|
+                    Id = videoId
+                    FileName = fileName
+                    FilePath = filePath
+                    FileSize = fileSize
+                    FileModifiedAt = fileModifiedAt.ToUniversalTime().ToString("o")
+                    FileUuid = Option.toObj fileUuid
+                    ThumbnailPath = Option.toObj thumbnailPath
+                |}))
+                return Ok ()
+            with ex ->
+                return Error (QueryError ex.Message)
+        }
+
+    /// 動画および関連メタデータを削除する
+    let deleteVideo (conn: IDbConnection) (videoId: string) : Async<Result<unit, DbError>> =
+        async {
+            try
+                let sql = "DELETE FROM Videos WHERE Id = @Id"
+                let! _ = Async.AwaitTask (conn.ExecuteAsync(sql, {| Id = videoId |}))
+                return Ok ()
+            with ex ->
+                return Error (QueryError ex.Message)
         }
 
     /// スマートフォルダ一覧の取得
@@ -699,7 +755,7 @@ module Db =
     let getVideoRanking (conn: IDbConnection) : Async<Result<Video list, DbError>> =
         async {
             try
-                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt FROM Videos WHERE AccessCount > 0 ORDER BY AccessCount DESC, LastAccessedAt DESC LIMIT 100"
+                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt, FileUuid FROM Videos WHERE AccessCount > 0 ORDER BY AccessCount DESC, LastAccessedAt DESC LIMIT 100"
                 let! dtos = Async.AwaitTask (conn.QueryAsync<VideoDbDto>(sql))
                 let videos = dtos |> Seq.map dtoToVideo |> Seq.toList
 
@@ -798,7 +854,7 @@ module Db =
                 let! tagsResult = getTags conn
                 let tags = match tagsResult with Ok t -> t | Error _ -> []
 
-                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt FROM Videos"
+                let sql = "SELECT Id, FileName, FilePath, Duration, FileSize, ThumbnailPath, IsFavorite, CreatedAt, FileModifiedAt, AccessCount, LastAccessedAt, FileUuid FROM Videos"
                 let! dtos = Async.AwaitTask (conn.QueryAsync<VideoDbDto>(sql))
                 let allVideos = dtos |> Seq.map dtoToVideo |> Seq.toList
 
@@ -859,7 +915,8 @@ module DbInit =
             CreatedAt TEXT NOT NULL,
             FileModifiedAt TEXT,
             AccessCount INTEGER DEFAULT 0,
-            LastAccessedAt TEXT
+            LastAccessedAt TEXT,
+            FileUuid TEXT
         );
         """
         """
@@ -955,6 +1012,7 @@ module DbInit =
             alterVideosIfMissing "FileModifiedAt" "FileModifiedAt TEXT"
             alterVideosIfMissing "AccessCount"    "AccessCount INTEGER DEFAULT 0"
             alterVideosIfMissing "LastAccessedAt" "LastAccessedAt TEXT"
+            alterVideosIfMissing "FileUuid"       "FileUuid TEXT"
 
             Ok ()
         with

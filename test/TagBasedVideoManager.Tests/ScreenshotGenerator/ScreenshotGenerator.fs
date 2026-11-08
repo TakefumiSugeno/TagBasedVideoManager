@@ -116,6 +116,7 @@ type ScreenshotGenerator () =
                     TagBasedVideoManager.Domain.Video.AccessCount = 15
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = Some (DateTime.UtcNow.AddHours(-1.0))
                     TagBasedVideoManager.Domain.Video.Tags = [tagBike; tagTouring]
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let video2 = {
                     TagBasedVideoManager.Domain.Video.Id = "v_test2"
@@ -130,6 +131,7 @@ type ScreenshotGenerator () =
                     TagBasedVideoManager.Domain.Video.AccessCount = 8
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = Some (DateTime.UtcNow.AddDays(-1.0))
                     TagBasedVideoManager.Domain.Video.Tags = [tagTravel]
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 let video3 = {
                     TagBasedVideoManager.Domain.Video.Id = "v_test3"
@@ -144,6 +146,7 @@ type ScreenshotGenerator () =
                     TagBasedVideoManager.Domain.Video.AccessCount = 0
                     TagBasedVideoManager.Domain.Video.LastAccessedAt = None
                     TagBasedVideoManager.Domain.Video.Tags = [tagHomeVideo]
+                    TagBasedVideoManager.Domain.Video.FileUuid = None
                 }
                 
                 TagBasedVideoManager.Infrastructure.Db.saveVideo conn video1 |> Async.RunSynchronously |> ignore

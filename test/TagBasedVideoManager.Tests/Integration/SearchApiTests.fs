@@ -71,6 +71,7 @@ type SearchTests () =
             AccessCount = 0
             LastAccessedAt = None
             Tags = []
+            FileUuid = None
         }
         // 動画2 (Recital) に「音楽」タグを付与
         let videoRecital = {
@@ -86,6 +87,7 @@ type SearchTests () =
             AccessCount = 0
             LastAccessedAt = None
             Tags = []
+            FileUuid = None
         }
 
         let _ = Db.saveVideo conn videoEva |> Async.RunSynchronously
