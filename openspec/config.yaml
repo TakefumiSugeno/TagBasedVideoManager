@@ -75,6 +75,13 @@ context: |
   - L2（通常: 機能追加・仕様変更・UI変更・通常バグ修正）: 標準フルフロー（test_plan.md 必須、Tester/PG/Reviewer サブエージェント分業）
   - L3（大規模: アーキテクチャ変更・破壊的変更・DB変更）: L2 ＋ 移行/ロールバック計画必須、Apply中も se-reviewer 参加
 
+  # セマンティックバージョニング（SemVer 2.0.0）運用ルール
+  - 形式と独立管理: Web アプリ（TagBasedVideoManager）とデスクトップアプリ（TagBasedVideoManager.Renamer）で独立して X.Y.Z 形式を管理（初期値: 0.1.0）。各 .fsproj の <Version> プロパティで定義
+  - 規模レベル・ユーザー指示連動インクリメント規則:
+    - X (Major): 互換性のない破壊的変更（L3規模）またはユーザーからの明示的な指示時（X+1.0.0）
+    - Y (Minor): 後方互換性のある機能追加・仕様変更・UI変更（L2規模）時（X.Y+1.0）
+    - Z (Patch): 後方互換性のある不具合修正・軽微調整・設定微修正（L1規模）時（X.Y.Z+1）
+
   # サブエージェント6ロール分業（TDD 3権分立）
   - 同一エージェントによる「自作自演TDD（甘いテスト作成・実装都合でのテスト書き換え）」を防ぐため、役割を分離する（プロンプト定義は openspec/agents/*.md）:
     1. qa-tester: specs/ と test_plan.md のみから先行失敗テスト（Red）および結合/E2Eテストを実装（プロダクションコード編集禁止）
@@ -107,6 +114,7 @@ rules:
   proposal:
     - "Propose開始（openspec new change）直前に Gate 0（作業ツリー確認・stash退避・develop最新化・マージ済みブランチ一括削除・feature/またはfix/またはchore/ブランチ作成・verify-gate.ps1 -Gate pre-propose）を必ず実行する"
     - "変更の適用規模レベル（L1 / L2 / L3）と変更種別（feat / fix / refactor / chore）を明記する"
+    - "対象アプリケーション（Web / デスクトップ）に変更がある場合、規模レベル（L1: Patch, L2: Minor, L3/指示: Major）に応じたバージョンインクリメント方針（新バージョン番号）を proposal.md に記載する"
     - "変更の「What & Why」（不具合修正時は根本原因 Root Cause を含む）を簡潔に記述（500語以内推奨）"
     - "Non-goals（やらないこと）と、検証可能な受け入れ基準（Given/When/Then）を含める"
     - "Propose完了時: user-reviewer・se-reviewer による批判的レビュー（checklist_propose.md）を実施し、verify-gate.ps1 -Gate propose が PASS してからユーザー合意を得る"

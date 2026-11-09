@@ -112,5 +112,8 @@ module Program =
             if String.IsNullOrWhiteSpace(envPort) then "5620" else envPort
         let url = $"http://*:{port}"
         
+        let version = HttpHandlers.getAppVersion ()
+        printfn "TagBasedVideoManager v%s started on %s" version url
+
         app.Run(url)
         0

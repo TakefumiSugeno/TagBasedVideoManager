@@ -100,6 +100,10 @@ TagBasedVideoManager は、タグベースの動画管理システムです。�
   - ソースコード内のコメントは日本語で記載し、XMLドキュメントコメント形式（`///`）とする。
 - **プロジェクト・依存関係管理**:
   - `.fsproj` などの設定ファイルはAIが手動で構築するのではなく、`dotnet` CLI（SDK）を活用して作成・更新する。
+- **セマンティックバージョニング (SemVer 2.0.0)**:
+  - Web アプリケーション（`src/TagBasedVideoManager/TagBasedVideoManager.fsproj`）とデスクトップアプリケーション（`src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj`）は独立した `<Version>X.Y.Z</Version>` でバージョンを管理する。初期値は双方 `0.1.0`。
+  - Web アプリは画面ヘッダー（バッジ）および `<title>` に `vX.Y.Z` を表示し、`GET /api/version`（キャッシュ抑止ヘッダー付き）経由で提供する。
+  - デスクトップアプリはウィンドウタイトルバー（`base.Title`）および起動ログに `TagBasedVideoManager - AI File Renamer vX.Y.Z` を表示・出力する。
 
 ## 参考情報
 
@@ -149,6 +153,16 @@ TagBasedVideoManager は、タグベースの動画管理システムです。�
 | Propose レビュー                    | `se-reviewer` のみ可               | `user-reviewer` + `se-reviewer`                    | `user-reviewer` + `se-reviewer`                  |
 | Apply 時の実装・テスト分業          | メイン兼任可 ＋ PG/QA レビュー     | **`qa-tester` → `pg-implementer` → PG/QAレビュー** | L2 ＋ 設計変更時は `se-reviewer` 必須            |
 | Archive 総括レビュー・`handover.md` | 必須                               | 必須                                               | 必須                                             |
+
+#### セマンティックバージョニング（SemVer 2.0.0）規則と運用
+
+Web アプリ（`TagBasedVideoManager`）およびデスクトップアプリ（`TagBasedVideoManager.Renamer`）は、独立して `X.Y.Z` 形式でバージョンを管理する（初期値: `0.1.0`）。OpenSpec の変更規模レベルまたはユーザー指示に基づき、各プロジェクトの `.fsproj`（`<Version>`）を以下の規則に従ってインクリメントする：
+
+| バージョン桁  | 連動トリガー                            | 対象変更内容の例                                                    | リセット規則                           |
+| :------------ | :-------------------------------------- | :------------------------------------------------------------------ | :------------------------------------- |
+| **X (Major)** | **L3 規模** または **ユーザー明示指示** | アーキテクチャ変更、破壊的API変更、互換性のないDB変更、ユーザー指示 | `Y`, `Z` を `0` にリセット (`X+1.0.0`) |
+| **Y (Minor)** | **L2 規模**                             | 後方互換性のある新機能追加、仕様変更、UI/UX変更、通常機能改善       | `Z` を `0` にリセット (`X.Y+1.0`)      |
+| **Z (Patch)** | **L1 規模**                             | 後方互換性のある不具合修正、設定微修正、typo修正、局所的リファクタ  | なし (`X.Y.Z+1`)                       |
 
 ---
 

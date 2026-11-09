@@ -574,3 +574,25 @@ module HttpHandlersTests =
             body.Contains("\"bytes\":262") |> should be True
             body.Contains("\"filePath\":") |> should be True
         } :> Task
+
+    // ==========================================
+    // Application Versioning 単体テスト (UT-01, UT-02, UT-03)
+    // ==========================================
+
+    [<Fact>]
+    let ``formatAssemblyVersion は 標準的な 3 要素/4 要素バージョンから SemVer 文字列を正常にフォーマットする (UT-01)`` () =
+        let ver = Some (Version(0, 1, 0, 0))
+        let result = HttpHandlers.formatAssemblyVersion ver
+        result |> should equal "0.1.0"
+
+    [<Fact>]
+    let ``formatAssemblyVersion は リビジョン番号をトリミングして X.Y.Z のみを抽出する (UT-02)`` () =
+        let ver = Some (Version(1, 20, 305, 99))
+        let result = HttpHandlers.formatAssemblyVersion ver
+        result |> should equal "1.20.305"
+
+    [<Fact>]
+    let ``formatAssemblyVersion は バージョン不在 (None) 時に安全なデフォルト 0.0.0 を返却する (UT-03)`` () =
+        let ver = None
+        let result = HttpHandlers.formatAssemblyVersion ver
+        result |> should equal "0.0.0"

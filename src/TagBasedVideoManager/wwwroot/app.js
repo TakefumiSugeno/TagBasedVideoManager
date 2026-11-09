@@ -58,6 +58,8 @@ function videoManager() {
 
     hasAutoScanned: false, // 初回自動スキャン判定用
 
+    appVersion: "", // 稼働アプリケーションバージョン (例: 'v0.1.0')
+
     // 表示モード (ページング / インクリメンタル)
 
     displayMode: "paging", // 'paging' | 'incremental'
@@ -196,6 +198,35 @@ function videoManager() {
       }, 16);
     },
 
+    fetchAppVersion() {
+      // 2秒タイムアウト・Bulkhead非同期取得（コアデータ初期化をブロックしない）
+      const controller =
+        typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timeoutId = controller
+        ? setTimeout(() => controller.abort(), 2000)
+        : null;
+      const signal = controller ? controller.signal : undefined;
+
+      fetch("/api/version", { signal })
+        .then((res) => {
+          if (timeoutId) clearTimeout(timeoutId);
+          if (res.ok) return res.json();
+          throw new Error(`Failed to fetch version: ${res.status}`);
+        })
+        .then((data) => {
+          if (data && data.version) {
+            this.appVersion = `v${data.version}`;
+            if (typeof document !== "undefined") {
+              document.title = `Tag-Based Video Manager (v${data.version})`;
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn("Failed to fetch app version:", err);
+          this.appVersion = "";
+        });
+    },
+
     init() {
       if (typeof window !== "undefined" && window.innerWidth < 768) {
         this.sidebarOpen = false;
@@ -203,6 +234,9 @@ function videoManager() {
 
       // Lucideアイコンの初期描画
       this.refreshIcons();
+
+      // アプリケーションバージョンの非同期取得 (Bulkhead: コアロードとは完全分離)
+      this.fetchAppVersion();
 
       // 初期データロード
 
