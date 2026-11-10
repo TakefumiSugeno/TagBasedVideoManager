@@ -882,11 +882,42 @@ module HttpHandlers =
                     return! ServerErrors.INTERNAL_ERROR (ex.ToString()) next ctx
             }
 
+    /// <summary>
+    /// Version オブジェクトから SemVer (X.Y.Z) 形式のバージョン文字列を生成する純粋関数。
+    /// 未設定 (None) の場合は安全なデフォルト "0.0.0" を返却する。
+    /// </summary>
+    let formatAssemblyVersion (versionOpt: Version option) : string =
+        match versionOpt with
+        | Some v -> sprintf "%d.%d.%d" v.Major v.Minor (max 0 v.Build)
+        | None -> "0.0.0"
+
+    /// <summary>
+    /// 実行中のアセンブリから稼働アプリケーションバージョンを取得する。
+    /// </summary>
+    let getAppVersion () : string =
+        try
+            let asm = System.Reflection.Assembly.GetExecutingAssembly()
+            let ver = asm.GetName().Version
+            formatAssemblyVersion (Option.ofObj ver)
+        with _ ->
+            "0.0.0"
+
+    /// <summary>
+    /// GET /api/version の HTTP ハンドラー。
+    /// 稼働バージョン文字列を含む JSON を返し、ブラウザキャッシュを無効化するヘッダーを付与する。
+    /// </summary>
+    let getAppVersionHandler : HttpHandler =
+        fun next ctx ->
+            let ver = getAppVersion ()
+            (setHttpHeader "Cache-Control" "no-cache, no-store, must-revalidate"
+             >=> json {| version = ver |}) next ctx
+
     /// アプリケーションのルーティング定義
 
     let webApp : HttpHandler =
         choose [
-            route "/api/ping"   >=> text "pong"
+            route "/api/ping"    >=> text "pong"
+            route "/api/version" >=> choose [ GET >=> getAppVersionHandler ]
             routef "/api/videos/%s/stream" streamVideo
             
             // スキャン同期実行ルート

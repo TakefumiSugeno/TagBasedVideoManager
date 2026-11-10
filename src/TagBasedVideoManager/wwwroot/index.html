@@ -142,14 +142,25 @@
           ></i>
         </div>
 
-        <div>
-          <h1
-            class="text-sm md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-indigo-200 to-violet-300"
-          >
-            Tag-Based Video Manager
-          </h1>
+        <div class="min-w-0">
+          <div class="flex items-center flex-wrap gap-1.5 md:gap-2">
+            <h1
+              class="text-sm md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-indigo-200 to-violet-300 leading-tight"
+            >
+              Tag-Based Video Manager
+            </h1>
 
-          <div class="flex items-center space-x-2">
+            <!-- バージョンピルバッジ (取得時表示) -->
+            <span
+              x-show="appVersion"
+              x-cloak
+              class="inline-flex items-center px-1.5 py-0.5 text-[10px] md:text-xs font-mono font-medium rounded-md bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 shadow-sm"
+              x-text="appVersion"
+              data-testid="app-version-badge"
+            ></span>
+          </div>
+
+          <div class="flex items-center space-x-2 mt-0.5">
             <p class="text-xs text-slate-400 hidden sm:block">
               Intelligent metadata & tagging engine
             </p>

@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="ja" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tag-Based Video Manager - Version Display Mockup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              fluent: {
+                bg: "#1a1a1a",
+                surface: "#222222",
+                card: "#2a2a2a",
+                border: "#383838",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      [x-cloak] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-slate-950 text-slate-100 min-h-screen p-4 md:p-8 font-sans"
+    x-data="mockupApp()"
+  >
+    <!-- プレゼンテーション・コントロールバー -->
+    <div
+      class="max-w-5xl mx-auto mb-8 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl"
+    >
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <i data-lucide="layers" class="w-5 h-5 text-indigo-400"></i>
+            UI Mockup: 稼働アプリケーションバージョン画面ヘッダー表示
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">
+            Issue #35 対応 | Single Source of Design (デスクトップ &
+            モバイル折り返し・Zero/Error-State 検証)
+          </p>
+        </div>
+
+        <!-- インタラクティブ操作用コントロール -->
+        <div class="flex items-center gap-3">
+          <div
+            class="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/60 text-xs"
+          >
+            <span class="text-slate-400">表示状態:</span>
+            <select
+              x-model="viewState"
+              @change="onStateChange()"
+              class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-indigo-300 font-mono text-xs focus:outline-none"
+            >
+              <option value="success-010">v0.1.0 (正常・初期)</option>
+              <option value="success-020">v0.2.0 (正常・マイナー)</option>
+              <option value="success-100">v1.0.0 (正常・メジャー)</option>
+              <option value="loading">Loading / 初期通信中 (Zero-State)</option>
+              <option value="error">Error / 通信失敗 (Error-State)</option>
+            </select>
+          </div>
+
+          <button
+            @click="isMobileSim = !isMobileSim"
+            class="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5"
+            :class="isMobileSim ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'"
+          >
+            <i
+              :data-lucide="isMobileSim ? 'smartphone' : 'monitor'"
+              class="w-4 h-4"
+            ></i>
+            <span
+              x-text="isMobileSim ? 'モバイル幅 (390px)' : 'デスクトップ幅'"
+            ></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- プレビューコンテナ -->
+    <div
+      class="max-w-5xl mx-auto transition-all duration-300"
+      :class="isMobileSim ? 'max-w-[390px]' : ''"
+    >
+      <!-- プレビュー枠外ラベル -->
+      <div
+        class="flex items-center justify-between text-xs text-slate-400 mb-2 px-1"
+      >
+        <span
+          class="font-mono"
+          x-text="isMobileSim ? 'Mobile Viewport: 390px (iPhone 14/15 相当)' : 'Desktop Viewport (100%)'"
+        ></span>
+        <span class="text-emerald-400 flex items-center gap-1">
+          <span
+            class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"
+          ></span>
+          Live Interactive Preview
+        </span>
+      </div>
+
+      <!-- Web アプリ画面ヘッダー プレビュー枠 -->
+      <div
+        class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl relative"
+      >
+        <!-- 背景グラデーション (本番準拠) -->
+        <div
+          class="absolute top-0 left-1/4 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"
+        ></div>
+        <div
+          class="absolute bottom-0 right-1/4 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none"
+        ></div>
+
+        <!-- ヘッダーコンポーネント (本番 index.html と同一の構造) -->
+        <header
+          class="flex-shrink-0 border-b border-slate-800/80 bg-slate-900/95 backdrop-blur-md px-3.5 py-2.5 md:px-6 md:py-4 flex items-center justify-between z-20"
+        >
+          <!-- 左側: ロゴ & タイトル & バージョンバッジ -->
+          <div class="flex items-center space-x-2 md:space-x-3 min-w-0">
+            <!-- サイドバートグル (デスクトップ) -->
+            <button
+              class="hidden md:flex p-2 rounded-xl border transition-all items-center justify-center text-slate-400 hover:text-slate-200 border-slate-800 bg-slate-900/80 hover:bg-slate-800"
+              title="サイドバーの表示・非表示"
+            >
+              <i data-lucide="panel-left" class="w-5 h-5"></i>
+            </button>
+
+            <!-- ロゴアイコン -->
+            <div
+              class="w-8 h-8 md:w-11 md:h-11 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0"
+            >
+              <i
+                data-lucide="play"
+                class="w-4 h-4 md:w-6 md:h-6 text-white fill-white/20"
+              ></i>
+            </div>
+
+            <!-- アプリタイトル ＋ バージョンバッジ (CSS干渉防止: 兄弟要素 + flex-wrap) -->
+            <div class="min-w-0">
+              <div class="flex items-center flex-wrap gap-1.5 md:gap-2">
+                <h1
+                  class="text-sm md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-indigo-200 to-violet-300 leading-tight"
+                >
+                  Tag-Based Video Manager
+                </h1>
+
+                <!-- 1. 正常取得時バッジ -->
+                <span
+                  x-show="viewState.startsWith('success')"
+                  x-cloak
+                  class="inline-flex items-center px-1.5 py-0.5 text-[10px] md:text-xs font-mono font-medium rounded-md bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 shadow-sm"
+                  x-text="currentVersionText"
+                >
+                </span>
+
+                <!-- 2. Loading スケルトン (Zero-State: レイアウトシフト防止) -->
+                <span
+                  x-show="viewState === 'loading'"
+                  x-cloak
+                  class="inline-flex items-center px-2 py-0.5 h-4 md:h-5 w-12 rounded-md bg-slate-800 border border-slate-700/60 animate-pulse"
+                  title="バージョン情報取得中..."
+                >
+                </span>
+
+                <!-- 3. Error 時フォールバック (Error-State: サイレント非表示または警告表示) -->
+                <span
+                  x-show="viewState === 'error'"
+                  x-cloak
+                  class="hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono text-slate-500 border border-slate-800 rounded bg-slate-900/60"
+                  title="バージョン取得失敗 (コア機能は通常通り利用可能)"
+                >
+                  <i data-lucide="info" class="w-3 h-3 text-slate-500"></i>
+                  <span>v---</span>
+                </span>
+              </div>
+
+              <div class="flex items-center space-x-2 mt-0.5">
+                <p class="text-xs text-slate-400 hidden sm:block">
+                  Intelligent metadata & tagging engine
+                </p>
+                <span
+                  class="text-[10px] text-indigo-400 font-mono block md:hidden"
+                >
+                  58 件
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右側: アクションボタン群 (本番 index.html 準拠) -->
+          <div class="flex items-center space-x-1 md:space-x-3 shrink-0 ml-2">
+            <!-- モバイル用アクションアイコン群 -->
+            <div
+              class="flex md:hidden items-center space-x-0.5"
+              :class="isMobileSim ? '!flex' : ''"
+            >
+              <button
+                class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-indigo-400"
+                title="ディレクトリ同期"
+              >
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+              </button>
+              <button
+                class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-indigo-400 relative"
+                title="設定"
+              >
+                <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+                <span
+                  class="absolute top-2 right-2 w-1.5 h-1.5 bg-indigo-500 rounded-full"
+                ></span>
+              </button>
+              <button
+                class="w-8 h-8 flex items-center justify-center text-indigo-400"
+                title="グリッド切替"
+              >
+                <i data-lucide="layout-grid" class="w-4 h-4"></i>
+              </button>
+              <button
+                class="w-8 h-8 flex items-center justify-center text-slate-400"
+                title="お気に入り"
+              >
+                <i data-lucide="star" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+            <!-- デスクトップ用アクション群 -->
+            <div
+              class="hidden md:flex items-center space-x-2"
+              :class="isMobileSim ? '!hidden' : ''"
+            >
+              <button
+                class="px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-xs text-slate-300 flex items-center gap-1.5"
+              >
+                <i
+                  data-lucide="refresh-cw"
+                  class="w-3.5 h-3.5 text-indigo-400"
+                ></i>
+                同期
+              </button>
+              <button
+                class="px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-xs text-slate-300 flex items-center gap-1.5"
+              >
+                <i
+                  data-lucide="sliders-horizontal"
+                  class="w-3.5 h-3.5 text-indigo-400"
+                ></i>
+                ソート・表示設定
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <!-- モック用ダミーコンテンツエリア -->
+        <div class="p-6 text-center text-slate-500 text-xs py-16">
+          <i data-lucide="film" class="w-8 h-8 mx-auto mb-2 opacity-40"></i>
+          動画ライブラリ一覧コンテンツ表示領域 (Header検証用ダミー)
+        </div>
+      </div>
+
+      <!-- デスクトップアプリ (AI File Renamer) タイトルバー プレビュー枠 -->
+      <div
+        class="mt-8 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-xl"
+      >
+        <div
+          class="bg-zinc-800 px-4 py-2 flex items-center justify-between border-b border-zinc-700"
+        >
+          <div class="flex items-center gap-2">
+            <i data-lucide="app-window" class="w-4 h-4 text-zinc-400"></i>
+            <span class="text-xs font-mono text-zinc-200">
+              TagBasedVideoManager - AI File Renamer
+              <span
+                class="text-indigo-400 font-semibold"
+                x-text="currentVersionText"
+              ></span>
+            </span>
+          </div>
+          <div class="flex items-center gap-3 text-zinc-400 text-xs font-mono">
+            <span>―</span>
+            <span>□</span>
+            <span>✕</span>
+          </div>
+        </div>
+        <div class="p-4 bg-zinc-900 text-zinc-400 text-xs">
+          <p>
+            ※
+            デスクトップアプリ（Avalonia）はウィンドウネイティブのタイトルバー（<code
+              class="text-indigo-300"
+              >base.Title</code
+            >）にバージョン文字列を設定するため、アプリ内領域のコントロール配置は変更されません。
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function mockupApp() {
+        return {
+          viewState: "success-010",
+          isMobileSim: false,
+          get currentVersionText() {
+            switch (this.viewState) {
+              case "success-010":
+                return "v0.1.0";
+              case "success-020":
+                return "v0.2.0";
+              case "success-100":
+                return "v1.0.0";
+              case "loading":
+                return "";
+              case "error":
+                return "v0.0.0";
+              default:
+                return "v0.1.0";
+            }
+          },
+          onStateChange() {
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+          },
+          init() {
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
+            this.$watch("isMobileSim", () => {
+              setTimeout(() => lucide.createIcons(), 50);
+            });
+            this.$watch("viewState", () => {
+              setTimeout(() => lucide.createIcons(), 50);
+            });
+          },
+        };
+      }
+      document.addEventListener("DOMContentLoaded", () => {
+        lucide.createIcons();
+      });
+    </script>
+  </body>
+</html>

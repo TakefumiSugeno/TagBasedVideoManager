@@ -25,9 +25,11 @@
     <Compile Include="Integration\RuleApiTests.fs" />
     <Compile Include="Integration\SearchApiTests.fs" />
     <Compile Include="Integration\PortTests.fs" />
+    <Compile Include="Integration\VersionApiTests.fs" />
     <Compile Include="E2E\E2ETests.fs" />
     <Compile Include="E2E\MobileE2ETests.fs" />
     <Compile Include="E2E\MultiVideoDirsE2ETests.fs" />
+    <Compile Include="E2E\VersionE2ETests.fs" />
     <Compile Include="Tests.fs" />
   </ItemGroup>
 
