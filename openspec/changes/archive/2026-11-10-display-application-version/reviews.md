@@ -179,3 +179,65 @@
 - **保留指摘（申し送り）**: なし
 - **次のアクション**: Gate 2 通過を確認し、Archive フェーズ（`openspec-archive-change`）へ進む。
 - **承認者**: PG Reviewer Agent & QA Reviewer Agent
+
+---
+
+# レビュー記録: display-application-version / archive
+
+- **日時**: 2026-11-10
+- **フェーズ**: archive
+- **タスク**: 対象外 (Archive総括レビュー)
+- **レビュアー**: user (User Reviewer Agent), se (SE Reviewer Agent), pg (PG Reviewer Agent), qa (QA Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+- **対象成果物**:
+  - `openspec/changes/display-application-version/handover.md`
+  - `openspec/specs/application-versioning/spec.md`
+  - `AGENTS.md`
+  - `openspec/config.yaml`
+  - プロダクションコードおよび全テストスイート
+
+---
+
+## 1. 隠された技術的負債・妥協点の自白（悪魔の代弁者）
+
+**担当: SE Reviewer Agent ＆ PG Reviewer Agent**
+
+1. **今回あえて残した技術的負債**:
+   - `formatAssemblyVersion` および `formatTitle` において、将来的に SemVer 2.0.0 の事前リリース識別子（`-alpha.1` 等）やビルドメタデータ（`+build.1`）が複雑に組み合わさった場合、`Split('+').[0]` による単純除去で十分か？ → 今回は `+` 以降のコミットハッシュ除去に絞り、シンプルな文字列操作で実装した。現行の .NET SDK 出力形式に対しては堅牢に動作し、`UT-01`〜`UT-05` で安全性を実証済み。将来的な複合識別子のパースは不要な複雑さを招くため、YAGNI の観点から現段階での負債とはみなさない。
+   - すべての妥協点・トレードオフは `handover.md` の「変更サマリ（Why）」に網羅されている。
+2. **将来の機能追加で踏み抜く可能性が高い罠**:
+   - Web アプリの `app.js` では、バージョン取得を `init()` の先頭で呼んでいるが `await` せずに非同期実行している。今後別の開発者が「バージョン情報を動画検索や他 API のヘッダーで使いたい」と考え、安易に `await` してブロックさせてしまうリスクがある。この点については `app.js` のコメントおよび `handover.md` に「Bulkhead 隔離による非ブロック原則」として明記した。
+
+---
+
+## 2. 初見エンジニア視点でのドキュメント検証（Whyの欠落告発）
+
+**担当: User Reviewer Agent**
+
+1. **設計の背景（Why）の追跡可能性**:
+   - `handover.md` および `design.md` において、「なぜ静的埋め込みではなく API 経由なのか（Docker コンテナでの不整合防止）」「なぜキャッシュ制御ヘッダーが必要なのか（更新後のブラウザキャッシュ居残り防止）」「なぜ Bulkhead なのか（コア画面の巻き添えフリーズ防止）」が明快に記述されており、初見のエンジニアでも意図を完全に理解できる。
+2. **トラブルシューティング手順の十分性**:
+   - 万が一画面上でバージョンが表示されない場合、コンソール警告ログ（`Failed to fetch app version:`）およびバックエンド起動ログ（`TagBasedVideoManager vX.Y.Z started on ...`）を確認すれば、バックエンド起因か通信起因かが即座に切り分け可能である。
+
+---
+
+## 3. ロールバック・安全性の最終検証
+
+**担当: SE Reviewer Agent ＆ QA Reviewer Agent**
+
+1. **ロールバック（Revert）手順の検証**:
+   - DB スキーマ変更や外部破壊的変更は一切含まれておらず、`.fsproj`、バックエンドハンドラ、フロントエンド HTML/JS、運用ルールの追加のみである。
+   - 万が一不具合が生じた場合でも、`git revert` 単独で 100% 直前の安定状態へ復元可能である。
+2. **保留指摘の全件引き継ぎ確認**:
+   - Apply フェーズでの Suggestion 指摘はすべて対応・確認済みであり、未解決の保留指摘は 0 件である。
+   - 将来の改善候補（バッジクリックでの Changelog モーダル表示等）は `handover.md` に漏れなく記載されている。
+
+---
+
+## 4. レビュー総合判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: `handover.md` に全ての負債・申し送りが記録済み
+- **リリース可否**: 即時リリース可
+- **承認者**: User Reviewer Agent, SE Reviewer Agent, PG Reviewer Agent, QA Reviewer Agent
