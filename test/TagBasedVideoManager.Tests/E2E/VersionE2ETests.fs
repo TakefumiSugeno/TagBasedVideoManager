@@ -91,10 +91,10 @@ type VersionE2ETests (output: ITestOutputHelper) =
                 do! badge.WaitForAsync(LocatorWaitForOptions(State = WaitForSelectorState.Visible, Timeout = Nullable 10000.0f))
 
                 let! badgeText = badge.TextContentAsync()
-                badgeText.Trim() |> should equal "v0.1.0"
+                badgeText.Trim() |> should equal "v0.2.0"
 
                 let! title = page.TitleAsync()
-                title |> should equal "Tag-Based Video Manager (v0.1.0)"
+                title |> should equal "Tag-Based Video Manager (v0.2.0)"
 
                 // 画面キャプチャ保存
                 let resultsDir = ensureResultsDir ()
@@ -131,7 +131,7 @@ type VersionE2ETests (output: ITestOutputHelper) =
                 do! badge.WaitForAsync(LocatorWaitForOptions(State = WaitForSelectorState.Visible, Timeout = Nullable 10000.0f))
 
                 let! badgeText = badge.TextContentAsync()
-                badgeText.Trim() |> should equal "v0.1.0"
+                badgeText.Trim() |> should equal "v0.2.0"
 
                 let resultsDir = ensureResultsDir ()
                 let shotPath = Path.Combine(resultsDir, "E2E-02_Mobile_Version.png")

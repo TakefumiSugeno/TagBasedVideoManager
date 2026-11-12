@@ -53,9 +53,68 @@
 
 ---
 
-## 総合判定
+## Propose フェーズ 総合判定
 
 - **LGTM**: true
 - **Propose Gate 1 合否**: PASS
+- **残存 Critical / Major 指摘**: 0 件
+- **保留指摘（申し送り）**: 0 件
+
+---
+
+## Apply フェーズ - サイクル 1（2026-11-12）
+
+### PG Reviewer レビュー記録
+
+- **レビュアー**: pg-reviewer (コード潔癖症兼シニアプログラマ)
+- **LGTM**: false
+- **指摘事項**:
+  - 指摘1 (Major): `fetchWithTimeout` で呼び出し元外部 signal の abort と 10秒タイマー中断を区別せず、一律で HTTP 408 タイムアウトとして扱う暗黙の仮定
+  - 指摘2 (Major): `fetchVideos` で API レスポンス内に null や不正なプリミティブ型が混入した場合の防御ガード欠落
+  - 指摘3 (Suggestion): `openAnalyticsModal` および `fetchAnalytics` 内の冗長な DOM 直接操作（約84行）の排除
+
+### QA Reviewer レビュー記録
+
+- **レビュアー**: qa-reviewer (レッドチーム兼敵対的QA)
+- **LGTM**: false
+- **指摘事項**:
+  - 指摘1 (Major): `fetchAnalytics` における時系列ローディング維持（`latestAnalyticsRequestId`）の欠落によるタブ切り替えレースコンディション
+  - 指摘2 (Major): 動画一覧・タグ一覧・分析モーダルの Error-State で動的エラーメッセージが UI に反映されていない問題
+  - 指摘3 (Major): `fetchWithTimeout` のタイマー中断と外部 signal の競合
+
+---
+
+## Apply フェーズ - サイクル 2（2026-11-13）
+
+### PG Reviewer レビュー記録
+
+- **レビュアー**: pg-reviewer (コード潔癖症兼シニアプログラマ)
+- **LGTM**: true
+- **確認内容**:
+  - `fetchWithTimeout` に `isTimeout` フラグが導入され、外部 signal による中断と内部タイマーによるタイムアウトが明確に分離されたことを確認。
+  - `fetchVideos` に `rawList.filter(v => v && typeof v === "object")` が適用され、不正データ注入に対する堅牢性を確認。
+  - `openAnalyticsModal` / `fetchAnalytics` 内の命令的 DOM 操作（約84行）が全廃され、Alpine.js のリアクティブステートバインディングに一本化されたことを確認。
+  - Adversarial QA（破壊テスト）にて堅牢性を実証（Green）。
+- **残存指摘**: なし
+
+### QA Reviewer レビュー記録
+
+- **レビュアー**: qa-reviewer (レッドチーム兼敵対的QA)
+- **LGTM**: true
+- **確認内容**:
+  - `fetchAnalytics` に `latestAnalyticsRequestId` が導入され、レースコンディションが構造的に解消されたことを確認。
+  - `index.html` に `x-text="loadError*?.message || ..."` がバインドされ、動的エラーメッセージが UI に表示されることを確認。
+  - `fetchWithTimeout` の外部 signal とタイマー競合が解消されたことを確認。
+  - `WebLoadingSpinnerE2ETests.fs` 全17件が `page.RouteAsync` + `WaitForFunctionAsync` で堅牢化され、100% PASS を達成したことを確認。
+  - Adversarial QA スクリプト（`scratch/adversarial_cycle2.js`）による破壊テストを実行し、全耐性を実証（Green）。
+  - （Minor 指摘の `fetchAnalytics` 内 `lucide.createIcons()` についても安全な集約メソッド `this.refreshIcons()` に即座に統一されたことを確認）。
+- **残存指摘**: なし
+
+---
+
+## Apply フェーズ 総合判定
+
+- **LGTM**: true
+- **Apply Gate 2 合否**: PASS
 - **残存 Critical / Major 指摘**: 0 件
 - **保留指摘（申し送り）**: 0 件
