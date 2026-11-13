@@ -54,7 +54,7 @@ type VersionApiTests () =
         let content = response.Content.ReadAsStringAsync().Result
         use doc = JsonDocument.Parse(content)
         let root = doc.RootElement
-        root.GetProperty("version").GetString() |> should equal "0.1.0"
+        root.GetProperty("version").GetString() |> should equal "0.2.0"
 
     [<Fact>]
     member _.``POST api/version は 不正メソッドとして 404 または 405 を返し 500 エラーを起こさない (IT-02)`` () =

@@ -1,3 +1,65 @@
+/**
+ * タイムアウト中断機能付き fetch ヘルパー (デフォルト 10 秒)
+ * @param {string} url
+ * @param {RequestInit & { timeout?: number }} [options]
+ * @returns {Promise<Response>}
+ */
+async function fetchWithTimeout(url, options = {}) {
+  const { timeout = 10000, ...fetchOptions } = options;
+  const controller =
+    typeof AbortController !== "undefined" ? new AbortController() : null;
+  const signal = controller ? controller.signal : undefined;
+
+  let isTimeout = false;
+  let externalSignalAbortHandler = null;
+  if (fetchOptions.signal && controller) {
+    if (fetchOptions.signal.aborted) {
+      controller.abort();
+    } else {
+      externalSignalAbortHandler = () => controller.abort();
+      fetchOptions.signal.addEventListener("abort", externalSignalAbortHandler);
+    }
+  }
+
+  const timer = controller
+    ? setTimeout(() => {
+        isTimeout = true;
+        controller.abort();
+      }, timeout)
+    : null;
+
+  try {
+    const fetchFn =
+      typeof window !== "undefined" && window.fetch ? window.fetch : fetch;
+    const response = await fetchFn(url, { ...fetchOptions, signal });
+    return response;
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      if (isTimeout) {
+        const timeoutError = new Error(
+          `Request timed out after ${timeout}ms: ${url}`,
+        );
+        timeoutError.name = "TimeoutError";
+        timeoutError.status = 408;
+        throw timeoutError;
+      }
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (fetchOptions.signal && externalSignalAbortHandler) {
+      fetchOptions.signal.removeEventListener(
+        "abort",
+        externalSignalAbortHandler,
+      );
+    }
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.fetchWithTimeout = fetchWithTimeout;
+}
+
 function videoManager() {
   return {
     videos: [],
@@ -6,11 +68,29 @@ function videoManager() {
 
     rules: [],
 
+    isMobile: typeof window !== "undefined" ? window.innerWidth < 768 : false,
+
     searchQuery: "",
 
     favoriteOnly: false,
 
     isScanning: false,
+
+    isLoadingVideos: false,
+
+    isLoadingTags: false,
+
+    isLoadingAnalytics: false,
+
+    loadErrorVideos: null,
+
+    loadErrorTags: null,
+
+    loadErrorAnalytics: null,
+
+    latestVideoRequestId: 0,
+
+    latestAnalyticsRequestId: 0,
 
     selectedVideo: null,
 
@@ -227,7 +307,19 @@ function videoManager() {
         });
     },
 
+    _initialized: false,
+
     init() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      if (typeof window !== "undefined") {
+        this.isMobile = window.innerWidth < 768;
+        window.addEventListener("resize", () => {
+          this.isMobile = window.innerWidth < 768;
+        });
+      }
+
       if (typeof window !== "undefined" && window.innerWidth < 768) {
         this.sidebarOpen = false;
       }
@@ -248,11 +340,9 @@ function videoManager() {
 
       this.fetchVideos();
 
-      // クエリ変更の監視 (インクリメンタルサーチ)
+      this.fetchAnalytics("ranking");
 
-      this.$watch("searchQuery", () => {
-        this.fetchVideos();
-      });
+      // クエリ変更の監視 (インクリメンタルサーチは input イベントで実行)
 
       // 描画される動画が更新されたら自動的にLucideアイコンを生成する (debounce最適化)
 
@@ -420,6 +510,10 @@ function videoManager() {
     // API連携: 動画一覧取得
 
     async fetchVideos() {
+      const requestId = ++this.latestVideoRequestId;
+      this.isLoadingVideos = true;
+      this.loadErrorVideos = null;
+
       let url = "/api/videos";
 
       let queryParts = [];
@@ -441,10 +535,31 @@ function videoManager() {
       }
 
       try {
-        let res = await fetch(url);
+        let res = await fetchWithTimeout(url, { timeout: 10000 });
 
-        if (res.ok) {
-          this.videos = await res.json();
+        if (!res.ok) {
+          const err = new Error(`HTTP error! status: ${res.status}`);
+          err.status = res.status;
+          throw err;
+        }
+
+        const data = await res.json();
+
+        // 最新リクエストの応答のみを反映 (レースコンディション防止)
+        if (requestId === this.latestVideoRequestId) {
+          const rawList = (Array.isArray(data) ? data : []).filter(
+            (v) => v && typeof v === "object",
+          );
+          this.videos = rawList.map((v) => ({
+            tags: [],
+            fileName: v.title || "",
+            filePath: "",
+            fileSizeBytes: 0,
+            durationSeconds: 0,
+            ...v,
+            tags: Array.isArray(v.tags) ? v.tags : [],
+          }));
+          this.loadErrorVideos = null;
 
           // 検索・フィルタ変更時はページと表示件数をリセット
 
@@ -453,48 +568,71 @@ function videoManager() {
           this.incrementalCount = this.incrementalStep;
 
           console.log(
-            "fetchVideos success. Videos count:",
+            `fetchVideos success (RequestId: #${requestId}). Videos count:`,
             this.videos.length,
             this.videos,
           );
 
           this.refreshIcons();
-
-          // 初回アクセス時に登録動画が0件で、まだ自動スキャンを行っていない場合
-
-          if (
-            this.videos.length === 0 &&
-            !this.hasAutoScanned &&
-            !this.searchQuery &&
-            !this.favoriteOnly
-          ) {
-            this.hasAutoScanned = true;
-
-            this.triggerScan();
-          }
+        } else {
+          console.warn(
+            `[fetchVideos] Dropping stale response for RequestId #${requestId} (latest: #${this.latestVideoRequestId})`,
+          );
         }
       } catch (e) {
-        console.error("Failed to fetch videos", e);
+        if (requestId === this.latestVideoRequestId) {
+          this.loadErrorVideos = {
+            message: e.message || "動画一覧の取得に失敗しました",
+            status: e.status || 0,
+          };
+          console.error(`[fetchVideos Error] Request #${requestId} failed:`, e);
+          this.showToast("動画一覧の取得に失敗しました", "error");
+        }
+      } finally {
+        // 最新リクエスト完了時のみスピナーを解除する（時系列ローディング維持）
+        if (requestId === this.latestVideoRequestId) {
+          this.isLoadingVideos = false;
+        }
       }
+    },
+
+    clearSearch() {
+      this.searchQuery = "";
+      this.fetchVideos();
     },
 
     // API連携: タグ一覧取得
 
     async fetchTags() {
+      this.isLoadingTags = true;
+      this.loadErrorTags = null;
       try {
-        let res = await fetch("/api/tags");
+        let res = await fetchWithTimeout("/api/tags", { timeout: 10000 });
 
-        if (res.ok) {
-          this.tags = await res.json();
-
-          console.log(
-            "fetchTags success. Tags count:",
-            this.tags.length,
-            this.tags,
-          );
+        if (!res.ok) {
+          const err = new Error(`HTTP error! status: ${res.status}`);
+          err.status = res.status;
+          throw err;
         }
+
+        this.tags = await res.json();
+        this.loadErrorTags = null;
+
+        console.log(
+          "fetchTags success. Tags count:",
+          this.tags.length,
+          this.tags,
+        );
+        this.refreshIcons();
       } catch (e) {
-        console.error("Failed to fetch tags", e);
+        this.loadErrorTags = {
+          message: e.message || "タグの取得に失敗しました",
+          status: e.status || 0,
+        };
+        console.error("[fetchTags Error] Failed to fetch tags:", e);
+        this.showToast("タグの取得に失敗しました", "error");
+      } finally {
+        this.isLoadingTags = false;
       }
     },
 
@@ -507,9 +645,7 @@ function videoManager() {
         if (res.ok) {
           this.rules = await res.json();
 
-          setTimeout(() => {
-            lucide.createIcons();
-          }, 50);
+          this.refreshIcons();
         }
       } catch (e) {
         console.error("Failed to fetch rules", e);
@@ -525,9 +661,7 @@ function videoManager() {
         if (res.ok) {
           this.smartFolders = await res.json();
 
-          setTimeout(() => {
-            lucide.createIcons();
-          }, 50);
+          this.refreshIcons();
         }
       } catch (e) {
         console.error("Failed to fetch smart folders", e);
@@ -604,76 +738,89 @@ function videoManager() {
 
     applySmartFolder(query) {
       this.searchQuery = query;
+      this.fetchVideos();
 
       this.showToast(`スマートフォルダを適用しました: "${query}"`, "success");
     },
 
     openAnalyticsModal() {
       this.analyticsModal.show = true;
-
       this.analyticsModal.activeTab = "ranking";
+      this.fetchAnalytics("ranking");
+    },
 
-      this.fetchVideoRanking();
+    async fetchAnalytics(tab) {
+      const requestId = ++this.latestAnalyticsRequestId;
+      const targetTab = tab || this.analyticsModal.activeTab || "ranking";
+      this.isLoadingAnalytics = true;
+      this.loadErrorAnalytics = null;
+
+      try {
+        let endpoint = "";
+        if (targetTab === "ranking") {
+          endpoint = "/api/analysis/ranking";
+        } else if (targetTab === "recommendations") {
+          endpoint = "/api/analysis/recommendations";
+        } else if (targetTab === "logs") {
+          endpoint = "/api/analysis/logs";
+        } else {
+          endpoint = `/api/analysis/${targetTab}`;
+        }
+
+        const res = await fetchWithTimeout(endpoint, { timeout: 10000 });
+        if (!res.ok) {
+          const err = new Error(`HTTP error! status: ${res.status}`);
+          err.status = res.status;
+          throw err;
+        }
+
+        const data = await res.json();
+
+        if (requestId === this.latestAnalyticsRequestId) {
+          this.loadErrorAnalytics = null;
+
+          if (targetTab === "ranking") {
+            this.analyticsModal.ranking = Array.isArray(data) ? data : [];
+          } else if (targetTab === "recommendations") {
+            this.analyticsModal.keywords = (data && data.keywords) || [];
+            this.analyticsModal.recommendations =
+              (data && data.videos) || (Array.isArray(data) ? data : []);
+          } else if (targetTab === "logs") {
+            this.analyticsModal.logs = Array.isArray(data) ? data : [];
+            this.analyticsModal.activeLogId = null;
+          }
+
+          this.refreshIcons();
+        }
+      } catch (e) {
+        if (requestId === this.latestAnalyticsRequestId) {
+          this.loadErrorAnalytics = {
+            message: e.message || "分析データの取得に失敗しました",
+            status: e.status || 0,
+          };
+          console.error(
+            `[fetchAnalytics Error] Request #${requestId} failed for tab '${targetTab}':`,
+            e,
+          );
+          this.showToast("分析データの取得に失敗しました", "error");
+        }
+      } finally {
+        if (requestId === this.latestAnalyticsRequestId) {
+          this.isLoadingAnalytics = false;
+        }
+      }
     },
 
     async fetchVideoRanking() {
-      try {
-        let res = await fetch("/api/analysis/ranking");
-
-        if (res.ok) {
-          this.analyticsModal.ranking = await res.json();
-
-          setTimeout(() => {
-            lucide.createIcons();
-          }, 50);
-        } else {
-          this.showToast("ランキングの取得に失敗しました。", "error");
-        }
-      } catch (e) {
-        this.showToast("通信エラーが発生しました。", "error");
-      }
+      return this.fetchAnalytics("ranking");
     },
 
     async fetchVideoRecommendations() {
-      try {
-        let res = await fetch("/api/analysis/recommendations");
-
-        if (res.ok) {
-          let data = await res.json();
-
-          this.analyticsModal.keywords = data.keywords;
-
-          this.analyticsModal.recommendations = data.videos;
-
-          setTimeout(() => {
-            lucide.createIcons();
-          }, 50);
-        } else {
-          this.showToast("おすすめ動画の取得に失敗しました。", "error");
-        }
-      } catch (e) {
-        this.showToast("通信エラーが発生しました。", "error");
-      }
+      return this.fetchAnalytics("recommendations");
     },
 
     async fetchVideoLogs() {
-      try {
-        let res = await fetch("/api/analysis/logs");
-
-        if (res.ok) {
-          this.analyticsModal.logs = await res.json();
-
-          this.analyticsModal.activeLogId = null;
-
-          setTimeout(() => {
-            lucide.createIcons();
-          }, 50);
-        } else {
-          this.showToast("例外エラーログの取得に失敗しました。", "error");
-        }
-      } catch (e) {
-        this.showToast("通信エラーが発生しました。", "error");
-      }
+      return this.fetchAnalytics("logs");
     },
 
     openBulkModal() {
@@ -875,11 +1022,13 @@ function videoManager() {
       } else {
         this.searchQuery = `tag:${tagName}`;
       }
+      this.fetchVideos();
     },
 
     clearTagFilter() {
       if (this.searchQuery.startsWith("tag:")) {
         this.searchQuery = "";
+        this.fetchVideos();
       }
     },
 
@@ -895,19 +1044,11 @@ function videoManager() {
         this.searchQuery,
       );
 
-      const queryChanged = this.searchQuery !== "";
-
-      const favChanged = this.favoriteOnly !== false;
-
       this.searchQuery = "";
-
       this.favoriteOnly = false;
 
       console.log("clearFilters finished. New searchQuery:", this.searchQuery);
-
-      if (!queryChanged && favChanged) {
-        this.fetchVideos();
-      }
+      this.fetchVideos();
     },
 
     // API連携: スキャン同期
