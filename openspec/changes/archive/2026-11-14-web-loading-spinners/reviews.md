@@ -118,3 +118,45 @@
 - **Apply Gate 2 合否**: PASS
 - **残存 Critical / Major 指摘**: 0 件
 - **保留指摘（申し送り）**: 0 件
+
+---
+
+## Archive フェーズ - 総括レビュー（2026-11-14）
+
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+- **レビュアー**: user-reviewer, se-reviewer, pg-reviewer, qa-reviewer（全 4 ロール）
+
+### 1. 隠された技術的負債・妥協点の自白（SE / PG Reviewer）
+
+- **今回あえて残した技術的負債（スコープ境界）**:
+  - コア非同期通信（`fetchVideos`, `fetchTags`, `fetchAnalytics`）には `fetchWithTimeout` および `this.refreshIcons()` を完全適用したが、スコープ対象外の既存処理（`fetchRules`, `fetchSmartFolders`, `triggerScan`, `deleteRule`, `saveRule`, `bulkModal` 等）には素の `fetch` および生の `lucide.createIcons()` 呼び出しが残存している。これらは `handover.md` 第 4 章「将来の改善・リファクタ候補」に明記した。
+- **将来の機能追加で踏み抜く可能性が高い罠（暗黙の結合）**:
+  - サーバーサイドページネーション等を追加する際に `latest*RequestId` ガードや `finally` 条件解除を忘れるとレースコンディションが再発する点。
+  - Zero-State の 4 重条件式（`!isLoadingVideos && !isScanning && !loadErrorVideos && videos.length === 0`）から状態フラグを外すと誤表示が再発する点。
+  - Alpine.js 動的要素追加時に `$watch` または `this.refreshIcons()` 呼び出しを忘れるとアイコンが描画されない点。
+  - いずれも `handover.md` 第 5 章「開発時の注意点」に網羅記載済み。
+
+### 2. 初見エンジニア視点でのドキュメント検証（User Reviewer）
+
+- **設計の背景（Why）の追跡可能性**:
+  - `handover.md` 第 1 章に「3 系統独立フラグの理由」「半透明オーバーレイ＋`pointer-events-auto` 採用理由」「リクエストIDによる時系列ローディング維持の理由」「`isTimeout` フラグ分離理由」「命令的 DOM 操作約 220 行の廃止理由」がトレードオフとともに網羅記載されており、Why の欠落はないことを確認。
+- **トラブルシューティング手順の十分性**:
+  - ブラウザ DevTools のコンソールプレフィックス（`[fetchVideos Error]`, `[fetchTags Error]`, `[fetchAnalytics Error]`, `Dropping stale response`）と HTTP ステータス（408 / 500 / 0）に基づく障害切り分け手順が `handover.md` 第 5 章に具体的に手順化されていることを確認。
+
+### 3. ロールバック・安全性の最終検証（SE / QA Reviewer）
+
+- **ロールバック（Revert）手順の検証**:
+  - DB スキーマ変更やバックエンド API の破壊的変更はなく、`git revert` 単独で安全かつ完全に直前状態（`v0.1.0`）へ復旧可能であることを確認。
+- **DoD エビデンスおよび保留指摘引き継ぎ確認**:
+  - 全 532 件（Web 189 + Renamer 343、新規 `WebLoadingSpinnerE2ETests` 17 件含む）100% Pass、失敗 0、スキップ 0 を確認。
+  - Line カバレッジ 83.4%（Web 84.2% / Coverlet 単独 85.64%）、TRX・HTML カバレッジ・PNG キャプチャ 10 枚の実在を確認。
+  - Apply サイクル 2 の Minor 指摘（`fetchAnalytics` 内 `lucide.createIcons()`）も含め即時修正済みであり、残存未解決指摘は 0 件。
+
+### Archive フェーズ 総合判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: `handover.md` に全ての設計背景・負債・運用注意事項・エビデンスが記録済み
+- **リリース可否**: 即時リリース可
+- **Archive Gate 3 合否**: PASS
+- **承認者**: User Reviewer Agent, SE Reviewer Agent, PG Reviewer Agent, QA Reviewer Agent
