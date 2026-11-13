@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI File Renamer v0.2.0 — UI モック (Spinners & appsettings.{env}.json)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    /* Views.fs Fluent Dark カラートークン準拠 */
+    :root {
+      --bg-dark: #1e1e1e;
+      --bg-panel: #252526;
+      --bg-card: #2d2d2d;
+      --border-fluent: #3f3f46;
+      --accent-blue: #0078d4;
+      --btn-dark: #333333;
+      --bg-before: #111827;
+      --border-before: #7f1d1d;
+      --bg-after: #064e3b;
+      --border-after: #047857;
+    }
+    body {
+      background-color: var(--bg-dark);
+      color: #ffffff;
+      font-family: "Yu Gothic UI", "Segoe UI", sans-serif;
+    }
+    .font-filename {
+      font-family: "Cascadia Mono", "Consolas", "Meiryo UI", "Yu Gothic UI", monospace;
+    }
+    @keyframes avalonia-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .spinner-ring {
+      animation: avalonia-spin 0.85s linear infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-[#1e1e1e] text-white" x-data="renamerMock()">
+
+  <!-- 開発・レビュー用シナリオ切替コントロールバー (実装画面外: モック確認専用) -->
+  <div class="bg-[#0f172a] border-b border-sky-800 px-4 py-2 flex flex-wrap items-center gap-2 text-xs">
+    <span class="font-bold text-sky-400 mr-1">🎛️ UI モック状態切替 (レビュー用):</span>
+    <button @click="setScenario('idle-unset')" :class="scenario === 'idle-unset' ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'" class="px-2.5 py-1 rounded border border-slate-700">1a. 未設定初期 (Zero-State)</button>
+    <button @click="setScenario('idle')" :class="scenario === 'idle' ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'" class="px-2.5 py-1 rounded border border-slate-700">1b. フォルダ設定済 (Idle)</button>
+    <button @click="setScenario('scanning')" :class="scenario === 'scanning' ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'" class="px-2.5 py-1 rounded border border-slate-700">2. スキャン中 (IsScanning)</button>
+    <button @click="setScenario('ai')" :class="scenario === 'ai' ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'" class="px-2.5 py-1 rounded border border-slate-700">3. AI提案中+個別失敗/再試行</button>
+    <button @click="setScenario('renaming')" :class="scenario === 'renaming' ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'" class="px-2.5 py-1 rounded border border-slate-700">4. リネーム/Undo中 (IsRenaming)</button>
+    <button @click="setScenario('docker')" :class="scenario === 'docker' ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'" class="px-2.5 py-1 rounded border border-slate-700">5. コンテナ操作中 (IsDockerBusy)</button>
+    <button @click="setScenario('empty-safe')" :class="scenario === 'empty-safe' ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'" class="px-2.5 py-1 rounded border border-slate-700">6a. 0件 (安全達成)</button>
+    <button @click="setScenario('empty-novideos')" :class="scenario === 'empty-novideos' ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'" class="px-2.5 py-1 rounded border border-slate-700">6b. 0件 (動画0本)</button>
+    <button @click="setScenario('error')" :class="scenario === 'error' ? 'bg-red-700 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'" class="px-2.5 py-1 rounded border border-slate-700">7. Error-State (回復導線)</button>
+
+    <div class="ml-auto flex items-center gap-2">
+      <span class="text-slate-400">環境切替:</span>
+      <button @click="envName = 'Development'" :class="envName === 'Development' ? 'bg-blue-700 text-white' : 'bg-slate-800 text-slate-300'" class="px-2 py-0.5 rounded border border-slate-600">Development</button>
+      <button @click="envName = 'Production'" :class="envName === 'Production' ? 'bg-emerald-700 text-white' : 'bg-slate-800 text-slate-300'" class="px-2 py-0.5 rounded border border-slate-600">Production</button>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       SECTION 1: Docker / Container Status Bar + Active Env Badge
+       ========================================================= -->
+  <header class="bg-[#252526] border-b border-[#3f3f46] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center gap-3">
+      <span class="text-xs font-semibold text-[#a1a1aa]">🐳 Container:</span>
+
+      <!-- Container Status Pill -->
+      <span x-show="!isDockerBusy" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#064e3b] border border-[#047857] text-[#34d399]">
+        ● RUNNING
+      </span>
+      <!-- IsDockerBusy 小型スピナー -->
+      <span x-show="isDockerBusy" class="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#172554] border border-[#1e40af] text-[#60a5fa]">
+        <svg class="w-3.5 h-3.5 spinner-ring text-[#60a5fa]" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.25" stroke-width="3"></circle>
+          <path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path>
+        </svg>
+        <span>コンテナ操作中...</span>
+      </span>
+
+      <span class="text-[11px] text-[#a1a1aa] font-mono">tag-based-video-manager</span>
+
+      <!-- NEW: Active Environment & Save Target Badge -->
+      <div class="flex items-center gap-1.5 pl-2 border-l border-[#3f3f46]" :title="'保存先パス: ' + savePathPreview">
+        <span
+          class="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide border"
+          :class="envName === 'Development' ? 'bg-[#172554] border-[#1d4ed8] text-[#93c5fd]' : 'bg-[#064e3b] border-[#047857] text-[#6ee7b7]'"
+          x-text="'ENV: ' + envName">
+        </span>
+        <span class="text-[11px] text-[#a1a1aa] font-mono" x-text="'💾 ' + saveFileName"></span>
+      </div>
+    </div>
+
+    <!-- Right: Docker Control Buttons -->
+    <div class="flex items-center gap-2">
+      <button disabled class="px-2.5 py-1 rounded text-[11px] font-medium bg-[#333333] border border-[#3f3f46] text-zinc-500 opacity-50 cursor-not-allowed">▶ Start</button>
+      <button @click="simulateDocker()" :disabled="isDockerBusy" :class="isDockerBusy ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#3f3f46]'" class="px-2.5 py-1 rounded text-[11px] font-medium bg-[#333333] border border-[#3f3f46] text-white">■ Stop</button>
+      <button @click="simulateDocker()" :disabled="isDockerBusy" :class="isDockerBusy ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#106ebe]'" class="px-2.5 py-1 rounded text-[11px] font-semibold bg-[#0078d4] text-white">🔄 Restart</button>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       SECTION 2: Control Panel (Directory, Threshold, Rule, Actions)
+       ========================================================= -->
+  <section class="bg-[#252526] border-b border-[#3f3f46] px-4 py-3 space-y-2.5">
+    <div class="flex flex-wrap items-center gap-3">
+      <!-- 対象ディレクトリ -->
+      <div class="flex items-center gap-2 flex-1 min-w-[280px]">
+        <label class="text-xs font-semibold text-[#a1a1aa] shrink-0">対象フォルダ:</label>
+        <input type="text" x-model="targetDir" class="flex-1 bg-[#1e1e1e] border border-[#3f3f46] rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-[#0078d4]" />
+        <button class="px-2.5 py-1.5 rounded text-xs bg-[#333333] border border-[#3f3f46] hover:bg-[#3f3f46]">📁 参照...</button>
+      </div>
+
+      <!-- 抽出閾値 -->
+      <div class="flex items-center gap-2">
+        <label class="text-xs font-semibold text-[#a1a1aa]">閾値:</label>
+        <input type="number" value="240" class="w-16 bg-[#1e1e1e] border border-[#3f3f46] rounded px-2 py-1.5 text-xs text-white text-right" />
+        <span class="text-xs text-[#a1a1aa]">文字 / UTF-8 B</span>
+      </div>
+
+      <!-- モデル表示 -->
+      <div class="flex items-center gap-2">
+        <label class="text-xs font-semibold text-[#a1a1aa]">AIモデル:</label>
+        <select class="bg-[#1e1e1e] border border-[#3f3f46] rounded px-2 py-1.5 text-xs text-white max-w-[220px]">
+          <option>meta-llama/llama-3.3-70b-instruct:free</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center gap-3">
+        <!-- 命名規則 -->
+        <div class="flex items-center gap-1.5">
+          <label class="text-xs font-semibold text-[#a1a1aa]">命名規則:</label>
+          <select class="bg-[#1e1e1e] border border-[#3f3f46] rounded px-2 py-1 text-xs text-white">
+            <option>★ 品番_要約_出演者(推奨)</option>
+            <option>短縮</option>
+          </select>
+          <button class="px-2.5 py-1 rounded text-[11px] bg-[#333333] border border-[#3f3f46] hover:bg-[#3f3f46]">⚙ 管理...</button>
+        </div>
+
+        <label class="inline-flex items-center gap-1.5 text-xs text-[#d4d4d8] cursor-pointer">
+          <input type="checkbox" class="rounded bg-[#1e1e1e] border-[#3f3f46]" />
+          <span>ファイル名に日本語を含まないもののみ抽出</span>
+        </label>
+      </div>
+
+      <!-- メインアクション & 中止ボタン -->
+      <div class="flex items-center gap-2">
+        <button
+          @click="setScenario(isRequestingAi ? 'ai' : 'scanning')"
+          :disabled="isScanning || isRenaming"
+          :class="(isScanning || isRenaming) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#106ebe]'"
+          class="px-4 py-1.5 rounded text-xs font-bold bg-[#0078d4] text-white"
+          x-text="isRequestingAi ? '⟳ 新条件で再実行' : (candidates.length > 0 ? '⚡ 再抽出 ＆ AI提案を再実行' : '⚡ 抽出 ＆ AI提案を実行')">
+        </button>
+
+        <button
+          @click="cancelAi()"
+          :disabled="!isRequestingAi"
+          :class="isRequestingAi ? 'bg-[#111827] border-[#7f1d1d] text-[#fca5a5] hover:bg-[#1f2937]' : 'bg-[#333333] border-[#3f3f46] text-zinc-500 cursor-not-allowed'"
+          class="px-3 py-1.5 rounded text-xs font-bold border">
+          ⏹ 中止
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Error-State Banner (回復導線付き) -->
+  <div x-show="errorMessage" class="mx-4 mt-3 bg-[#450a0a] border border-[#b91c1c] rounded-md px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-start gap-2.5">
+      <span class="text-red-400 text-base mt-0.5">⚠️</span>
+      <div>
+        <div class="text-xs font-bold text-red-200" x-text="errorMessage"></div>
+        <div class="text-[11px] text-red-300/90 mt-0.5" x-text="errorDetail"></div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button @click="setScenario('scanning')" class="px-3 py-1 rounded text-xs font-semibold bg-red-800 hover:bg-red-700 text-white border border-red-600">↻ 再試行</button>
+      <button @click="errorMessage = null" class="px-2.5 py-1 rounded text-xs bg-[#2d2d2d] hover:bg-[#3f3f46] text-zinc-200 border border-[#3f3f46]">閉じる</button>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       SECTION 3: Candidates List Area (with Spinners & Overlays)
+       ========================================================= -->
+  <main class="flex-1 relative overflow-y-auto p-4">
+
+    <!-- 3A-0. Folder Unset Zero-State (クリーン初期状態: targetDir が空) -->
+    <div x-show="!isScanning && scenario === 'idle-unset'" class="h-full min-h-[320px] flex flex-col items-center justify-center text-center gap-3 py-10">
+      <div class="w-14 h-14 rounded-full bg-[#172554] border border-[#1d4ed8] flex items-center justify-center text-2xl">📂</div>
+      <div class="text-sm font-bold text-white">対象フォルダが設定されていません</div>
+      <div class="text-xs text-[#a1a1aa] max-w-lg">
+        まずは上の「📁 参照...」ボタン（または下のボタン）から、長いファイル名を整理したい動画フォルダを指定してください。
+      </div>
+      <button @click="targetDir = 'D:\\Videos\\LongCollection'; setScenario('idle')" class="mt-1 px-4 py-1.5 rounded text-xs font-bold bg-[#0078d4] hover:bg-[#106ebe] text-white">
+        📁 サンプルフォルダを設定して次へ
+      </button>
+    </div>
+
+    <!-- 3A-1. Initial Idle Placeholder (フォルダ設定済・未走査) -->
+    <div x-show="!isScanning && scenario === 'idle'" class="h-full min-h-[320px] flex flex-col items-center justify-center text-center gap-2.5 py-10">
+      <div class="text-4xl text-zinc-500">📁</div>
+      <div class="text-xs font-bold text-[#a1a1aa]">上の「⚡ 抽出 ＆ AI提案を実行」ボタンを押してください</div>
+      <div class="text-[11px] text-zinc-500 max-w-lg">
+        設定済みのフォルダから指定文字数（初期値: 240字）またはLinuxファイル名（240B）以上の制限超過ファイルを検出し、AI提案を生成します
+      </div>
+    </div>
+
+    <!-- 3B. IsScanning = true 中央ローディングスピナー -->
+    <div x-show="isScanning" class="h-full min-h-[320px] flex flex-col items-center justify-center text-center gap-3 py-12">
+      <svg class="w-12 h-12 spinner-ring text-[#38bdf8]" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9.5" stroke="currentColor" stroke-opacity="0.2" stroke-width="2.5"></circle>
+        <path d="M12 2.5a9.5 9.5 0 0 1 9.5 9.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"></path>
+      </svg>
+      <div class="text-sm font-bold text-white">動画ファイルをスキャン中...</div>
+      <div class="text-xs text-[#a1a1aa]" x-text="'走査対象: ' + targetDir + ' （パス長および UTF-8 バイト数を検査しています）'"></div>
+    </div>
+
+    <!-- 3C-1. Empty State (動画検査済・制限超過 0件 = 安全) -->
+    <div x-show="!isScanning && scenario === 'empty-safe'" class="h-full min-h-[320px] flex flex-col items-center justify-center text-center gap-3 py-12">
+      <div class="w-14 h-14 rounded-full bg-[#064e3b] border border-[#047857] flex items-center justify-center text-2xl">🎉</div>
+      <div class="text-sm font-bold text-white">対象ファイルはありません（全件安全）</div>
+      <div class="text-xs text-[#a1a1aa]">フォルダ内の動画 42 本を検査しましたが、制限基準を超過するファイルはありませんでした。</div>
+    </div>
+
+    <!-- 3C-2. Empty State (そもそもフォルダ内に動画ファイル自体が 0 本) -->
+    <div x-show="!isScanning && scenario === 'empty-novideos'" class="h-full min-h-[320px] flex flex-col items-center justify-center text-center gap-3 py-12">
+      <div class="w-14 h-14 rounded-full bg-[#3f2c06] border border-[#b45309] flex items-center justify-center text-2xl">🔎</div>
+      <div class="text-sm font-bold text-amber-200">動画ファイル（.mp4）が見つかりませんでした</div>
+      <div class="text-xs text-[#a1a1aa]" x-text="'指定されたフォルダ（' + targetDir + '）内に動画ファイルが存在しないため検査対象がありません。別のフォルダを指定してください。'"></div>
+    </div>
+
+    <!-- 3D. Candidates List (AI提案中 / 個別失敗 / リネームオーバーレイ確認用) -->
+    <div x-show="!isScanning && candidates.length > 0" class="space-y-3 pb-10">
+      <template x-for="(c, idx) in candidates" :key="c.id">
+        <div class="bg-[#2d2d2d] border-2 rounded-md p-3 space-y-2 transition-colors"
+             :class="c.aiError ? 'border-[#dc2626]' : (c.isAiProcessing ? 'border-[#1d4ed8]' : 'border-[#3f3f46]')">
+          <!-- Card Header -->
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <input type="checkbox" checked class="rounded" />
+              <span class="text-xs font-bold text-zinc-300" x-text="'#' + (idx + 1)"></span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-[#450a0a] border border-[#b91c1c] text-red-300" x-text="c.violation"></span>
+              <span class="text-[11px] text-[#a1a1aa] font-mono truncate max-w-[420px]" x-text="c.dir"></span>
+            </div>
+
+            <!-- Inline AI Status Badge (Spinning during IsAiProcessing / Error Retry / Proposed / Waiting) -->
+            <div class="flex items-center gap-2">
+              <span x-show="c.isAiProcessing" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-bold bg-[#172554] border border-[#1e40af] text-[#60a5fa]">
+                <svg class="w-3.5 h-3.5 spinner-ring text-[#60a5fa]" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.25" stroke-width="3"></circle>
+                  <path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path>
+                </svg>
+                <span>🌐 検索・AI提案中...</span>
+              </span>
+              <template x-if="!c.isAiProcessing && c.aiError">
+                <div class="flex items-center gap-2">
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-[#450a0a] border border-[#b91c1c] text-red-300">
+                    ⚠️ AI提案失敗
+                  </span>
+                  <button @click="retryCandidate(c.id)" class="px-2 py-0.5 rounded text-[11px] font-bold bg-red-800 hover:bg-red-700 text-white border border-red-500">
+                    ↻ 再試行
+                  </button>
+                </div>
+              </template>
+              <span x-show="!c.isAiProcessing && !c.aiError && c.isAiProposed" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-[#064e3b] border border-[#047857] text-[#34d399]">
+                ✓ 安全 (-182字 / 68%短縮)
+              </span>
+              <span x-show="!c.isAiProcessing && !c.aiError && !c.isAiProposed" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-zinc-800 border border-zinc-600 text-zinc-400">
+                ⏳ 待機中
+              </span>
+            </div>
+          </div>
+
+          <!-- BEFORE Row -->
+          <div class="flex items-center gap-2 bg-[#111827] border border-[#7f1d1d] rounded px-2 py-1">
+            <span class="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-[#450a0a] text-red-300" x-text="'BEFORE (' + c.origLen + '字)'"></span>
+            <span class="flex-1 text-xs font-filename text-red-200 truncate" x-text="c.origName"></span>
+            <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-800 text-zinc-300">.mp4</span>
+          </div>
+
+          <!-- AFTER Row -->
+          <div class="flex items-center gap-2 bg-[#064e3b] border rounded px-2 py-1"
+               :class="c.aiError ? 'border-[#dc2626]' : (c.isAiProcessing ? 'border-[#1e40af]' : 'border-[#047857]')">
+            <span class="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold"
+                  :class="c.isAiProposed ? 'bg-[#047857] text-emerald-100' : 'bg-[#450a0a] text-red-300'"
+                  x-text="c.isAiProposed ? 'AFTER (' + c.propLen + '字 [安全])' : 'AFTER (' + c.propLen + '字 [危険])'"></span>
+            <input type="text" :value="c.propName" :disabled="isRenaming" class="flex-1 bg-transparent text-xs font-filename text-emerald-100 focus:outline-none" />
+            <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-200">.mp4</span>
+          </div>
+
+          <!-- Individual Error Detail -->
+          <div x-show="c.aiError" class="text-[11px] text-red-200 bg-[#450a0a]/60 border border-[#b91c1c] rounded px-2.5 py-1.5" x-text="'⚠️ 取得エラー: ' + c.aiError"></div>
+
+          <!-- AI Comment -->
+          <div x-show="c.comment" class="text-[11px] text-sky-300 bg-[#172554]/50 border border-[#1e40af]/60 rounded px-2.5 py-1.5" x-text="'💡 AI解説: ' + c.comment"></div>
+        </div>
+      </template>
+    </div>
+
+    <!-- 3E. IsRenaming = true 半透明オーバーレイ + スピナー -->
+    <div x-show="isRenaming" class="absolute inset-0 bg-[#0f172a]/80 backdrop-blur-[1px] flex items-center justify-center z-20">
+      <div class="bg-[#252526] border border-[#0078d4] rounded-lg px-8 py-6 shadow-2xl flex flex-col items-center gap-3">
+        <svg class="w-11 h-11 spinner-ring text-[#60a5fa]" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9.5" stroke="currentColor" stroke-opacity="0.2" stroke-width="2.5"></circle>
+          <path d="M12 2.5a9.5 9.5 0 0 1 9.5 9.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"></path>
+        </svg>
+        <div class="text-sm font-bold text-white">ファイル名を変更中...</div>
+        <div class="text-xs text-[#a1a1aa]">物理リネームおよび Undo 履歴の確定完了まで操作をお待ちください</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- =========================================================
+       SECTION 4: Footer Bar (Progress Spinner & Action Buttons)
+       ========================================================= -->
+  <footer class="bg-[#252526] border-t border-[#3f3f46] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center gap-3">
+      <span class="text-xs text-[#a1a1aa]">選択中:</span>
+      <span class="text-sm font-bold text-white" x-text="selectedCount + ' 件'"></span>
+
+      <!-- AI提案中 フッター進捗スピナー -->
+      <span x-show="isRequestingAi" class="inline-flex items-center gap-2 px-2.5 py-1 rounded text-[11px] font-bold bg-[#172554] border border-[#1e40af] text-[#60a5fa]">
+        <svg class="w-3.5 h-3.5 spinner-ring text-[#60a5fa]" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.25" stroke-width="3"></circle>
+          <path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path>
+        </svg>
+        <span>🤖 AI提案中... (1/3件完了)</span>
+      </span>
+
+      <span x-show="!isRequestingAi && candidates.length > 0" class="text-[11px] font-semibold text-[#fbbf24]">
+        ⚠️ 要短縮ファイルが含まれています (基準超過)
+      </span>
+    </div>
+
+    <div class="flex items-center gap-2.5">
+      <button
+        :disabled="selectedCount === 0 || isScanning || isRequestingAi || isRenaming"
+        :class="(selectedCount === 0 || isScanning || isRequestingAi || isRenaming) ? 'bg-[#333333] text-zinc-500 border-[#3f3f46] cursor-not-allowed' : 'bg-[#333333] hover:bg-[#3f3f46] text-white border-[#3f3f46]'"
+        class="px-3.5 py-1.5 rounded text-[11px] font-semibold border">
+        リネームのみ実行
+      </button>
+      <button
+        :disabled="selectedCount === 0 || isScanning || isRequestingAi || isRenaming"
+        :class="(selectedCount === 0 || isScanning || isRequestingAi || isRenaming) ? 'bg-[#333333] text-zinc-500 border-[#3f3f46] cursor-not-allowed' : 'bg-[#0078d4] hover:bg-[#106ebe] text-white border-[#0078d4]'"
+        class="px-3.5 py-1.5 rounded text-[11px] font-semibold border">
+        ⚡ リネームしてコンテナ再起動
+      </button>
+    </div>
+  </footer>
+
+  <script>
+    function renamerMock() {
+      const sampleCandidates = [
+        {
+          id: 1,
+          violation: "⚠️ 両方超過",
+          dir: "D:\\Videos\\LongCollection",
+          origLen: 268,
+          origName: "【超長大タイトルサンプル】テスト撮影_ロケーション確認用_高画質アーカイブ映像_長尺版_20250101_001_extended_cut_ver2",
+          propLen: 86,
+          propName: "CODE-001_ロケーション確認映像_出演A",
+          isAiProcessing: false,
+          isAiProposed: true,
+          comment: "Web検索結果に基づき作品コード・要約・出演者を抽出して短縮しました。"
+        },
+        {
+          id: 2,
+          violation: "🐧 Linux: ファイル名超過 (270B / 上限255B)",
+          dir: "D:\\Videos\\LongCollection",
+          origLen: 274,
+          origName: "another_very_long_filename_exceeding_linux_name_max_255_utf8_bytes_for_demonstration_purposes_only_sample_002",
+          propLen: 274,
+          propName: "another_very_long_filename_exceeding_linux_name_max_255_utf8_bytes_for_demonstration_purposes_only_sample_002",
+          isAiProcessing: true,
+          isAiProposed: false,
+          comment: null
+        },
+        {
+          id: 3,
+          violation: "🪟 Windows: パス長超過",
+          dir: "D:\\Videos\\Deep\\Subfolder\\Archive",
+          origLen: 248,
+          origName: "rate_limited_candidate_error_state_sample_003",
+          propLen: 248,
+          propName: "rate_limited_candidate_error_state_sample_003",
+          isAiProcessing: false,
+          isAiProposed: false,
+          aiError: "HTTP 429 Too Many Requests (OpenRouter レート制限によりタイムアウト)",
+          comment: null
+        }
+      ];
+
+      return {
+        scenario: "ai",
+        envName: "Development",
+        targetDir: "D:\\Videos\\LongCollection",
+        isScanning: false,
+        isRequestingAi: true,
+        isRenaming: false,
+        isDockerBusy: false,
+        errorMessage: null,
+        errorDetail: null,
+        candidates: JSON.parse(JSON.stringify(sampleCandidates)),
+
+        get saveFileName() {
+          return `appsettings.${this.envName}.json`;
+        },
+        get savePathPreview() {
+          return `src\\TagBasedVideoManager.Renamer\\appsettings.${this.envName}.json (書込不可時は %APPDATA%\\TagBasedVideoManager\\appsettings.${this.envName}.json)`;
+        },
+        get selectedCount() {
+          return this.candidates.length;
+        },
+
+        setScenario(mode) {
+          this.scenario = mode;
+          this.isScanning = false;
+          this.isRequestingAi = false;
+          this.isRenaming = false;
+          this.isDockerBusy = false;
+          this.errorMessage = null;
+          this.errorDetail = null;
+
+          if (mode === "idle-unset") {
+            this.targetDir = "";
+            this.candidates = [];
+          } else if (mode === "idle") {
+            if (!this.targetDir) this.targetDir = "D:\\Videos\\LongCollection";
+            this.candidates = [];
+          } else if (mode === "scanning") {
+            if (!this.targetDir) this.targetDir = "D:\\Videos\\LongCollection";
+            this.candidates = [];
+            this.isScanning = true;
+          } else if (mode === "ai") {
+            this.candidates = JSON.parse(JSON.stringify(sampleCandidates));
+            this.isRequestingAi = true;
+          } else if (mode === "renaming") {
+            this.candidates = JSON.parse(JSON.stringify(sampleCandidates)).map(c => ({ ...c, isAiProcessing: false, aiError: null, isAiProposed: true }));
+            this.isRenaming = true;
+          } else if (mode === "docker") {
+            this.candidates = JSON.parse(JSON.stringify(sampleCandidates)).map(c => ({ ...c, isAiProcessing: false, aiError: null, isAiProposed: true }));
+            this.isDockerBusy = true;
+          } else if (mode === "empty-safe" || mode === "empty-novideos") {
+            this.candidates = [];
+          } else if (mode === "error") {
+            this.candidates = [];
+            this.errorMessage = "走査エラー: 指定された対象ディレクトリが見つかりません (" + (this.targetDir || "未設定") + ")";
+            this.errorDetail = "対象フォルダを再選択して「再試行」を押すか、環境設定ファイル (" + this.saveFileName + ") を確認してください。";
+          }
+        },
+
+        retryCandidate(id) {
+          this.candidates = this.candidates.map(c => c.id === id ? { ...c, aiError: null, isAiProcessing: true } : c);
+        },
+
+        cancelAi() {
+          this.isRequestingAi = false;
+          this.candidates = this.candidates.map(c => ({ ...c, isAiProcessing: false }));
+        },
+
+        simulateDocker() {
+          this.setScenario("docker");
+        }
+      };
+    }
+  </script>
+</body>
+</html>
