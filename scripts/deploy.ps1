@@ -5,7 +5,8 @@
 param(
     [string]$VideoDirs = $env:VIDEO_DIRS,
     [string]$DataDir = $env:DATA_DIR,
-    [string]$Port = $env:PORT
+    [string]$Port = $env:PORT,
+    [string]$Environment = ($env:ASPNETCORE_ENVIRONMENT ?? "Production")
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,39 +18,28 @@ $repoRoot = Split-Path -Parent $scriptDir
 # 共通ライブラリを dot-source
 . (Join-Path $scriptDir "common.ps1")
 
-# .env ファイルがあれば読み込み
-$envFile = Join-Path $repoRoot ".env"
-if (Test-Path $envFile) {
-    Get-Content $envFile | ForEach-Object {
-        $line = $_.Trim()
-        if (-not [string]::IsNullOrWhiteSpace($line) -and -not $line.StartsWith("#")) {
-            $parts = $line.Split('=', 2)
-            if ($parts.Length -eq 2) {
-                $key = $parts[0].Trim()
-                $val = $parts[1].Trim().Trim('"', "'")
-                if (-not (Get-Item "env:$key" -ErrorAction SilentlyContinue)) {
-                    Set-Item "env:$key" $val
-                }
-            }
-        }
-    }
-}
+# 設定解決 (CLI引数 -> 環境変数 -> appsettings.{Environment}.json -> appsettings.json)
+$settings = Resolve-WebDeploySettings -RepoRoot $repoRoot -Environment $Environment
 
 if ([string]::IsNullOrWhiteSpace($VideoDirs)) {
-    $VideoDirs = $env:VIDEO_DIRS
+    $VideoDirs = $settings.VideoDirs
 }
 
 # 早期入力検証（イメージビルドおよび既存コンテナ停止より前に実行）
 $resolvedMounts = Resolve-VideoMounts -VideoDirs $VideoDirs -OldVideoDir $env:VIDEO_DIR -TargetIsWindows $true
 
-# デフォルト値の解決
-$resolvedPort = Resolve-WebPort ($Port ?? $env:PORT)
+# ポートの解決
+$rawPort = if (-not [string]::IsNullOrWhiteSpace($Port)) { $Port } else { "$($settings.Port)" }
+$resolvedPort = Resolve-WebPort $rawPort
 
 if ([string]::IsNullOrWhiteSpace($DataDir)) {
-    $DataDir = $env:DATA_DIR
+    $DataDir = $settings.DataDir
 }
 if ([string]::IsNullOrWhiteSpace($DataDir)) {
     $DataDir = Join-Path $repoRoot "data"
+}
+elseif (-not [System.IO.Path]::IsPathRooted($DataDir)) {
+    $DataDir = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $DataDir))
 }
 
 # データディレクトリ作成

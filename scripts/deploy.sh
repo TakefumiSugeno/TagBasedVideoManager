@@ -7,40 +7,82 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# 安全な .env パーサ関数
-parse_env() {
-    local env_file="$1"
-    [ -f "${env_file}" ] || return 0
-    while IFS= read -r line || [ -n "$line" ]; do
-        line="$(echo "${line}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        [ -z "${line}" ] && continue
-        case "${line}" in
-            \#*) continue ;;
-        esac
-        if [[ "${line}" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)=(.*)$ ]]; then
-            local key="${BASH_REMATCH[1]}"
-            local val="${BASH_REMATCH[2]}"
-            if [[ "${val}" =~ ^\"(.*)\"$ ]]; then
-                val="${BASH_REMATCH[1]}"
-            elif [[ "${val}" =~ ^\'(.*)\'$ ]]; then
-                val="${BASH_REMATCH[1]}"
+# appsettings*.json 設定解決
+ENVIRONMENT="${ENVIRONMENT:-${ASPNETCORE_ENVIRONMENT:-Production}}"
+SRC_DIR="${REPO_ROOT}/src/TagBasedVideoManager"
+BASE_JSON="${SRC_DIR}/appsettings.json"
+ENV_JSON="${SRC_DIR}/appsettings.${ENVIRONMENT}.json"
+
+PARSER=""
+if command -v python3 >/dev/null 2>&1; then
+    PARSER="python3"
+elif command -v jq >/dev/null 2>&1; then
+    PARSER="jq"
+fi
+
+read_appsettings() {
+    local key="$1"
+    local default_val="$2"
+    local found_val=""
+
+    for json_file in "${ENV_JSON}" "${BASE_JSON}"; do
+        [ -f "${json_file}" ] || continue
+
+        if [ "${PARSER}" = "python3" ]; then
+            found_val="$(python3 -c "
+import sys, json
+try:
+    with open(sys.argv[1], 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    k = sys.argv[2]
+    if k in data and data[k] is not None and str(data[k]) != '':
+        print(data[k])
+except Exception as e:
+    sys.stderr.write(f'JSON構文エラー: {sys.argv[1]}: {e}\n')
+    sys.exit(2)
+" "${json_file}" "${key}")" || {
+                local exit_code=$?
+                exit "${exit_code}"
+            }
+            if [ -n "${found_val}" ]; then
+                echo "${found_val}"
+                return 0
             fi
-            if [ -z "${!key+x}" ]; then
-                export "${key}=${val}"
+        elif [ "${PARSER}" = "jq" ]; then
+            found_val="$(jq -e -r --arg k "${key}" '.[$k] // empty' "${json_file}" 2>&1)" || {
+                local exit_code=$?
+                if [ "${exit_code}" -ne 0 ] && [ -n "${found_val}" ]; then
+                    echo "JSON構文エラー: ${json_file}: ${found_val}" >&2
+                    exit "${exit_code}"
+                fi
+            }
+            if [ -n "${found_val}" ]; then
+                echo "${found_val}"
+                return 0
             fi
+        else
+            echo "エラー: appsettings の読み込みには python3 または jq が必要です。python3 または jq をインストールしてください。" >&2
+            exit 1
         fi
-    done < "${env_file}"
+    done
+
+    echo "${default_val}"
 }
 
-# .env ファイルの安全な読み込み
-parse_env "${REPO_ROOT}/.env"
+# 優先順位: 既存の環境変数 -> appsettings.{env}.json -> appsettings.json -> 既定値
+if [ -z "${PORT:-}" ]; then
+    PORT="$(read_appsettings "PORT" "5620")"
+fi
+if [ -z "${DATA_DIR:-}" ]; then
+    DATA_DIR="$(read_appsettings "DATA_DIR" "${REPO_ROOT}/data")"
+fi
+if [ -z "${VIDEO_DIRS:-}" ]; then
+    VIDEO_DIRS="$(read_appsettings "VIDEO_DIRS" "")"
+fi
 
-PORT="${PORT:-5620}"
-DATA_DIR="${DATA_DIR:-${REPO_ROOT}/data}"
 CONTAINER_NAME="tag-based-video-manager"
 IMAGE_NAME="tag-based-video-manager:latest"
 OLD_VIDEO_DIR="${VIDEO_DIR:-}"
-VIDEO_DIRS="${VIDEO_DIRS:-}"
 
 # 早期入力検証（ビルドやコンテナ停止の前に実行）
 if [ -z "${VIDEO_DIRS}" ]; then

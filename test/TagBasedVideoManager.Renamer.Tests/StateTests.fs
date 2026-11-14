@@ -45,6 +45,7 @@ module StateTests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
+            AiError = None
         }
         let modelWithCandidate = { initialModel with Candidates = [ sampleProposal ] }
 
@@ -74,6 +75,7 @@ module StateTests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
+            AiError = None
         }
         let p2 = { p1 with OriginalFullPath = "C:\\Videos\\v2.mp4"; OriginalFileName = "v2.mp4" }
         let modelWithCandidates = { initialModel with Candidates = [ p1; p2 ] }
@@ -105,6 +107,7 @@ module StateTests =
             IsAiProcessing = false
             IsSelected = false
             LastWriteTime = System.DateTime.UtcNow
+            AiError = None
         }
         let p2 = { p1 with OriginalFullPath = "C:\\Videos\\v2.mp4"; OriginalFileName = "v2.mp4"; IsSelected = true }
         let model = { initialModel with Candidates = [ p1; p2 ] }
@@ -174,6 +177,7 @@ module StateTests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
+            AiError = None
         }
         let pLong = {
             OriginalFullPath = "C:\\Videos\\VeryLongLongName.mp4"
@@ -190,6 +194,7 @@ module StateTests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = System.DateTime.UtcNow
+            AiError = None
         }
         let modelWithCandidates = { initialModel with Candidates = [ pShort; pLong ] }
 
@@ -289,6 +294,7 @@ module StateTests =
             LastWriteTime = DateTime.UtcNow
             IsAiProposed = true
             IsAiProcessing = false
+            AiError = None
         }
         let p2 = {
             OriginalFullPath = "C:\\Videos\\long_path_that_was_over_limit_sample_2.mp4"
@@ -305,6 +311,7 @@ module StateTests =
             LastWriteTime = DateTime.UtcNow
             IsAiProposed = true
             IsAiProcessing = false
+            AiError = None
         }
         let p3_unselected = {
             OriginalFullPath = "C:\\Videos\\unselected_long_file.mp4"
@@ -321,6 +328,7 @@ module StateTests =
             LastWriteTime = DateTime.UtcNow
             IsAiProposed = false
             IsAiProcessing = false
+            AiError = None
         }
         let modelWithCandidates = { model with Candidates = [ p1; p2; p3_unselected ] }
 
@@ -435,6 +443,7 @@ module StateTests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
+            AiError = None
         }
         let p2 = { p1 with OriginalFullPath = "C:\\Videos\\v2.mp4"; OriginalFileName = "v2.mp4" }
         let model = { initialModel with Candidates = [ p1; p2 ]; IsRequestingAi = true }
@@ -463,6 +472,7 @@ module StateTests =
             IsAiProcessing = true
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
+            AiError = None
         }
         let model = { initialModel with Candidates = [ p1 ]; IsRequestingAi = true }
 
@@ -511,6 +521,7 @@ module StateTests =
             IsAiProcessing = true
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
+            AiError = None
         }
         let model = { initialModel with Candidates = [ p1 ]; IsRequestingAi = true; AiCancellationCts = Some cts }
 
@@ -748,6 +759,7 @@ module StateTests =
             LastWriteTime = DateTime.UtcNow
             IsAiProposed = false
             IsAiProcessing = false
+            AiError = None
         }
         let candidates = [
             dummyCandidate LinuxFileNameOnly "linux_only"
@@ -769,6 +781,252 @@ module StateTests =
         let filteredBoth = State.getFilteredCandidates FilterBothOnly candidates
         filteredBoth.Length |> should equal 1
         filteredBoth.Head.OriginalViolation |> should equal BothViolated
+
+    [<Fact>]
+    let ``ST-01: TargetDirectory = "" のクリーン状態では誤スキャンを実行せず IsScanning を false のまま維持すること`` () =
+        let initialModel, _ = State.init ()
+        let emptyDirSettings = { initialModel.Settings with TargetDirectory = "" }
+        let emptyDirModel = { initialModel with Settings = emptyDirSettings }
+        let updatedModel, _ = State.update ExecuteScanAndPropose emptyDirModel
+        // TargetDirectory が空文字のときはスキャンを開始せず IsScanning は false のままであること
+        updatedModel.IsScanning |> should equal false
+
+    [<Fact>]
+    let ``ST-01-MEMBERS: Model は HasScanned, ScannedVideoCount, ActiveEnvironment, SettingsSavePath を保持すること`` () =
+        let initialModel, _ = State.init ()
+        let modelType = initialModel.GetType()
+
+        let hasScannedProp = modelType.GetProperty("HasScanned")
+        hasScannedProp |> should not' (be null)
+        let hasScannedVal = hasScannedProp.GetValue(initialModel) :?> bool
+        hasScannedVal |> should equal false
+
+        let scannedCountProp = modelType.GetProperty("ScannedVideoCount")
+        scannedCountProp |> should not' (be null)
+        let scannedCountVal = scannedCountProp.GetValue(initialModel) :?> int
+        scannedCountVal |> should equal 0
+
+        let activeEnvProp = modelType.GetProperty("ActiveEnvironment")
+        activeEnvProp |> should not' (be null)
+        let activeEnvVal = activeEnvProp.GetValue(initialModel) :?> string
+        activeEnvVal |> should not' (be EmptyString)
+
+        let settingsPathProp = modelType.GetProperty("SettingsSavePath")
+        settingsPathProp |> should not' (be null)
+        let settingsPathVal = settingsPathProp.GetValue(initialModel) :?> string
+        settingsPathVal |> should not' (be EmptyString)
+
+    [<Fact>]
+    let ``ST-08: IsScanning = true の実行中は TargetDirectoryChanged / ThresholdChanged / RuleSelected / ModelSelected などの入力割り込みを無視・排他すること`` () =
+        let initialModel, _ = State.init ()
+        let customSettings = {
+            initialModel.Settings with
+                TargetDirectory = "C:\\OriginalDir"
+                SelectedModel = "model-1"
+        }
+        let busyModel = {
+            initialModel with
+                Settings = customSettings
+                IsScanning = true
+                CurrentThreshold = 240
+                SelectedRuleId = "rule-1"
+        }
+
+        // 1. TargetDirectoryChanged の割り込み無視
+        let m1, _ = State.update (TargetDirectoryChanged "D:\\HackedDir") busyModel
+        m1.Settings.TargetDirectory |> should equal "C:\\OriginalDir"
+        m1.IsScanning |> should equal true
+
+        // 2. ThresholdChanged の割り込み無視
+        let m2, _ = State.update (ThresholdChanged 100) busyModel
+        m2.CurrentThreshold |> should equal 240
+
+        // 3. RuleSelected の割り込み無視
+        let m3, _ = State.update (RuleSelected "rule-other") busyModel
+        m3.SelectedRuleId |> should equal "rule-1"
+
+        // 4. ModelSelected の割り込み無視
+        let m4, _ = State.update (ModelSelected "model-other") busyModel
+        m4.Settings.SelectedModel |> should equal "model-1"
+
+        // 5. ToggleFilterNonJapaneseOnly の割り込み無視
+        let origFilter = busyModel.FilterNonJapaneseOnly
+        let m5, _ = State.update (ToggleFilterNonJapaneseOnly (not origFilter)) busyModel
+        m5.FilterNonJapaneseOnly |> should equal origFilter
+
+    [<Fact>]
+    let ``ST-08: IsRenaming = true の実行中は TargetDirectoryChanged / ThresholdChanged などの入力割り込みを無視・排他すること`` () =
+        let initialModel, _ = State.init ()
+        let customSettings = { initialModel.Settings with TargetDirectory = "C:\\RenamingDir" }
+        let renamingModel = {
+            initialModel with
+                Settings = customSettings
+                IsRenaming = true
+                CurrentThreshold = 240
+        }
+
+        let m1, _ = State.update (TargetDirectoryChanged "D:\\Intruder") renamingModel
+        m1.Settings.TargetDirectory |> should equal "C:\\RenamingDir"
+        m1.IsRenaming |> should equal true
+
+        let m2, _ = State.update (ThresholdChanged 150) renamingModel
+        m2.CurrentThreshold |> should equal 240
+
+    [<Fact>]
+    let ``ST-03: ExecuteRenameOnly および ConfirmUndo 実行時に IsRenaming が true になり完了時に false に復帰すること`` () =
+        let initialModel, _ = State.init ()
+        let candidate: RenameProposal = {
+            OriginalFullPath = "C:\\Videos\\v1.mp4"
+            OriginalFileName = "v1.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 15
+            OriginalFileNameBytes = 6
+            OriginalViolation = WindowsPathOnly
+            ProposedFileName = "n1.mp4"
+            ProposedLength = 15
+            ProposedFileNameBytes = 6
+            AiComment = None
+            IsAiProposed = true
+            IsAiProcessing = false
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            AiError = None
+        }
+        let modelWithCandidate = { initialModel with Candidates = [ candidate ] }
+
+        // リネーム実行開始時に IsRenaming = true となること
+        let renamingStartModel, _ = State.update ExecuteRenameOnly modelWithCandidate
+        renamingStartModel.IsRenaming |> should equal true
+
+        // リネーム完了時に IsRenaming = false に復帰すること
+        let dummyUndo: UndoRecord = {
+            Id = Guid.NewGuid()
+            Timestamp = DateTime.UtcNow
+            OriginalFullPath = "C:\\Videos\\v1.mp4"
+            RenamedFullPath = "C:\\Videos\\n1.mp4"
+        }
+        let renameDoneModel, _ = State.update (RenameCompleted (false, Ok [ dummyUndo ])) renamingStartModel
+        renameDoneModel.IsRenaming |> should equal false
+
+    [<Fact>]
+    let ``ST-05: RenameProposal は個別 AI 失敗を保持する AiError プロパティを有すること`` () =
+        let dummyProposal: RenameProposal = {
+            OriginalFullPath = "C:\\Videos\\v1.mp4"
+            OriginalFileName = "v1.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 15
+            OriginalFileNameBytes = 6
+            OriginalViolation = WindowsPathOnly
+            ProposedFileName = "n1.mp4"
+            ProposedLength = 15
+            ProposedFileNameBytes = 6
+            AiComment = None
+            IsAiProposed = true
+            IsAiProcessing = false
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            AiError = None
+        }
+        let proposalType = dummyProposal.GetType()
+        let aiErrorProp = proposalType.GetProperty("AiError")
+        aiErrorProp |> should not' (be null)
+
+    [<Fact>]
+    let ``ST-05: CancelAiProposal 実行時に IsRequestingAi が解除され全残行の IsAiProcessing が false になること`` () =
+        let initialModel, _ = State.init ()
+        let p1 = {
+            OriginalFullPath = "C:\\Videos\\v1.mp4"
+            OriginalFileName = "v1.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 15
+            OriginalFileNameBytes = 6
+            OriginalViolation = WindowsPathOnly
+            ProposedFileName = "n1.mp4"
+            ProposedLength = 15
+            ProposedFileNameBytes = 6
+            AiComment = None
+            IsAiProposed = false
+            IsAiProcessing = true
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            AiError = None
+        }
+        let p2 = { p1 with OriginalFullPath = "C:\\Videos\\v2.mp4"; OriginalFileName = "v2.mp4"; IsAiProcessing = true }
+        let busyAiModel = {
+            initialModel with
+                IsRequestingAi = true
+                Candidates = [ p1; p2 ]
+        }
+
+        let cancelledModel, _ = State.update CancelAiProposal busyAiModel
+        cancelledModel.IsRequestingAi |> should equal false
+        cancelledModel.Candidates |> List.forall (fun c -> not c.IsAiProcessing) |> should equal true
+
+    [<Fact>]
+    let ``回帰テスト: ScanCompleted 後に別メッセージを連続ディスパッチしても HasScanned, ScannedVideoCount, ActiveEnvironment, SettingsSavePath, AiError が維持されること`` () =
+        let initialModel, _ = State.init ()
+        let dummyCandidate = {
+            FullPath = "C:\\Videos\\long_test_video_1.mp4"
+            FileName = "long_test_video_1.mp4"
+            DirectoryPath = "C:\\Videos"
+            PathLength = 250
+            FileNameBytes = 22
+            Violation = WindowsPathOnly
+            FileSizeBytes = 1024L
+            LastWriteTime = DateTime.UtcNow
+        }
+
+        // 1. ScanCompleted (Ok [ dummyCandidate ])
+        let scannedModel, _ = State.update (ScanCompleted (Ok [ dummyCandidate ])) initialModel
+        scannedModel.HasScanned |> should equal true
+        scannedModel.ScannedVideoCount |> should equal 1
+        scannedModel.ActiveEnvironment |> should equal initialModel.ActiveEnvironment
+        scannedModel.SettingsSavePath |> should equal initialModel.SettingsSavePath
+
+        // 2. CandidateAiProposed (失敗エラー付きの候補を反映)
+        let failedProposal = {
+            scannedModel.Candidates.Head with
+                AiError = Some "AI提案失敗: HTTP 500 Internal Server Error"
+                AiComment = Some "（AI提案取得失敗: 500）"
+        }
+        let aiUpdatedModel, _ = State.update (CandidateAiProposed failedProposal) scannedModel
+        aiUpdatedModel.Candidates.Head.AiError |> should equal (Some "AI提案失敗: HTTP 500 Internal Server Error")
+        aiUpdatedModel.HasScanned |> should equal true
+        aiUpdatedModel.ScannedVideoCount |> should equal 1
+
+        // 3. ToggleCandidateSelect
+        let toggledModel, _ = State.update (ToggleCandidateSelect dummyCandidate.FullPath) aiUpdatedModel
+        toggledModel.HasScanned |> should equal true
+        toggledModel.ScannedVideoCount |> should equal 1
+        toggledModel.ActiveEnvironment |> should equal initialModel.ActiveEnvironment
+        toggledModel.SettingsSavePath |> should equal initialModel.SettingsSavePath
+        toggledModel.Candidates.Head.AiError |> should equal (Some "AI提案失敗: HTTP 500 Internal Server Error")
+
+        // 4. ChangeSortCriterion
+        let sortedModel, _ = State.update (ChangeSortCriterion PathLengthAsc) toggledModel
+        sortedModel.HasScanned |> should equal true
+        sortedModel.ScannedVideoCount |> should equal 1
+        sortedModel.ActiveEnvironment |> should equal initialModel.ActiveEnvironment
+        sortedModel.SettingsSavePath |> should equal initialModel.SettingsSavePath
+        sortedModel.Candidates.Head.AiError |> should equal (Some "AI提案失敗: HTTP 500 Internal Server Error")
+
+        // 5. ThresholdChanged
+        let thresholdModel, _ = State.update (ThresholdChanged 200) sortedModel
+        thresholdModel.HasScanned |> should equal true
+        thresholdModel.ScannedVideoCount |> should equal 1
+        thresholdModel.ActiveEnvironment |> should equal initialModel.ActiveEnvironment
+        thresholdModel.SettingsSavePath |> should equal initialModel.SettingsSavePath
+        thresholdModel.Candidates.Head.AiError |> should equal (Some "AI提案失敗: HTTP 500 Internal Server Error")
+
+        // 6. SetConstraintFilter
+        let filterModel, _ = State.update (SetConstraintFilter FilterWindowsOnly) thresholdModel
+        filterModel.HasScanned |> should equal true
+        filterModel.ScannedVideoCount |> should equal 1
+        filterModel.ActiveEnvironment |> should equal initialModel.ActiveEnvironment
+        filterModel.SettingsSavePath |> should equal initialModel.SettingsSavePath
+        filterModel.Candidates.Head.AiError |> should equal (Some "AI提案失敗: HTTP 500 Internal Server Error")
+
+
 
 
 

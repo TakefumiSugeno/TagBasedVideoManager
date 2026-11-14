@@ -195,6 +195,7 @@ module FileScannerTests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = now.AddDays(-2.0)
+            AiError = None
         }
         let itemB: RenameProposal = {
             OriginalFullPath = "C:/Videos/Sub/BBB_Longest_File_Name_Here.mp4"
@@ -211,6 +212,7 @@ module FileScannerTests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = now.AddDays(-1.0)
+            AiError = None
         }
         let itemC: RenameProposal = {
             OriginalFullPath = "C:/Videos/CCC_Short.mp4"
@@ -227,6 +229,7 @@ module FileScannerTests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = now
+            AiError = None
         }
         let list = [ itemA; itemB; itemC ]
 

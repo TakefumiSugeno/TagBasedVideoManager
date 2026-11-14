@@ -77,3 +77,62 @@
   - `Minor`: 0 件
   - `Suggestion`: 0 件
 - **承認者**: SE Reviewer Agent
+
+---
+
+## レビュー記録: appsettings-unification-and-renamer-spinners / apply / Cycle 1（SE / QA / PG Reviewers）
+
+- **日時**: 2026-11-14
+- **フェーズ**: apply（Cycle 1）
+- **使用プロトコル**:
+  - [checklist_apply_test.md](file:///D:/programming/repos/MyGitHubRepos/TagBasedVideoManager/openspec/templates/checklist_apply_test.md)
+  - [checklist_apply_impl.md](file:///D:/programming/repos/MyGitHubRepos/TagBasedVideoManager/openspec/templates/checklist_apply_impl.md)
+
+### 1. SE Reviewer（Cycle 1）
+
+- **状態整合・障害耐性・モック忠実度**: `.env` / OS `VIDEO_DIR` 依存の完全撤廃、環境名サニタイズ、`Settings.save` アトミック置換＋`%APPDATA%` フォールバック、Web `DATABASE_PATH` 親ディレクトリ自動作成、`deploy.sh` の Fail-Fast JSON 解析、Avalonia 11 ネイティブアニメーション `SpinnerControl` と `mockup.html` 忠実再現（`E2E_12`〜`E2E_16`, `E2E-01` 実描画キャプチャ検証）、SemVer（Web `0.3.0`, Renamer `0.2.0`）を承認。
+- **Suggestion**: `State.fs` ルール操作（`SaveEditingRule`, `SaveRule`, `DeleteRule`）での `Settings.save` 戻り値エラーハンドリング統一を推奨。
+- **LGTM**: true（Critical: 0, Major: 0, Minor: 0, Suggestion: 1）
+
+### 2. QA Reviewer（Cycle 1）
+
+- **テストレビュー・Adversarial QA**: トートロジーテストなし。実ファイル・実プロセス・実 Elmish 更新・実 Playwright ブラウザによるアサーションを確認。`Settings.fs` / `common.ps1` に対する破壊テスト（F# 4件・pwsh 2件: 破損 JSON、型不整合、パストラバーサル環境名、不正保存パス、不正 PORT）をすべて堅牢性確認（落とせず Green）で通過。
+- **Minor 指摘（2件）**:
+  1. `ProgramTests.fs` `UT-10` がテストコード内で直接 `Directory.CreateDirectory` を呼び、プロダクションコード側を呼び出していない形式的テストとなっていた。
+  2. プロセス共通環境変数一時変更テストの将来的な並行実行干渉可能性（現状は逐次実行＋`try ... finally` 復元により実害なし）。
+- **LGTM**: true（Critical: 0, Major: 0, Minor: 2, Suggestion: 0）
+
+### 3. PG Reviewer（Cycle 1）
+
+- **指摘1（Critical）**: `Domain.fs`（`ProposalState`）および `State.fs`（`ModelState`）の `ConditionalWeakTable` 依存により、F# レコードコピー更新（`{ model with ... }`）で新インスタンスが生成されると `HasScanned` や `AiError` の参照等価性が崩れ、スキャン完了後の画面が初期プレースホルダーへ巻き戻る致命的不具合を検出。
+- **指摘2（Major）**: `Settings.fs` L399-400 の `mergePartialsChain (appDataPartials @ basePartials)` により `%APPDATA%` がベース層に上書きされ、`design.md` Decision 3 と矛盾している不具合を検出。
+- **指摘3（Minor）**: `Settings.fs` `resolveSavePath` における 18行の重複コピペコード。
+- **LGTM**: false（Critical: 1, Major: 1, Minor: 1, Suggestion: 0）
+
+---
+
+## レビュー記録: appsettings-unification-and-renamer-spinners / apply / Cycle 2（再レビュー・承認）
+
+- **日時**: 2026-11-14
+- **フェーズ**: apply（Cycle 2）
+
+### 1. 実施した是正対応
+
+1. `Domain.fs` / `State.fs` / `OpenRouterClient.fs`: `ProposalState` および `ModelState`（`ConditionalWeakTable`）を完全撤廃し、`RenameProposal.AiError` と `Model` の `HasScanned`, `ScannedVideoCount`, `ActiveEnvironment`, `SettingsSavePath` を純粋イミュータブルレコードフィールドとして直接定義。`StateTests.fs` にコピー更新連続ディスパッチでの状態非消失回帰テストを追加。
+2. `Settings.fs`: マージ順を `(basePartials @ appDataPartials)` に是正し、`%APPDATA%` 最優先オーバーライドを回復。不正 JSON 構文時の `eprintfn` 警告ログを追加し、`SettingsTests.fs` に回帰テストを追加。
+3. `Settings.fs` `resolveSavePath`: `baseDirOpt |> Option.defaultValue AppDomain.CurrentDomain.BaseDirectory` へ統合し重複コードを削減。
+4. `State.fs`: `SaveEditingRule` / `SaveRule` / `DeleteRule` / `MoveRuleOrder` でも `Settings.save` の戻り値エラーを `ErrorMessage` へ通知するよう統一。
+5. `src/TagBasedVideoManager/Program.fs` & `ProgramTests.fs`: `Program.ensureParentDirectoryCreated` 関数を抽出し、`UT-10` が同プロダクション関数を直接呼び出して検証するよう改修。
+
+### 2. PG Reviewer（Cycle 2 再レビュー）
+
+- 指摘1（Critical）・指摘2（Major）・指摘3（Minor）および保存エラー通知統一がすべて根本解決されたことを確認。
+- **LGTM**: true（Critical: 0, Major: 0, Minor: 0, Suggestion: 0）
+- **承認者**: PG Reviewer Agent
+
+### 3. QA Reviewer（Cycle 2 再レビュー）
+
+- `ProgramTests.fs` `UT-10` の形式的テスト解消、`StateTests.fs` 連続ディスパッチ回帰テスト、`SettingsTests.fs` `%APPDATA%` 上書き回帰テスト、`Program.ensureParentDirectoryCreated` に対する境界/異常系 Adversarial QA（null/空白/ルート/不正文字）の堅牢性を確認。
+- **保留申し送り（Minor 1件）**: プロセス環境変数変更テスト（`SettingsTests.fs`, `ProgramTests.fs`）の将来的な並列化時の干渉リスク。現状 `try ... finally` 復元＋逐次実行で全 553 件 Pass のため問題なし。
+- **LGTM**: true（Critical: 0, Major: 0, Minor: 1 [保留], Suggestion: 0）
+- **承認者**: QA Reviewer Agent

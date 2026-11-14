@@ -43,6 +43,7 @@ module FileRenamerTests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
 
             let result = FileRenamer.executeRename [ proposal ]
@@ -87,6 +88,7 @@ module FileRenamerTests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
 
             let result = FileRenamer.executeRename [ proposal ]
@@ -127,6 +129,7 @@ module FileRenamerTests =
                 IsAiProcessing = false
                 IsSelected = false
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
 
             let result = FileRenamer.executeRename [ proposal ]
@@ -215,6 +218,7 @@ module FileRenamerTests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
 
             let result = FileRenamer.executeRename [ proposal ]
@@ -253,6 +257,7 @@ module FileRenamerTests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
 
             let result = FileRenamer.executeRename [ proposal ]
@@ -303,6 +308,7 @@ module FileRenamerTests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
 
             let result = FileRenamer.executeRename [ proposal ]

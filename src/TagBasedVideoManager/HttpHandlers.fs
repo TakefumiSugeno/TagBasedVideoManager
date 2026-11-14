@@ -9,6 +9,7 @@ open Microsoft.AspNetCore.Mvc
 open Microsoft.AspNetCore.Mvc.Infrastructure
 open Microsoft.AspNetCore.Routing
 open Microsoft.Extensions.DependencyInjection
+open Microsoft.Extensions.Configuration
 open Giraffe
 open System.Threading.Tasks
 open Microsoft.Extensions.Logging
@@ -146,17 +147,33 @@ module HttpHandlers =
         fun (next : HttpFunc) (ctx : HttpContext) ->
             task {
                 let getEnv key =
-                    let value = Environment.GetEnvironmentVariable(key)
-                    if isNull value then None else Some value
+                    let config =
+                        if box ctx.RequestServices <> null then
+                            ctx.RequestServices.GetService(typeof<IConfiguration>) :?> IConfiguration
+                        else null
+
+                    if not (isNull config) && not (String.IsNullOrEmpty(config.[key])) then
+                        Some config.[key]
+                    else
+                        let value = Environment.GetEnvironmentVariable(key)
+                        if isNull value then None else Some value
 
                 match VideoDirs.fromEnvironment getEnv with
                 | Error errMsg ->
                     return! (setStatusCode 500 >=> text errMsg) next ctx
                 | Ok videoDirs ->
+                    printfn "[Scan] Resolved VIDEO_DIRS count=%d: [%s]" videoDirs.Length (String.Join("; ", videoDirs))
                     let conn = ctx.GetService<IDbConnection>()
                     let thumbDir = 
-                        let env = Environment.GetEnvironmentVariable("THUMBNAIL_DIR")
-                        if String.IsNullOrWhiteSpace(env) then "thumbnails" else env
+                        let config =
+                            if box ctx.RequestServices <> null then
+                                ctx.RequestServices.GetService(typeof<IConfiguration>) :?> IConfiguration
+                            else null
+                        let fromConfig = if not (isNull config) then config.["THUMBNAIL_DIR"] else null
+                        if not (String.IsNullOrWhiteSpace(fromConfig)) then fromConfig
+                        else
+                            let env = Environment.GetEnvironmentVariable("THUMBNAIL_DIR")
+                            if String.IsNullOrWhiteSpace(env) then "thumbnails" else env
                     
                     let mediaProc = ctx.GetService<IMediaProcessor>()
                     let! result = Scanner.syncVideoDirectories videoDirs thumbDir mediaProc conn

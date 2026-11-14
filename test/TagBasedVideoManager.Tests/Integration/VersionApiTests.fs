@@ -50,11 +50,11 @@ type VersionApiTests () =
         cc.Contains("no-store") |> should be True
         cc.Contains("must-revalidate") |> should be True
 
-        // JSON ボディ検証
+        // JSON ボディ検証 (Web バージョン 0.3.0)
         let content = response.Content.ReadAsStringAsync().Result
         use doc = JsonDocument.Parse(content)
         let root = doc.RootElement
-        root.GetProperty("version").GetString() |> should equal "0.2.0"
+        root.GetProperty("version").GetString() |> should equal "0.3.0"
 
     [<Fact>]
     member _.``POST api/version は 不正メソッドとして 404 または 405 を返し 500 エラーを起こさない (IT-02)`` () =

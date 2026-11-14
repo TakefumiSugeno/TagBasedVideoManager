@@ -52,7 +52,8 @@ TagBasedVideoManagerは、バイクツーリングの記録、旅行動画、大
 - **シンボリックリンク／ジャンクション安全走査**: ディレクトリジャンクションを解釈・追跡し、循環参照（同一ディレクトリ再帰）を自動検知して安全にスキップ。
 - **OpenRouter モデルによる短縮AI提案**: 命名規則（日時_タイトル等）に基づき、Free/有料モデルを活用して安全な短縮ファイル名およびAIコメントを常時提示。
 - **ワンクリック復旧 & Undo**: 物理リネーム実行と同時にDockerコンテナを自動再起動して即時マウント復旧。直前のリネームを元のファイル名に完全復元する逆リネーム（Undo）に対応。
-- **柔軟な設定管理 (.NET標準 `appsettings.json` / `.env`)**: 設定ファイルはAppData（`%APPDATA%\TagBasedVideoManager\appsettings.json`）およびアプリ実行フォルダ（ポータブル運用）を自動判定。`.env` ファイルからのインポートに対応（※OS環境変数は参照せず安全性を担保）し、APIキー未設定時も「未提案」状態で安全起動。
+- **柔軟な設定管理 (.NET標準 `appsettings.json` / `appsettings.{Environment}.json`)**: 設定ファイルはベーステンプレート `appsettings.json` と環境別設定 `appsettings.{Environment}.json`（`Development` / `Production` 等）の階層マージ構成を採用。アクティブ環境名や保存先ファイル名（例: `DEV` / `appsettings.Development.json`）をメイン画面に常時バッジ表示。書込制限環境では `%APPDATA%\TagBasedVideoManager\` への自動フォールバックに対応し、秘密情報・個人パスは Git から完全に除外されます。
+- **ローディングスピナー & Zero-State / 個別再試行**: スキャン中の中央回転スピナー、フォルダ未設定時の Zero-State 誘導、スキャン完了後の 0 件出し分け（動画 0 本 vs 全件安全）、個別 AI 提案エラー時の赤枠カード＋「↻ 再試行」ボタン、ファイルリネーム実行中の操作ブロック半透明暗転オーバーレイ、Docker 制御中の小型スピナーなど、すべての非同期処理で洗練された視覚フィードバックを提供。
 - **100% F# .NET 10 + Avalonia.FuncUI Elmish MVU**: 既存Webアプリのコードに一切手を加えない（改修行数ゼロ）完全独立デスクトップアプリ。
 
 ### 8. モバイルファースト UX & PWA / Web ブランディング
@@ -64,9 +65,9 @@ TagBasedVideoManagerは、バイクツーリングの記録、旅行動画、大
 
 ### 9. 稼働バージョン表示 & セマンティックバージョニング (SemVer 2.0.0)
 
-- **Web アプリ画面ヘッダーバッジ**: 画面上部のアプリケーションタイトル横に稼働バージョン（例: `v0.2.0`）をピルバッジとして表示。モバイル画面でのタイトル折り返し時も自然に追従し、`<title>` タブタイトルにも反映。
+- **Web アプリ画面ヘッダーバッジ**: 画面上部のアプリケーションタイトル横に稼働バージョン（例: `v0.3.0`）をピルバッジとして表示。モバイル画面でのタイトル折り返し時も自然に追従し、`<title>` タブタイトルにも反映。
 - **キャッシュ制御 & 耐障害非同期取得**: `GET /api/version` エンドポイント（`Cache-Control: no-cache, no-store, must-revalidate`）経由でアセンブリバージョンを配信。2 秒タイムアウトと非ブロック非同期取得（Bulkhead パターン）により、障害時でも動画一覧の読み込みを一切阻害しません。
-- **デスクトップアプリ (AI File Renamer) タイトルバー表示**: OS ウィンドウタイトルバー（`TagBasedVideoManager - AI File Renamer v0.1.0`）および起動コンソールログにバージョンを表示・出力。
+- **デスクトップアプリ (AI File Renamer) タイトルバー表示**: OS ウィンドウタイトルバー（`TagBasedVideoManager - AI File Renamer v0.2.0`）および起動コンソールログにバージョンを表示・出力。
 - **変更規模連動の SemVer 規則**: Web アプリとデスクトップアプリで独立してバージョンを管理し、OpenSpec の変更規模（L1: Patch, L2: Minor, L3/ユーザー指示: Major）に応じてインクリメントします。
 
 ### 10. 非同期ローディングスピナー & Zero-State / Error-State ガード (Web UI)
@@ -197,26 +198,38 @@ git clone https://github.com/your-username/TagBasedVideoManager.git
 cd TagBasedVideoManager
 ```
 
-### 2. 環境変数の設定
+### 2. アプリケーション設定 (`appsettings.json` / `appsettings.{Environment}.json`)
 
-プロジェクトルートの `.env.sample` をコピーして `.env` ファイルを作成し、ご利用の環境（Windows / Linux / DevContainer）に合わせて変数を定義します（Webアプリ・デスクトップアプリ共通）。
+TagBasedVideoManager は .NET 標準の構成思想に準拠し、設定を `appsettings.json`（ベーステンプレート）および環境別設定ファイル `appsettings.{Environment}.json`（本番用: `appsettings.Production.json`、開発用: `appsettings.Development.json`）で管理します（※従来の `.env` 方式は廃止されました）。
+環境別設定ファイルは `.gitignore` により Git 管理から除外されているため、個人パスや API キーを安全に管理できます。
 
-```bash
-cp .env.sample .env
+#### Web アプリケーション / デプロイ設定
+
+`src/TagBasedVideoManager/` 配下に環境別設定ファイル（通常は本番用 `appsettings.Production.json`）を作成し、管理対象の動画ディレクトリなどを設定します。
+
+```json
+{
+  "PORT": 5620,
+  "VIDEO_DIRS": "C:\\Users\\YourUserName\\Videos;D:\\AnotherVideos",
+  "THUMBNAIL_DIR": "C:\\Users\\YourUserName\\TagBasedVideoManagerData\\thumbnails",
+  "DATABASE_PATH": "C:\\Users\\YourUserName\\TagBasedVideoManagerData\\metadata.db",
+  "DATA_DIR": "./data"
+}
 ```
 
-```env
-PORT=5620
-# Web アプリ / コンテナ用の動画ルートフォルダ（セミコロン ';' 区切りで複数指定可能）
-VIDEO_DIRS="C:\Users\YourUserName\Videos;D:\AnotherVideos"
-THUMBNAIL_DIR=C:\Users\YourUserName\TagBasedVideoManagerData\thumbnails
-DATABASE_PATH=C:\Users\YourUserName\TagBasedVideoManagerData\metadata.db
+※デプロイスクリプト（`scripts/deploy.ps1` / `scripts/deploy.sh`）は、実行時に `src/TagBasedVideoManager/appsettings.json` および `appsettings.Production.json` を自動的に読み込み、コンテナを構成します（CLI 引数や環境変数で上書きも可能）。
 
-# 以下は AI File Renamer (デスクトップアプリ) 専用の設定
-VIDEO_DIR=C:\Users\YourUserName\Videos
-OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx
-OPENROUTER_MODEL=google/gemini-2.0-flash-lite-preview-02-05:free
-PATH_LENGTH_THRESHOLD=240
+#### AI File Renamer (デスクトップアプリ) 設定
+
+`src/TagBasedVideoManager.Renamer/` 配下に `appsettings.Development.json`（開発・デバッグ実行時）または `appsettings.Production.json`（Release 実行時）を作成します。アプリ内の GUI で設定を変更・保存した場合も、現在のアクティブ環境に対応するファイル（または `%APPDATA%`）へ自動保存されます。
+
+```json
+{
+  "PathLengthThreshold": 240,
+  "TargetDirectory": "C:\\Users\\YourUserName\\Videos",
+  "OpenRouterApiKey": "sk-or-v1-xxxxxxxxxxxxxxxx",
+  "OpenRouterModel": "google/gemini-2.0-flash-lite-preview-02-05:free"
+}
 ```
 
 > [!IMPORTANT]
@@ -232,7 +245,7 @@ PATH_LENGTH_THRESHOLD=240
 ### 3. コンテナ起動 (Web アプリ)
 
 本アプリは単一コンテナ構成であり、直接 OCI ランタイムから起動できます。
-Windows 11（WSL 3.0 / Docker Desktop）および Linux（Docker / Podman）向けに、ワンクリックでビルド・再起動・ヘルスチェックおよび GPU アクセラレーション自動設定を行うデプロイスクリプトを用意しています。
+Windows 11（WSL 3.0 / Docker Desktop）および Linux（Docker / Podman）向けに、ワンクリックでビルド・再起動・ヘルスチェックおよび GPU アクセラレーション自動設定を行うデプロイスクリプトを用意しています。スクリプトは `src/TagBasedVideoManager/appsettings.Production.json` から設定を自動取得します。
 
 - **Windows 11 (WSL 3.0 または Docker Desktop)**:
   PowerShell で以下を実行します。WSL 3.0 (`wslc`) または `docker` を自動検出し、ポート 5620 の事前チェック、旧コンテナの安全な停止・削除、イメージビルド、コンテナ再起動（NVIDIA GPU 検出時は `--gpus all` を自動付与）、およびヘルスチェック（失敗時は自動で `logs` を表示）を実行します。
@@ -252,9 +265,9 @@ Windows 11（WSL 3.0 / Docker Desktop）および Linux（Docker / Podman）向�
 
 ブラウザから `http://localhost:5620` にアクセスします。
 
-### 4. AI File Renamer の構成設定 (`appsettings.json` / `.env`)
+### 4. AI File Renamer の構成設定 (`appsettings.json` / `appsettings.{Environment}.json`)
 
-AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベース構成ファイル `appsettings.json` および環境別設定ファイル `appsettings.{Environment}.json`（`appsettings.Development.json` や `appsettings.Production.json` 等）、ならびに環境設定ファイル (`.env`) から各種設定を読み込み・マージします。
+AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベース構成ファイル `appsettings.json` および環境別設定ファイル `appsettings.{Environment}.json`（`appsettings.Development.json` や `appsettings.Production.json` 等）から各種設定を読み込み・マージします。
 
 #### (1) 環境名の解決と階層オーバーライドマージ
 
@@ -262,24 +275,28 @@ AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベ�
   1. OS 環境変数 `DOTNET_ENVIRONMENT`
   2. OS 環境変数 `ASPNETCORE_ENVIRONMENT`
   3. コンパイル時ビルド構成（Debug ビルド時は `Development`、Release ビルド時は `Production`）
+     ※不正文字や空文字が指定された場合は安全な既定値（`Development` / `Production`）に自動フォールバックします。
 - **階層マージ**:
   ベースとなる `appsettings.json` を読み込んだ上で、該当する環境別設定ファイル（例: `appsettings.Development.json`）が存在する場合、キー単位でオーバーライドマージされます（環境別ファイルで未定義のキーはベース値が維持されます）。
-  さらに `.env` が存在する場合は指定されたキーが最終的にオーバーライドされます。
+  さらにユーザー領域（`%APPDATA%`）にファイルが存在する場合は最優先で適用されます。
 
 #### (2) 設定読み込みの探索優先順位
 
-1. **ユーザー個別設定**: `%APPDATA%\TagBasedVideoManager\appsettings.json` (Windows: `C:\Users\<UserName>\AppData\Roaming\TagBasedVideoManager\appsettings.json`)
-2. **カレントディレクトリ**: `./appsettings.json` および `./appsettings.{Environment}.json`
-3. **アプリケーション実行ディレクトリ**: `{AppDirectory}\appsettings.json` および `{AppDirectory}\appsettings.{Environment}.json` (ポータブル運用向け)
-4. **環境設定ファイル**: `.env` (上記 `VIDEO_DIR`, `OPENROUTER_API_KEY` 等)
-5. **組み込み既定値**
+1. **ユーザー個別設定 (最優先オーバーライド)**:
+   - `%APPDATA%\TagBasedVideoManager\appsettings.{Environment}.json`
+   - `%APPDATA%\TagBasedVideoManager\appsettings.json`
+2. **プロジェクト / カレント / 実行ディレクトリ**:
+   - `appsettings.{Environment}.json`
+   - `appsettings.json`
+3. **組み込み既定値**
 
-※**OS環境変数の非参照**: システム全体や別アプリケーションの意図しない環境変数が混入・干渉することを防ぐため、設定値そのものはOS環境変数から直接参照しません（環境名指定用 `DOTNET_ENVIRONMENT` / `ASPNETCORE_ENVIRONMENT` を除く）。設定は構成ファイル（`appsettings*.json`）またはプロジェクト/カレントの `.env` ファイルに定義してください。
+※**OS環境変数および `.env` の非参照**: システム全体や別アプリケーションの意図しない環境変数が混入・干渉することを防ぐため、設定値そのものは OS 環境変数および `.env` から参照しません。設定は構成ファイル（`appsettings*.json`）に定義してください（`.env` がディスクに残存している場合は起動時に移行案内の警告ログを出力します）。
 
 #### (3) 設定ファイルの保存先パス決定ロジック
 
-- アプリケーション実行ディレクトリに既に `appsettings.json` が配置されている場合、そのファイルを直接上書き更新します（ポータブル運用の維持）。
-- 配置されていない場合、アクセス権限エラー（Program Files 配下等）を防止するため、ユーザープロファイル配下（`%APPDATA%\TagBasedVideoManager\appsettings.json`）にディレクトリを自動作成して安全に保存します。
+- 設定画面でユーザーが設定を保存すると、ベース `appsettings.json` ではなく**現在のアクティブ環境に対応する `appsettings.{Environment}.json`**（例: `Development` 実行時は `appsettings.Development.json`）へ保存されます。
+- アプリケーション実行ディレクトリやプロジェクトディレクトリに書込権限がある場合は同階層に保存し、書き込み権限がない場合（インストーラ配置や権限不足）は自動的にユーザープロファイル配下（`%APPDATA%\TagBasedVideoManager\appsettings.{Environment}.json`）へ安全に保存します。
+- 一時ファイル（`.tmp`）を経由したアトミック置換により、書き込み中のクラッシュや破損を防止します。
 
 #### (4) `appsettings.json` の書式例
 
@@ -309,25 +326,26 @@ AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベ�
 ※`NamingRules` の先頭に定義されたルールが起動時の既定ルールとして自動適用されます。
 ※`OpenRouterApiKey` が未設定または空文字の場合、AIファイル名の自動提案は行われず「未提案」状態（元のファイル名維持）で安全に起動します。
 
-#### (5) 環境変数対応表
+#### (5) 設定項目対応表
 
-##### Web アプリケーション / コンテナ環境
+##### Web アプリケーション / デプロイ環境
 
-| 環境変数名      | 必須 | 既定値 (コンテナ内)     | 説明                                                                                    |
-| :-------------- | :--- | :---------------------- | :-------------------------------------------------------------------------------------- |
-| `PORT`          | 任意 | `5620`                  | アプリケーションがリッスンする HTTP ポート                                              |
-| `VIDEO_DIRS`    | 必須 | なし                    | 走査対象の動画ルートフォルダ群（セミコロン `;` 区切りで複数指定可能、ドライブ直下不可） |
-| `THUMBNAIL_DIR` | 任意 | `/app/data/thumbnails`  | 生成されたサムネイル画像の保存ディレクトリ                                              |
-| `DATABASE_PATH` | 任意 | `/app/data/metadata.db` | メタデータ SQLite データベースファイルのパス                                            |
+| 設定キー        | 環境変数名 (コンテナ注入/上書き) | 既定値 (appsettings.json)               | 説明                                                                                    |
+| :-------------- | :------------------------------- | :-------------------------------------- | :-------------------------------------------------------------------------------------- |
+| `PORT`          | `PORT`                           | `5620`                                  | アプリケーションがリッスンする HTTP ポート                                              |
+| `VIDEO_DIRS`    | `VIDEO_DIRS`                     | `""`                                    | 走査対象の動画ルートフォルダ群（セミコロン `;` 区切りで複数指定可能、ドライブ直下不可） |
+| `THUMBNAIL_DIR` | `THUMBNAIL_DIR`                  | `thumbnails` (`/app/data/thumbnails`)   | 生成されたサムネイル画像の保存ディレクトリ                                              |
+| `DATABASE_PATH` | `DATABASE_PATH`                  | `metadata.db` (`/app/data/metadata.db`) | メタデータ SQLite データベースファイルのパス                                            |
+| `DATA_DIR`      | `DATA_DIR`                       | `./data`                                | ホスト側永続データ保存ディレクトリ（コンテナデプロイ用）                                |
 
 ##### AI File Renamer (デスクトップアプリ)
 
-| 環境変数名              | appsettings.json キー | 既定値                                            | 説明                                           |
-| :---------------------- | :-------------------- | :------------------------------------------------ | :--------------------------------------------- |
-| `VIDEO_DIR`             | `TargetDirectory`     | `""`                                              | 走査対象の動画フォルダパス（単一フォルダ指定） |
-| `PATH_LENGTH_THRESHOLD` | `PathLengthThreshold` | `240`                                             | 長パス警告・抽出基準文字数                     |
-| `OPENROUTER_API_KEY`    | `OpenRouterApiKey`    | `""`                                              | OpenRouter APIキー（未設定時はAI未提案表示）   |
-| `OPENROUTER_MODEL`      | `OpenRouterModel`     | `google/gemini-2.0-flash-lite-preview-02-05:free` | 短縮提案に使用するAIモデル                     |
+| appsettings.json キー | 旧環境変数名 (移行対象) | 既定値                                            | 説明                                                                   |
+| :-------------------- | :---------------------- | :------------------------------------------------ | :--------------------------------------------------------------------- |
+| `TargetDirectory`     | `VIDEO_DIR`             | `""`                                              | 走査対象の動画フォルダパス（単一フォルダ指定、未設定時は案内画面表示） |
+| `PathLengthThreshold` | `PATH_LENGTH_THRESHOLD` | `240`                                             | 長パス警告・抽出基準文字数                                             |
+| `OpenRouterApiKey`    | `OPENROUTER_API_KEY`    | `""`                                              | OpenRouter APIキー（未設定時はAI未提案表示で安全起動）                 |
+| `OpenRouterModel`     | `OPENROUTER_MODEL`      | `google/gemini-2.0-flash-lite-preview-02-05:free` | 短縮提案に使用するAIモデル                                             |
 
 ---
 

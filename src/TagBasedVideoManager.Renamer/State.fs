@@ -29,6 +29,12 @@ and Model = {
     IsDockerBusy: bool
     ErrorMessage: string option
 
+    // 拡張状態 (Phase 2 スピナー & 環境バッジ用)
+    HasScanned: bool
+    ScannedVideoCount: int
+    ActiveEnvironment: string
+    SettingsSavePath: string
+
     // データ
     Candidates: RenameProposal list
     UndoStack: UndoRecord list list // 1回のリネーム単位でスタック保持
@@ -60,6 +66,7 @@ and Msg =
     | CandidateAiProposed of RenameProposal
     | AllAiProposalsCompleted
     | CancelAiProposal
+    | RetryCandidateAiProposal of fullPath: string
     | AiProposeCompleted of Result<RenameProposal list, RenamerError>
 
     // 候補編集・ソート
@@ -194,6 +201,7 @@ module State =
                                                 LastWriteTime = candidate.LastWriteTime
                                                 IsAiProposed = false
                                                 IsAiProcessing = false
+                                                AiError = Some $"AI提案失敗: {err}"
                                             }
                                             dispatch (CandidateAiProposed errProposal)
 
@@ -212,6 +220,8 @@ module State =
     let init () : Model * Cmd<Msg> =
         let initialSettings = Settings.loadConfiguration None None
         let firstRuleId = initialSettings.Rules |> List.tryHead |> Option.map (fun r -> r.Id) |> Option.defaultValue ""
+        let envName = Settings.resolveEnvironmentName ()
+        let savePath = Settings.resolveSavePath None
         let model = {
             Settings = initialSettings
             CurrentThreshold = initialSettings.PathLengthThreshold
@@ -223,6 +233,10 @@ module State =
             IsRenaming = false
             IsDockerBusy = false
             ErrorMessage = None
+            HasScanned = false
+            ScannedVideoCount = 0
+            ActiveEnvironment = envName
+            SettingsSavePath = savePath
             Candidates = []
             UndoStack = []
             Docker = initialDockerStatus
@@ -261,6 +275,12 @@ module State =
             // 設定ファイルが存在しない場合は初期既定値を維持
             model, Cmd.none
 
+        // 排他ガード: スキャン中またはリネーム中の入力割り込みを無視
+        | TargetDirectoryChanged _ | ThresholdChanged _ when model.IsScanning || model.IsRenaming ->
+            model, Cmd.none
+        | RuleSelected _ | ModelSelected _ | ToggleFilterNonJapaneseOnly _ | SetConstraintFilter _ when model.IsScanning || model.IsRenaming ->
+            model, Cmd.none
+
         | ThresholdChanged newThreshold ->
             // 最重要: セッション内一時変更（Settings.save は呼ばない）
             { model with CurrentThreshold = max 1 newThreshold }, Cmd.none
@@ -282,8 +302,12 @@ module State =
 
         | ModelSelected newModel ->
             let updatedSettings = { model.Settings with SelectedModel = newModel }
-            Settings.save defaultSettingsPath updatedSettings |> ignore
-            { model with Settings = updatedSettings }, Cmd.none
+            let savePath = Settings.resolveSavePath None
+            let err =
+                match Settings.save savePath updatedSettings with
+                | Ok () -> None
+                | Error err -> Some $"設定の保存に失敗しました: {RenamerError.toMessage err}"
+            { model with Settings = updatedSettings; ErrorMessage = err; SettingsSavePath = savePath }, Cmd.none
 
         // ワンアクション走査 & AI提案
         | ExecuteScanAndPropose ->
@@ -296,7 +320,7 @@ module State =
                 with _ -> ()
             )
             if String.IsNullOrWhiteSpace(model.Settings.TargetDirectory) then
-                { model with ErrorMessage = Some "対象ディレクトリが指定されていません。"; AiCancellationCts = None }, Cmd.none
+                { model with IsScanning = false; ErrorMessage = None; AiCancellationCts = None }, Cmd.none
             else
                 let cmd =
                     Cmd.OfAsync.perform
@@ -306,70 +330,80 @@ module State =
                 { model with IsScanning = true; ErrorMessage = None; Candidates = []; AiCancellationCts = None }, cmd
 
         | ScanCompleted (Ok candidates) ->
-            if List.isEmpty candidates then
-                { model with IsScanning = false; ErrorMessage = Some "閾値以上の危険な長パス動画ファイルは見つかりませんでした。" }, Cmd.none
-            else
-                let selectedRule =
-                    model.Settings.Rules
-                    |> List.tryFind (fun r -> r.Id = model.SelectedRuleId)
-                    |> Option.defaultValue (List.head model.Settings.Rules)
+            let totalCount = candidates.Length
+            let updatedModel, cmd =
+                if List.isEmpty candidates then
+                    { model with
+                        IsScanning = false
+                        HasScanned = true
+                        ScannedVideoCount = totalCount
+                        ErrorMessage = Some "閾値以上の危険な長パス動画ファイルは見つかりませんでした。" }, Cmd.none
+                else
+                    let selectedRule =
+                        model.Settings.Rules
+                        |> List.tryFind (fun r -> r.Id = model.SelectedRuleId)
+                        |> Option.defaultValue (List.head model.Settings.Rules)
 
-                // 走査直後の初期候補データ（即時IO描画用・未提案状態）
-                let initialProposals =
-                    candidates
-                    |> List.map Proposal.createInitial
-                    |> FileScanner.sortCandidates model.SortCriterion
+                    // 走査直後の初期候補データ（即時IO描画用・未提案状態）
+                    let initialProposals =
+                        candidates
+                        |> List.map Proposal.createInitial
+                        |> FileScanner.sortCandidates model.SortCriterion
 
-                let sortedCandidates = alignCandidatesWithProposals candidates initialProposals
+                    let sortedCandidates = alignCandidatesWithProposals candidates initialProposals
 
-                match model.Settings.ApiKey with
-                | Some key when not (String.IsNullOrWhiteSpace(key)) ->
-                    let cleanKey = key.Trim().Trim('"', '\'')
-                    if cleanKey = "xxx" || cleanKey.Length < 10 then
+                    match model.Settings.ApiKey with
+                    | Some key when not (String.IsNullOrWhiteSpace(key)) ->
+                        let cleanKey = key.Trim().Trim('"', '\'')
+                        if cleanKey = "xxx" || cleanKey.Length < 10 then
+                            {
+                                model with
+                                    IsScanning = false
+                                    HasScanned = true
+                                    ScannedVideoCount = totalCount
+                                    Candidates = initialProposals
+                                    ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定またはプレースホルダー ('xxx') のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。AI自動命名を利用する場合は appsettings.json の apiKey に 'sk-or-v1-...' から始まる有効なキーを設定してください。"
+                            }, Cmd.none
+                        else
+                            // 先行CTSがあれば破棄
+                            model.AiCancellationCts |> Option.iter (fun cts ->
+                                try
+                                    if not cts.IsCancellationRequested then
+                                        cts.Cancel()
+                                    cts.Dispose()
+                                with _ -> ()
+                            )
+                            let cts = new System.Threading.CancellationTokenSource()
+                            let pipelineCmd = createAsyncPipelineCmd cleanKey model.Settings.SelectedModel selectedRule sortedCandidates cts.Token
+
+                            {
+                                model with
+                                    IsScanning = false
+                                    HasScanned = true
+                                    ScannedVideoCount = totalCount
+                                    IsRequestingAi = true
+                                    Candidates = initialProposals
+                                    ErrorMessage = None
+                                    AiCancellationCts = Some cts
+                            }, pipelineCmd
+                    | _ ->
                         {
                             model with
                                 IsScanning = false
+                                HasScanned = true
+                                ScannedVideoCount = totalCount
                                 Candidates = initialProposals
-                                ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定またはプレースホルダー ('xxx') のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。AI自動命名を利用する場合は appsettings.json の apiKey に 'sk-or-v1-...' から始まる有効なキーを設定してください。"
+                                ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定のため、AI提案はスキップされました（手動編集・リネームは可能です）。設定ファイルで apiKey を指定してください。"
                         }, Cmd.none
-                    else
-                        // 先行CTSがあれば破棄
-                        model.AiCancellationCts |> Option.iter (fun cts ->
-                            try
-                                if not cts.IsCancellationRequested then
-                                    cts.Cancel()
-                                cts.Dispose()
-                            with _ -> ()
-                        )
-                        let newCts = new System.Threading.CancellationTokenSource()
-                        let aiCmd =
-                            createAsyncPipelineCmd
-                                cleanKey
-                                model.Settings.SelectedModel
-                                selectedRule
-                                sortedCandidates
-                                newCts.Token
+            updatedModel, cmd
 
-                        {
-                            model with
-                                IsScanning = false
-                                IsRequestingAi = true
-                                Candidates = initialProposals
-                                AiCancellationCts = Some newCts
-                        }, aiCmd
-                | _ ->
-                    // APIキー未設定時はAIのフリをせず、未提案状態としてユーザーに設定を案内
-                    {
-                        model with
-                            IsScanning = false
-                            Candidates = initialProposals
-                            ErrorMessage = Some "⚠️ OpenRouter APIキーが未設定のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。AI自動命名を利用する場合は appsettings.json の apiKey に 'sk-or-v1-...' から始まる有効なキーを設定してください。"
-                    }, Cmd.none
-
-        | ScanCompleted (Error (IoError (msg, _))) ->
-            { model with IsScanning = false; ErrorMessage = Some msg }, Cmd.none
-        | ScanCompleted (Error other) ->
-            { model with IsScanning = false; ErrorMessage = Some ($"走査失敗: {other}") }, Cmd.none
+        | ScanCompleted (Error err) ->
+            let updatedModel =
+                { model with
+                    IsScanning = false
+                    HasScanned = true
+                    ErrorMessage = Some (RenamerError.toMessage err) }
+            updatedModel, Cmd.none
 
         | CandidateAiProcessing fullPath ->
             let updatedCandidates =
@@ -430,6 +464,43 @@ module State =
                     Candidates = cancelledCandidates
                     AiCancellationCts = None
             }, Cmd.none
+
+        | RetryCandidateAiProposal targetPath ->
+            match model.Settings.ApiKey with
+            | Some key when not (String.IsNullOrWhiteSpace(key)) ->
+                let cleanKey = key.Trim().Trim('"', '\'')
+                let selectedRule =
+                    model.Settings.Rules
+                    |> List.tryFind (fun r -> r.Id = model.SelectedRuleId)
+                    |> Option.defaultValue (List.head model.Settings.Rules)
+                let targetCandidate =
+                    model.Candidates
+                    |> List.tryFind (fun c -> c.OriginalFullPath = targetPath)
+                match targetCandidate with
+                | Some cand ->
+                    let updatedCandidates =
+                        model.Candidates
+                        |> List.map (fun c ->
+                            if c.OriginalFullPath = targetPath then
+                                { c with IsAiProcessing = true; AiError = None }
+                            else c
+                        )
+                    let scanCand: ScanCandidate = {
+                        FullPath = cand.OriginalFullPath
+                        FileName = cand.OriginalFileName
+                        DirectoryPath = cand.DirectoryPath
+                        PathLength = cand.OriginalLength
+                        FileNameBytes = cand.OriginalFileNameBytes
+                        Violation = cand.OriginalViolation
+                        FileSizeBytes = 0L
+                        LastWriteTime = cand.LastWriteTime
+                    }
+                    let cts = new System.Threading.CancellationTokenSource()
+                    let singleCmd = createAsyncPipelineCmd cleanKey model.Settings.SelectedModel selectedRule [ scanCand ] cts.Token
+                    { model with Candidates = updatedCandidates; IsRequestingAi = true }, singleCmd
+                | None -> model, Cmd.none
+            | _ ->
+                { model with ErrorMessage = Some "OpenRouter APIキーが設定されていません。" }, Cmd.none
 
         | AiProposeCompleted (Ok proposals) ->
             let merged =
@@ -743,7 +814,11 @@ module State =
                         model.Settings.Rules @ [ newRule ]
 
                 let newSettings = { model.Settings with Rules = updatedRules }
-                Settings.save defaultSettingsPath newSettings |> ignore
+                let savePath = Settings.resolveSavePath None
+                let err =
+                    match Settings.save savePath newSettings with
+                    | Ok () -> None
+                    | Error err -> Some $"設定の保存に失敗しました: {RenamerError.toMessage err}"
                 let nextTemplate = {
                     Id = Guid.NewGuid().ToString("N")
                     Name = ""
@@ -756,6 +831,8 @@ module State =
                     Settings = newSettings
                     SelectedRuleId = rule.Id
                     EditingRule = Some nextTemplate
+                    ErrorMessage = err
+                    SettingsSavePath = savePath
                 }, Cmd.none
             | _ ->
                 { model with ErrorMessage = Some "ルール名を入力してください。" }, Cmd.none
@@ -769,8 +846,12 @@ module State =
                 | None ->
                     model.Settings.Rules @ [ { rule with Order = model.Settings.Rules.Length } ]
             let newSettings = { model.Settings with Rules = updatedRules }
-            Settings.save defaultSettingsPath newSettings |> ignore
-            { model with Settings = newSettings }, Cmd.none
+            let savePath = Settings.resolveSavePath None
+            let err =
+                match Settings.save savePath newSettings with
+                | Ok () -> None
+                | Error err -> Some $"設定の保存に失敗しました: {RenamerError.toMessage err}"
+            { model with Settings = newSettings; ErrorMessage = err; SettingsSavePath = savePath }, Cmd.none
 
         | RequestDeleteRule ruleId ->
             if model.Settings.Rules.Length <= 1 then
@@ -795,7 +876,11 @@ module State =
                 |> List.filter (fun r -> r.Id <> ruleId)
                 |> List.mapi (fun idx r -> { r with Order = idx })
             let newSettings = { model.Settings with Rules = filteredRules }
-            Settings.save defaultSettingsPath newSettings |> ignore
+            let savePath = Settings.resolveSavePath None
+            let err =
+                match Settings.save savePath newSettings with
+                | Ok () -> None
+                | Error err -> Some $"設定の保存に失敗しました: {RenamerError.toMessage err}"
             let updatedEditing =
                 match model.EditingRule with
                 | Some r when r.Id = ruleId ->
@@ -808,7 +893,7 @@ module State =
                         EnableWebSearch = true
                     }
                 | other -> other
-            { model with Settings = newSettings; ConfirmDialog = None; EditingRule = updatedEditing }, Cmd.none
+            { model with Settings = newSettings; ConfirmDialog = None; EditingRule = updatedEditing; ErrorMessage = err; SettingsSavePath = savePath }, Cmd.none
 
         | MoveRuleOrder (ruleId, direction) ->
             let rules = model.Settings.Rules
@@ -822,8 +907,12 @@ module State =
                 arr.[targetIdx] <- temp
                 let reordered = arr |> Array.mapi (fun i r -> { r with Order = i }) |> Array.toList
                 let newSettings = { model.Settings with Rules = reordered }
-                Settings.save defaultSettingsPath newSettings |> ignore
-                { model with Settings = newSettings }, Cmd.none
+                let savePath = Settings.resolveSavePath None
+                let err =
+                    match Settings.save savePath newSettings with
+                    | Ok () -> None
+                    | Error err -> Some $"設定の保存に失敗しました: {RenamerError.toMessage err}"
+                { model with Settings = newSettings; ErrorMessage = err; SettingsSavePath = savePath }, Cmd.none
             | _ ->
                 model, Cmd.none
 
