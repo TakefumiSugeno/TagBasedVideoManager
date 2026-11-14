@@ -1,6 +1,7 @@
 namespace TagBasedVideoManager.Renamer.Tests
 
 open System
+open System.IO
 open Xunit
 open FsUnit
 open TagBasedVideoManager.Renamer
@@ -1025,6 +1026,320 @@ module StateTests =
         filterModel.ActiveEnvironment |> should equal initialModel.ActiveEnvironment
         filterModel.SettingsSavePath |> should equal initialModel.SettingsSavePath
         filterModel.Candidates.Head.AiError |> should equal (Some "AI提案失敗: HTTP 500 Internal Server Error")
+
+    [<Fact>]
+    let ``ScanCompleted は有効 APIKey かつ未完了 CTS がある場合に先行 CTS をキャンセルし新 CTS と AI リクエスト状態を設定する`` () =
+        let initialModel, _ = State.init ()
+        let oldCts = new System.Threading.CancellationTokenSource()
+        let scanCand: ScanCandidate = {
+            FullPath = "C:\\Videos\\test_candidate.mp4"
+            FileName = "test_candidate.mp4"
+            DirectoryPath = "C:\\Videos"
+            PathLength = 250
+            FileNameBytes = 18
+            Violation = WindowsPathOnly
+            FileSizeBytes = 1024L
+            LastWriteTime = DateTime.UtcNow
+        }
+        let model = {
+            initialModel with
+                Settings = { initialModel.Settings with ApiKey = Some "sk-or-v1-valid-dummy-key-1234567890" }
+                AiCancellationCts = Some oldCts
+                IsScanning = true
+        }
+
+        let newModel, _ = State.update (ScanCompleted (Ok [ scanCand ])) model
+
+        try
+            // 先行 CTS がキャンセルされていること
+            oldCts.IsCancellationRequested |> should equal true
+            newModel.IsScanning |> should equal false
+            newModel.HasScanned |> should equal true
+            newModel.ScannedVideoCount |> should equal 1
+            newModel.IsRequestingAi |> should equal true
+            newModel.AiCancellationCts.IsSome |> should equal true
+        finally
+            newModel.AiCancellationCts |> Option.iter (fun cts -> cts.Dispose())
+            oldCts.Dispose()
+
+    [<Fact>]
+    let ``RetryCandidateAiProposal は有効キーと対象候補がある場合に該当候補のみ IsAiProcessing を true にし AiError をクリアする`` () =
+        let initialModel, _ = State.init ()
+        let targetPath = "C:\\Videos\\target_video.mp4"
+        let cand1: RenameProposal = {
+            OriginalFullPath = targetPath
+            OriginalFileName = "target_video.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 250
+            OriginalFileNameBytes = 16
+            OriginalViolation = WindowsPathOnly
+            ProposedFileName = "target_video.mp4"
+            ProposedLength = 250
+            ProposedFileNameBytes = 16
+            AiComment = Some "エラー発生"
+            IsAiProposed = false
+            IsAiProcessing = false
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            AiError = Some "HTTP 429 レートリミット超過"
+        }
+        let otherCand: RenameProposal = {
+            cand1 with
+                OriginalFullPath = "C:\\Videos\\other.mp4"
+                OriginalFileName = "other.mp4"
+                AiError = Some "他候補のエラー"
+        }
+        let model = {
+            initialModel with
+                Settings = { initialModel.Settings with ApiKey = Some "sk-or-v1-valid-dummy-key-1234567890" }
+                Candidates = [ cand1; otherCand ]
+                IsRequestingAi = false
+        }
+
+        let newModel, _ = State.update (RetryCandidateAiProposal targetPath) model
+        newModel.IsRequestingAi |> should equal true
+        let updatedTarget = newModel.Candidates |> List.find (fun c -> c.OriginalFullPath = targetPath)
+        updatedTarget.IsAiProcessing |> should equal true
+        updatedTarget.AiError |> should equal None
+
+        let unaffectedOther = newModel.Candidates |> List.find (fun c -> c.OriginalFullPath = "C:\\Videos\\other.mp4")
+        unaffectedOther.IsAiProcessing |> should equal false
+        unaffectedOther.AiError |> should equal (Some "他候補のエラー")
+
+    [<Fact>]
+    let ``RetryCandidateAiProposal は存在しないパス指定時にモデル状態を変更しない`` () =
+        let initialModel, _ = State.init ()
+        let cand: RenameProposal = {
+            OriginalFullPath = "C:\\Videos\\existing.mp4"
+            OriginalFileName = "existing.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 250
+            OriginalFileNameBytes = 12
+            OriginalViolation = WindowsPathOnly
+            ProposedFileName = "existing.mp4"
+            ProposedLength = 250
+            ProposedFileNameBytes = 12
+            AiComment = None
+            IsAiProposed = false
+            IsAiProcessing = false
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            AiError = None
+        }
+        let model = {
+            initialModel with
+                Settings = { initialModel.Settings with ApiKey = Some "sk-or-v1-valid-dummy-key-1234567890" }
+                Candidates = [ cand ]
+        }
+
+        let newModel, _ = State.update (RetryCandidateAiProposal "C:\\Videos\\non_existing.mp4") model
+        newModel.Candidates |> should equal model.Candidates
+        newModel.IsRequestingAi |> should equal model.IsRequestingAi
+
+    [<Fact>]
+    let ``RetryCandidateAiProposal は APIKey 未設定時にエラーメッセージを設定し処理を開始しない`` () =
+        let initialModel, _ = State.init ()
+        let cand: RenameProposal = {
+            OriginalFullPath = "C:\\Videos\\existing.mp4"
+            OriginalFileName = "existing.mp4"
+            DirectoryPath = "C:\\Videos"
+            OriginalLength = 250
+            OriginalFileNameBytes = 12
+            OriginalViolation = WindowsPathOnly
+            ProposedFileName = "existing.mp4"
+            ProposedLength = 250
+            ProposedFileNameBytes = 12
+            AiComment = None
+            IsAiProposed = false
+            IsAiProcessing = false
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            AiError = Some "エラー"
+        }
+        let model = {
+            initialModel with
+                Settings = { initialModel.Settings with ApiKey = None }
+                Candidates = [ cand ]
+                IsRequestingAi = false
+        }
+
+        let newModel, _ = State.update (RetryCandidateAiProposal "C:\\Videos\\existing.mp4") model
+        newModel.ErrorMessage |> should equal (Some "OpenRouter APIキーが設定されていません。")
+        newModel.IsRequestingAi |> should equal false
+        newModel.Candidates.Head.IsAiProcessing |> should equal false
+
+    [<Fact>]
+    let ``ScanCompleted (Ok []) は危険な長パス超過候補が0件の場合にHasScannedをtrueにしメッセージを設定する`` () =
+        let initialModel, _ = State.init ()
+        let model = { initialModel with IsScanning = true; ScannedVideoCount = 5 }
+        let newModel, cmd = State.update (ScanCompleted (Ok [])) model
+        newModel.IsScanning |> should equal false
+        newModel.HasScanned |> should equal true
+        newModel.ScannedVideoCount |> should equal 0
+        newModel.ErrorMessage |> should equal (Some "閾値以上の危険な長パス動画ファイルは見つかりませんでした。")
+        newModel.Candidates.IsEmpty |> should equal true
+
+    [<Fact>]
+    let ``ExecuteScanAndPropose は未キャンセルCTSがある場合に先行CTSをキャンセル・破棄してIsScanningをtrueにする`` () =
+        let initialModel, _ = State.init ()
+        let oldCts = new System.Threading.CancellationTokenSource()
+        let model = {
+            initialModel with
+                Settings = { initialModel.Settings with TargetDirectory = "C:\\Videos" }
+                AiCancellationCts = Some oldCts
+                IsScanning = false
+        }
+        try
+            let newModel, _ = State.update ExecuteScanAndPropose model
+            oldCts.IsCancellationRequested |> should equal true
+            newModel.IsScanning |> should equal true
+            newModel.ErrorMessage |> should equal None
+            newModel.Candidates.IsEmpty |> should equal true
+            newModel.AiCancellationCts |> should equal None
+        finally
+            oldCts.Dispose()
+
+    [<Fact>]
+    let ``State.update の各種メッセージ遷移（SettingsLoadedエラー、Dismiss系、ルールのCRUD・順序入替）が正常に処理される`` () =
+        let envName = Settings.resolveEnvironmentName ()
+        let appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TagBasedVideoManager")
+        let appDataEnv = Path.Combine(appDataDir, $"appsettings.{envName}.json")
+        let appDataBase = Path.Combine(appDataDir, "appsettings.json")
+        let binEnv = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"appsettings.{envName}.json")
+
+        let backup (file: string) : string option =
+            if File.Exists(file) then Some (File.ReadAllText(file)) else None
+        let restore (file: string) (backupOpt: string option) : unit =
+            try
+                match backupOpt with
+                | Some (content: string) -> File.WriteAllText(file, content)
+                | None -> if File.Exists(file) then File.Delete(file)
+            with _ -> ()
+
+        let bAppDataEnv = backup appDataEnv
+        let bAppDataBase = backup appDataBase
+        let bBinEnv = backup binEnv
+
+        try
+            let initialModel, _ = State.init ()
+
+            // 1. SettingsLoaded (Error _)
+            let mSettingsErr, _ = State.update (SettingsLoaded (Error (SettingsError "不正な設定"))) initialModel
+            mSettingsErr.Settings |> should equal initialModel.Settings
+
+            // 2. DismissError
+            let mWithError = { initialModel with ErrorMessage = Some "通知メッセージ" }
+            let mDismissErr, _ = State.update DismissError mWithError
+            mDismissErr.ErrorMessage |> should equal None
+
+            // 3. DismissConfirm
+            let dialog: DialogConfig = {
+                Title = "確認"
+                Message = "本当に実行しますか？"
+                ConfirmText = "OK"
+                CancelText = "Cancel"
+                OnConfirm = DismissError
+            }
+            let mWithDialog = { initialModel with ConfirmDialog = Some dialog }
+            let mDismissConfirm, _ = State.update DismissConfirm mWithDialog
+            mDismissConfirm.ConfirmDialog |> should equal None
+
+            // 4. RequestDeleteRule (残り1件の時は削除不可エラー)
+            let singleRule: NamingRule = {
+                Id = "single-rule"
+                Name = "単一ルール"
+                Pattern = "{Title}.mp4"
+                PromptInstruction = "短縮"
+                Order = 0
+                EnableWebSearch = false
+            }
+            let mSingleRule = { initialModel with Settings = { initialModel.Settings with Rules = [ singleRule ] } }
+            let mReqDelSingle, _ = State.update (RequestDeleteRule "single-rule") mSingleRule
+            mReqDelSingle.ErrorMessage |> should equal (Some "最後の1件の命名規則は削除できません。")
+            mReqDelSingle.ConfirmDialog |> should equal None
+
+            // 5. RequestDeleteRule (複数件ある時は確認ダイアログ表示) & DeleteRule
+            let rule1: NamingRule = {
+                Id = "rule-1"
+                Name = "ルール1"
+                Pattern = "{Title}_1.mp4"
+                PromptInstruction = "指示1"
+                Order = 0
+                EnableWebSearch = false
+            }
+            let rule2: NamingRule = {
+                Id = "rule-2"
+                Name = "ルール2"
+                Pattern = "{Title}_2.mp4"
+                PromptInstruction = "指示2"
+                Order = 1
+                EnableWebSearch = true
+            }
+            let mMultiRule = { initialModel with Settings = { initialModel.Settings with Rules = [ rule1; rule2 ] } }
+            let mReqDelMulti, _ = State.update (RequestDeleteRule "rule-1") mMultiRule
+            mReqDelMulti.ConfirmDialog.IsSome |> should equal true
+            mReqDelMulti.ConfirmDialog.Value.Title |> should contain "削除"
+
+            // DeleteRule で削除実行
+            let mDeleted, _ = State.update (DeleteRule "rule-1") mReqDelMulti
+            mDeleted.Settings.Rules.Length |> should equal 1
+            mDeleted.Settings.Rules.Head.Id |> should equal "rule-2"
+            mDeleted.ConfirmDialog |> should equal None
+
+            // 6. SaveRule (既存更新 & 新規追加)
+            let updatedRule2 = { rule2 with Name = "更新ルール2" }
+            let mUpdatedRule, _ = State.update (SaveRule updatedRule2) mDeleted
+            mUpdatedRule.Settings.Rules.Head.Name |> should equal "更新ルール2"
+
+            let newRule3: NamingRule = {
+                Id = "rule-3"
+                Name = "ルール3"
+                Pattern = "{Title}_3.mp4"
+                PromptInstruction = "指示3"
+                Order = 1
+                EnableWebSearch = false
+            }
+            let mAddedRule, _ = State.update (SaveRule newRule3) mUpdatedRule
+            mAddedRule.Settings.Rules.Length |> should equal 2
+
+            // 7. MoveRuleOrder (順序入替)
+            // 現在: rule-2 (Order 0), rule-3 (Order 1)
+            // rule-3 を上へ移動 (-1)
+            let mMovedUp, _ = State.update (MoveRuleOrder ("rule-3", -1)) mAddedRule
+            mMovedUp.Settings.Rules.Head.Id |> should equal "rule-3"
+
+            // 先頭 (rule-3) をさらに上へ移動 (-1) -> 境界チェックにより状態不変
+            let mTopBound, _ = State.update (MoveRuleOrder ("rule-3", -1)) mMovedUp
+            mTopBound.Settings.Rules |> should equal mMovedUp.Settings.Rules
+
+            // 末尾 (rule-2) をさらに下へ移動 (+1) -> 境界チェックにより状態不変
+            let mBottomBound, _ = State.update (MoveRuleOrder ("rule-2", 1)) mMovedUp
+            mBottomBound.Settings.Rules |> should equal mMovedUp.Settings.Rules
+        finally
+            restore appDataEnv bAppDataEnv
+            restore appDataBase bAppDataBase
+            restore binEnv bBinEnv
+
+    [<Fact>]
+    let ``State.update は IsScanning または IsRenaming 中に入力割り込みメッセージを無視し状態を変更しない`` () =
+        let initialModel, _ = State.init ()
+        let busyScanningModel = { initialModel with IsScanning = true; IsRenaming = false }
+        let busyRenamingModel = { initialModel with IsScanning = false; IsRenaming = true }
+
+        let testMessages: Msg list = [
+            TargetDirectoryChanged "C:\\NewDir"
+            ThresholdChanged 180
+            RuleSelected "rule-other"
+            ModelSelected "model-other"
+            ToggleFilterNonJapaneseOnly true
+            SetConstraintFilter FilterLinuxOnly
+        ]
+
+        for busyModel in [ busyScanningModel; busyRenamingModel ] do
+            for msg in testMessages do
+                let updatedModel, cmd = State.update msg busyModel
+                updatedModel |> should equal busyModel
+                cmd.IsEmpty |> should equal true
 
 
 

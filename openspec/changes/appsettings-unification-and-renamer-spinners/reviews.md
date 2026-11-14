@@ -136,3 +136,33 @@
 - **保留申し送り（Minor 1件）**: プロセス環境変数変更テスト（`SettingsTests.fs`, `ProgramTests.fs`）の将来的な並列化時の干渉リスク。現状 `try ... finally` 復元＋逐次実行で全 553 件 Pass のため問題なし。
 - **LGTM**: true（Critical: 0, Major: 0, Minor: 1 [保留], Suggestion: 0）
 - **承認者**: QA Reviewer Agent
+
+---
+
+## レビュー記録: appsettings-unification-and-renamer-spinners / apply / Cycle 3（カバレッジ達成・増分レビュー）
+
+- **日時**: 2026-11-15
+- **フェーズ**: apply（Cycle 3）
+
+### 1. 実施したカバレッジ改善対応
+
+1. `src/TagBasedVideoManager/Program.fs`: 重複していた `IConfiguration` / OS 環境変数の設定解決を `Program.resolveConfigValue` へ集約し、`StartupSettings` レコードと `Program.resolveStartupSettings` 純粋関数を抽出。
+2. `src/TagBasedVideoManager.Renamer/State.fs`: 5 ハンドラ（`ModelSelected`, `SaveEditingRule`, `SaveRule`, `DeleteRule`, `MoveRuleOrder`）に重複していた設定保存・パス解決・エラー通知ロジックを `private saveSettingsWithFeedback` へ集約。
+3. テスト追加（`ProgramTests.fs`, `HttpHandlersTests.fs`, `SettingsTests.fs`, `StateTests.fs`, `RenameIntegrationE2ETests.fs`）: `resolveConfigValue` / `resolveStartupSettings` / `ensureParentDirectoryCreated` 全分岐、`triggerScan` フォールバック、`RenamerError.toMessage` 全 7 種・`configNameOpt` サニタイズ、`State.update` 排他ガード・ルール操作各 Msg、`SpinnerControl` CLR プロパティ・計測、待機中非選択カード（縦横）・走査 0 件 / フィルタ 0 件 Empty State 実画面 PNG 検証を追加。
+4. 最終計測エビデンス（`test/TestResults/TestRun_2026-11-15_01_56_12`）:
+   - **テスト実行結果**: 合計 **578 件合格**（`TagBasedVideoManager.Renamer.Tests`: 377/377、`TagBasedVideoManager.Tests`: 201/201、失敗 0、スキップ 0）
+   - **全体 Line C0 カバレッジ**: **86.4%**（`5741 / 6637`、基準 80%+ 達成）
+   - **差分 Line C0 カバレッジ**: **96.0%**（`1028 / 1071`、基準 90%+ 達成）
+   - **差分 Branch C1 カバレッジ**: **86.4%**（`375 / 434`、基準 85%+ 達成）
+
+### 2. PG Reviewer（Cycle 3 増分レビュー）
+
+- `Program.resolveConfigValue` / `resolveStartupSettings` および `State.saveSettingsWithFeedback` について、暗黙の仮定・例外握りつぶしがなく、YAGNI 原則に適合した 30% 以上の重複削減とテスト容易性向上が達成されていることを確認。
+- **LGTM**: true（Critical: 0, Major: 0, Minor: 0, Suggestion: 0）
+- **承認者**: PG Reviewer Agent
+
+### 3. QA Reviewer（Cycle 3 増分レビュー）
+
+- 追加テスト群（`ProgramTests.fs`, `HttpHandlersTests.fs`, `SettingsTests.fs`, `StateTests.fs`, `RenameIntegrationE2ETests.fs`）にトートロジー・甘いアサーション・フレーキー要因・副作用漏れ（環境変数および `%APPDATA%` 設定ファイルの事前退避・復元を含む）が存在せず、ミューテーション耐性および実画面レンダリング検証が満たされていることを確認。
+- **LGTM**: true（Critical: 0, Major: 0, Minor: 0, Suggestion: 0）
+- **承認者**: QA Reviewer Agent

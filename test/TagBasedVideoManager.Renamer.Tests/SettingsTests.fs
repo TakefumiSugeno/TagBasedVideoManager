@@ -190,6 +190,7 @@ module SettingsTests =
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
+
     [<Fact>]
     let ``loadConfiguration は外部ファイルの命名規則リストを保持し、先頭ルールを既定とする`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerRulesTest_" + Guid.NewGuid().ToString("N"))
@@ -226,6 +227,7 @@ module SettingsTests =
             loaded.Rules.Head.Name |> should equal "外部定義カスタムルール"
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
 
     [<Fact>]
     let ``UT-02: resolveSavePath はアクティブ環境名に応じた appsettings.{Environment}.json を返しベース appsettings.json を上書きしない`` () =
@@ -469,6 +471,7 @@ module SettingsTests =
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
+
     [<Fact>]
     let ``loadConfigurationWithConfig は Production 環境時に appsettings.Production.json で appsettings.json をオーバーライドマージする`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerProdMergeTest_" + Guid.NewGuid().ToString("N"))
@@ -507,6 +510,7 @@ module SettingsTests =
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
+
     [<Fact>]
     let ``loadConfigurationWithConfig は 環境別ファイル不在時に appsettings.json へ安全にフォールバックする`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerFallbackConfigTest_" + Guid.NewGuid().ToString("N"))
@@ -539,6 +543,7 @@ module SettingsTests =
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
+
     [<Fact>]
     let ``loadConfigurationWithConfig は明示指定パス (jsonPathOpt) を構成別設定よりも最優先する`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerExplicitPathTest_" + Guid.NewGuid().ToString("N"))
@@ -569,6 +574,7 @@ module SettingsTests =
             loaded.SelectedModel |> should equal "model-explicit"
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
 
     [<Fact>]
     let ``UT-01: loadConfigurationWithConfig は構成別設定と .env の併存時でも .env から未定義項目を補完しない`` () =
@@ -609,6 +615,7 @@ module SettingsTests =
             loaded.PathLengthThreshold |> should equal 200
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
 
     [<Fact>]
     let ``resolveEnvironmentName は環境変数を最優先し未設定時はコンパイル構成にフォールバックする`` () =
@@ -695,6 +702,7 @@ module SettingsTests =
             loaded.Rules |> should be Empty
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
 
     [<Fact>]
     let ``UT-06: resolveEnvironmentName は不正な環境名（空文字・パストラバーサル ../evil）をサニタイズして安全にフォールバックする`` () =
@@ -809,6 +817,7 @@ module SettingsTests =
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
+
     [<Fact>]
     let ``IT-02: ReadOnly 基底ディレクトリ時の %APPDATA% 環境別保存と再読込整合`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerReadOnly_" + Guid.NewGuid().ToString("N"))
@@ -869,6 +878,136 @@ module SettingsTests =
                 elif File.Exists(targetFile) then
                     File.Delete(targetFile)
             with _ -> ()
+
+    [<Fact>]
+    let ``RenamerError.toMessage は全 7 種のエラーケースで適切なユーザー向けメッセージを生成する`` () =
+        // 1. IoError
+        let ex = exn "ディスク書き込み制限"
+        RenamerError.toMessage (IoError ("ファイル書き込みに失敗しました", Some ex))
+        |> should equal "ファイル書き込みに失敗しました"
+
+        // 2. SettingsError
+        RenamerError.toMessage (SettingsError "設定JSONの構文解析エラー")
+        |> should equal "設定JSONの構文解析エラー"
+
+        // 3. OpenRouterError
+        RenamerError.toMessage (OpenRouterError (429, "Rate limit exceeded"))
+        |> should equal "OpenRouter エラー (429): Rate limit exceeded"
+
+        // 4. ContainerError
+        RenamerError.toMessage (ContainerError ("docker ps", 1, "Cannot connect to Docker daemon"))
+        |> should equal "コンテナ コマンド 'docker ps' 失敗 (終了コード 1): Cannot connect to Docker daemon"
+
+        // 5. TimeoutError
+        RenamerError.toMessage (TimeoutError "docker-compose up")
+        |> should equal "コンテナ コマンド 'docker-compose up' がタイムアウトしました。"
+
+        // 6. ValidationError
+        RenamerError.toMessage (ValidationError "パス長が閾値を超過しています")
+        |> should equal "パス長が閾値を超過しています"
+
+        // 7. UndoConflictError
+        RenamerError.toMessage (UndoConflictError ("C:\\videos\\sample.mp4", "同名ファイルが既に存在します"))
+        |> should equal "Undo 衝突エラー (C:\\videos\\sample.mp4): 同名ファイルが既に存在します"
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は jsonPathOpt に不正JSON指定時は既定値へフォールバックし正常JSON時はそれを採用する`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerJsonFallback_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let brokenPath = Path.Combine(tempDir, "broken.json")
+        let validPath = Path.Combine(tempDir, "valid.json")
+        File.WriteAllText(brokenPath, "{ invalid json content ...")
+        File.WriteAllText(validPath, """{ "targetDirectory": "C:\\ExplicitValidDir", "pathLengthThreshold": 210 }""")
+
+        try
+            // 不正 JSON の場合は baseSettings（既定値）へフォールバック
+            let fallbackSettings = Settings.loadConfigurationWithConfig (Some "Development") (Some brokenPath) None
+            let defaults = Settings.defaultSettings ()
+            fallbackSettings.TargetDirectory |> should equal defaults.TargetDirectory
+            fallbackSettings.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+
+            // 正常 JSON の場合はその内容を最優先採用
+            let validSettings = Settings.loadConfigurationWithConfig (Some "Development") (Some validPath) None
+            validSettings.TargetDirectory |> should equal "C:\\ExplicitValidDir"
+            validSettings.PathLengthThreshold |> should equal 210
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig はディレクトリ内 appsettings.{env}.json に構文エラーがあってもクラッシュせずフォールバックする`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerEnvSyntaxError_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let basePath = Path.Combine(tempDir, "appsettings.json")
+        let brokenEnvPath = Path.Combine(tempDir, "appsettings.BrokenEnv.json")
+        let dummyEnv = Path.Combine(tempDir, ".env")
+
+        File.WriteAllText(basePath, """{ "pathLengthThreshold": 222, "selectedModel": "base-model" }""")
+        File.WriteAllText(brokenEnvPath, "{ broken json syntax !!!")
+        File.WriteAllText(dummyEnv, "# dummy")
+
+        try
+            // BrokenEnv 環境下の設定読み込みで構文エラーがあっても例外終了せず、basePath の設定を採用
+            let loaded = Settings.loadConfigurationWithConfig (Some "BrokenEnv") None (Some dummyEnv)
+            loaded.PathLengthThreshold |> should equal 222
+            loaded.SelectedModel |> should equal "base-model"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は configNameOpt に不正文字が含まれる場合に resolveEnvironmentName へ安全フォールバックする`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerSanitizeEnv_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let dummyEnv = Path.Combine(tempDir, ".env")
+        File.WriteAllText(dummyEnv, "# dummy")
+
+        try
+            // 不正ファイル名文字（* : ? " < > | 等）を含む環境名
+            let loaded = Settings.loadConfigurationWithConfig (Some "env*with:bad?chars") None (Some dummyEnv)
+            let defaults = Settings.defaultSettings ()
+            // クラッシュせず正常に設定がロードされること
+            loaded.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``save は保存先パスが既存ディレクトリなどの書き込み不能パスの場合に Error IoError を返す`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerSaveErrorTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        try
+            // tempDir は既存ディレクトリであるため、ここにファイルを保存しようとすると File.Move 等でエラー
+            let settings = Settings.defaultSettings ()
+            let result = Settings.save tempDir settings
+            match result with
+            | Error (IoError (msg, Some _)) ->
+                msg |> should contain "設定ファイルの保存中にエラーが発生しました"
+            | Error other -> failwith $"予期しないエラー型: {other}"
+            | Ok () -> failwith "既存ディレクトリへの保存で成功してはいけません"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は空白環境名・パストラバーサル文字列・不在ディレクトリ指定時に安全フォールバックする`` () =
+        let defaults = Settings.defaultSettings ()
+
+        // 1. configNameOpt = Some "   " (空白文字のみ) -> 既定環境名へフォールバック
+        let loadedWhitespace = Settings.loadConfigurationWithConfig (Some "   ") None None
+        loadedWhitespace.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+
+        // 2. configNameOpt = Some "bad\\sub" (バックスラッシュ含む) -> サニタイズされ既定環境名へフォールバック
+        let loadedBackslash = Settings.loadConfigurationWithConfig (Some "bad\\sub") None None
+        loadedBackslash.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+
+        // 3. configNameOpt = Some "bad/../env" (スラッシュ・親ディレクトリトラバーサル含む) -> サニタイズされ既定環境名へフォールバック
+        let loadedTraversal = Settings.loadConfigurationWithConfig (Some "bad/../env") None None
+        loadedTraversal.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+
+        // 4. envPathOpt = Some nonexistentPath (存在しないディレクトリ) -> 例外なくベース設定を返す
+        let nonExistentEnv = Path.Combine(Path.GetTempPath(), "nonexistent_dir_" + Guid.NewGuid().ToString("N"), ".env")
+        let loadedNonExistent = Settings.loadConfigurationWithConfig (Some "Development") None (Some nonExistentEnv)
+        loadedNonExistent.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+
 
 
 
