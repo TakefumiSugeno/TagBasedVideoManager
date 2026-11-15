@@ -204,39 +204,42 @@
 - **WHEN** 長大なファイル名および短縮バッジを上下並びカードで表示したとき
 - **THEN** カードの青い外枠（Border）の右端が切れることなく完全に閉じて描画され、短縮バッジ内の数字と「字」「短縮」の文字が上下にズレることなく同一ベースライン・高さで整然と描画されること
 
-### Requirement: .NET標準外部設定ファイル（appsettings.json / .env）からの各種設定値取得と既定命名規則および格納先パス
+### Requirement: .NET標準外部設定ファイル（appsettings.json / appsettings.{Environment}.json）からの設定取得と環境別ファイルへの保存
 
-システムは、.NETにおける標準構成思想に基づき、ベース設定ファイルである `appsettings.json` および環境別設定ファイル（`appsettings.{Environment}.json`：`appsettings.Development.json` や `appsettings.Production.json` 等）、ならびに環境設定ファイル（`.env`）から各種設定値（`OPENROUTER_API_KEY`, `VIDEO_DIR`, `PATH_LENGTH_THRESHOLD`, `SelectedModel`, `Rules`）を自動取得・統合マージしなければならない（SHALL）。環境名（`Environment`）は、OS環境変数（`DOTNET_ENVIRONMENT` または `ASPNETCORE_ENVIRONMENT`）が設定されている場合はそれを最優先とし、未設定の場合はコンパイル時ビルド構成（Debug構成時は `Development`、Release構成時は `Production`）に自動解決しなければならない（SHALL）。設定値の読み込みは、まず `appsettings.json` をロードした上で、該当環境の `appsettings.{Environment}.json` が存在する場合に各設定プロパティ（対象ディレクトリ、モデル、APIキー、閾値、命名規則等）をキー単位でオーバーライドマージしなければならない（SHALL）。環境別ファイルで未定義のキーは `appsettings.json` の値が維持されなければならない（SHALL）。環境別ファイルが存在しない場合は標準の `appsettings.json` のみで正常動作しなければならない（SHALL）。さらに `.env` が存在する場合は指定された項目をオーバーライドしなければならない（SHALL）。設定ファイルの探索・読み込みは、①ユーザー個別設定（`%APPDATA%\TagBasedVideoManager\appsettings.json`）、②作業ディレクトリ（`./` 配下のベースおよび環境別ファイル）、③実行ディレクトリ（`{AppDirectory}` 配下のベースおよび環境別ファイル）、④プロジェクトソースディレクトリ（開発実行時）、⑤`.env`、⑥組み込み既定値の順に優先適用しなければならない（SHALL）。また、GUI等で設定を永続化する際は、実行ディレクトリに既存設定がある場合はそれを更新し、それ以外は `%APPDATA%\TagBasedVideoManager\appsettings.json` へ保存しなければならない（SHALL）。設定ファイルに定義された命名規則リストの先頭ルールを、起動時のデフォルト命名規則として自動適用しなければならない（SHALL）。
+システムは、`.env` ファイルおよび汎用 OS 環境変数（`VIDEO_DIR`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `PATH_LENGTH_THRESHOLD`）を一切参照してはならず（SHALL NOT）、.NET 標準構成思想に基づきベース設定ファイルである `appsettings.json` および環境別設定ファイル（`appsettings.{Environment}.json`：`appsettings.Development.json`、`appsettings.Production.json` 等）のみから各種設定値（`TargetDirectory`, `PathLengthThreshold`, `SelectedModel`, `ApiKey`, `Rules`）を取得・統合マージしなければならない（SHALL）。
+環境名（`Environment`）は、環境変数（`DOTNET_ENVIRONMENT` または `ASPNETCORE_ENVIRONMENT`）が設定されている場合はそれを最優先（パストラバーサル文字や空白のみの値は無効として既定値へフォールバック）とし、未設定の場合はコンパイル時ビルド構成（Debug 構成時は `Development`、Release 構成時は `Production`）に自動解決しなければならない（SHALL）。
+設定値の読み込みは、組み込み既定値を初期値とした上で、ベース探索階層（プロジェクトソースディレクトリ / カレントディレクトリ / 実行ディレクトリ `{AppDirectory}`）の `appsettings.json` および `appsettings.{Environment}.json` をマージし、さらに最優先オーバーライド層としてユーザー個別領域（`%APPDATA%\TagBasedVideoManager\appsettings.json` および `%APPDATA%\TagBasedVideoManager\appsettings.{Environment}.json`）が存在する場合にキー単位でオーバーライドマージしなければならない（SHALL）。環境別ファイルが存在しない場合は `appsettings.json` のみ、ベースも環境別も存在しない場合は組み込み既定値のみで安全に起動しなければならない（SHALL）。
+また、GUI 等で設定を永続化する際は、ベース `appsettings.json` ではなく**現在の実行環境名に対応する `appsettings.{Environment}.json`** へ保存しなければならない（SHALL）。保存先ディレクトリは、プロジェクトルート／実行ディレクトリ等に書込可能かつ既存構成が存在する場合はそのディレクトリの `appsettings.{Environment}.json`（未存在時は新規作成・既存時はキーを保持しつつ更新）、書込権限がない（Read-Only）または配置先不在の場合は `%APPDATA%\TagBasedVideoManager\appsettings.{Environment}.json` へ自動フォールバックしてクラッシュを防止しなければならない（SHALL）。設定ファイルに定義された命名規則リストの先頭ルールを、起動時のデフォルト命名規則として自動適用しなければならない（SHALL）。
 
-#### Scenario: appsettings.json および .env からの設定読み込みと既定ルール適用（OS環境変数の非参照）
+#### Scenario: .env および VIDEO_DIR OS環境変数を参照しない純粋な appsettings マージ読み込み（移行通知付き）
 
-- **WHEN** AppDataまたは実行ディレクトリの `appsettings.json` や `.env` に設定値が記述されている状態でアプリを起動したとき
-- **THEN** .NET標準の探索順序に従って外部設定ファイルの値が優先ロードされ、外部ファイルで定義された先頭の命名規則が起動時のデフォルト命名規則として自動選択されること
+- **WHEN** `.env` ファイルまたは OS 環境変数 `VIDEO_DIR` / `OPENROUTER_API_KEY` が存在する状態で AI File Renamer を起動したとき
+- **THEN** `.env` および OS 環境変数の設定値は無視され、`appsettings.json` と `appsettings.{Environment}.json` のマージ結果のみが適用され、`.env` が検出された場合は廃止・移行を促す診断ログ/案内が出力されること
 
-#### Scenario: 設定変更時の標準格納先への永続化
+#### Scenario: 設定ファイル JSON 構文エラー時の安全な起動と警告通知
 
-- **WHEN** ユーザーが命名規則マネージャー等で設定を変更・保存したとき
-- **THEN** 実行ディレクトリに `appsettings.json` が存在する場合はそこへ、存在しない場合は `%APPDATA%\TagBasedVideoManager\appsettings.json` へ安全に保存されること
+- **WHEN** `appsettings.json` または `appsettings.{Environment}.json` に不正な JSON 構文エラーが含まれる状態で起動したとき
+- **THEN** アプリはクラッシュせず有効な下位設定層または組み込み既定値で安全に起動し、構文エラーが発生したファイルパスとエラー内容を画面バナー・ログへ警告表示すること
 
-#### Scenario: Development環境における appsettings.Development.json によるオーバーライドマージ
+#### Scenario: アクティブ環境の appsettings.{Environment}.json への設定保存（実行ディレクトリ）
 
-- **WHEN** 実行環境が Development（Debugビルド時または環境変数指定時）で実行され、`appsettings.Development.json` が存在するとき
-- **THEN** `appsettings.json` のベース設定が読み込まれた上で、`appsettings.Development.json` に定義された各設定キーがオーバーライドマージされ、未定義キーは `appsettings.json` の値が維持されること
+- **WHEN** 実行環境が `Development` の状態で、書込可能な実行ディレクトリ（またはプロジェクト設定ディレクトリ）をベースに運用しており、ユーザーが設定・命名規則・モデル変更を保存したとき
+- **THEN** `appsettings.json`（ベーステンプレート）は書き換えられず、アクティブ環境に対応する `appsettings.Development.json` に保存・更新されること
 
-#### Scenario: Production環境における appsettings.Production.json によるオーバーライドマージ
+#### Scenario: 書込権限がない環境での %APPDATA% 環境別ファイルへのフォールバック保存と再読込整合
 
-- **WHEN** 実行環境が Production（Releaseビルド時または環境変数指定時）で実行され、`appsettings.Production.json` が存在するとき
-- **THEN** `appsettings.json` のベース設定が読み込まれた上で、`appsettings.Production.json` に定義された各設定キーがオーバーライドマージされ、未定義キーは `appsettings.json` の値が維持されること
+- **WHEN** 実行ディレクトリが読み取り専用またはベース未配置の環境で、実行環境 `Production` としてユーザーが設定を保存したとき
+- **THEN** 例外終了せず `%APPDATA%\TagBasedVideoManager\appsettings.Production.json` に設定が書き込まれ、次回起動時も同ファイルが最優先オーバーライドとして読み込まれること
 
-#### Scenario: 環境別ファイル不在時の appsettings.json 単独動作
+#### Scenario: Development / Production 各環境でのオーバーライドマージと未定義キーのフォールバック
 
-- **WHEN** 該当する環境別設定ファイル（`appsettings.{Environment}.json`）が存在せず、`appsettings.json` のみが存在するとき
-- **THEN** エラーなく `appsettings.json` のベース設定値のみが正常に読み込まれること
+- **WHEN** `Development` または `Production` 環境で対応する `appsettings.{Environment}.json` に一部キーのみ定義されているとき
+- **THEN** 定義されたキーのみが `appsettings.json` をオーバーライドし、未定義キーは `appsettings.json` の値が維持されること
 
-#### Scenario: 環境変数による環境名の明示的切り替え
+#### Scenario: 不正な環境名指定時の安全なフォールバック
 
-- **WHEN** `DOTNET_ENVIRONMENT` または `ASPNETCORE_ENVIRONMENT` に特定の環境名（例: `Production`）が設定されているとき
-- **THEN** ビルド構成に関わらず指定された環境名に対応する `appsettings.{Environment}.json` が優先してマージされること
+- **WHEN** `DOTNET_ENVIRONMENT` に空文字やパストラバーサル文字列（例: `../evil`）が指定されたとき
+- **THEN** 不正なパス結合を行わず、安全なデフォルト環境名（Debug 時は `Development`、Release 時は `Production`）へフォールバックすること
 
 ### Requirement: OpenRouter API連携ステータスの正常化と未接続時の正直な状態管理
 
@@ -274,19 +277,19 @@
 - **WHEN** ユーザーがAFTERのファイル名を入力・編集し、元のファイル名文字数より増加させたとき
 - **THEN** 閾値未満であっても「[安全]」と表示されず、短縮バッジが「+〇字 (増加)」、ステータスが「⚠️ 文字数増加」と赤系で警告表示されること
 
-### Requirement: appsettings.json サンプルのプロジェクト直下配備
+### Requirement: クリーンなベース設定ファイル（appsettings.json）の配備と環境別ファイル不在時の安全なビルド・起動
 
-システムは、`src/TagBasedVideoManager.Renamer/` ディレクトリ直下に標準的なベース設定ファイル `appsettings.json` に加え、環境別設定ファイル（`appsettings.Development.json` および `appsettings.Production.json`）を配備しなければならない（SHALL）。このファイル群には、代表的なフォルダパス、抽出閾値（240）、使用モデル、OpenRouter APIキー設定プレースホルダー、および既定の命名規則リストが正しく記述されなければならない（SHALL）。プロジェクトビルド時、すべての環境設定ファイル（`appsettings*.json`）が出力成果物ディレクトリに自動配置・コピーされなければならない（SHALL）。
+システムは、プロジェクト直下（`src/TagBasedVideoManager.Renamer/appsettings.json`）に個人環境パスや API キー等の秘密情報を含まないクリーンなベーステンプレート `appsettings.json` を配備しなければならない（SHALL）。環境別ファイル（`appsettings.Development.json` / `appsettings.Production.json`）はプロジェクト定義上 `Condition="Exists(...)"` 付きで参照されなければならず（SHALL）、クローン直後や CI 環境など環境別実ファイルが存在しない状態でもビルド（Debug / Release 双方）およびアプリ起動がエラーなく成功しなければならない（SHALL）。
 
-#### Scenario: appsettings.json のサンプル配備と自動読み込み
+#### Scenario: 環境別ファイル不在時のビルドおよび起動成功
 
-- **WHEN** 開発者またはユーザーがプロジェクトを展開したとき
-- **THEN** `src/TagBasedVideoManager.Renamer/` 直下に `appsettings.json`, `appsettings.Development.json`, `appsettings.Production.json` が存在し、実行時にも探索・ロード対象となること
+- **WHEN** `appsettings.Development.json` および `appsettings.Production.json` がローカルに存在せず `appsettings.json` のみが存在する状態で `dotnet build` および起動を実行したとき
+- **THEN** MSBuild エラーやランタイム例外が発生せず、ベース設定 `appsettings.json` で正常に起動すること
 
-#### Scenario: ビルド時の出力ディレクトリへの環境設定ファイル群配置
+#### Scenario: ベース設定ファイルの秘密情報・個人パス非混入
 
-- **WHEN** プロジェクトをビルド（Debug / Release いずれも）したとき
-- **THEN** 出力ディレクトリに `appsettings.json`, `appsettings.Development.json`, `appsettings.Production.json` がすべて配置され、実行時に任意の環境で読み込み可能であること
+- **WHEN** リポジトリに追跡されている `src/TagBasedVideoManager.Renamer/appsettings.json` を検査したとき
+- **THEN** 開発者個人のドライブパスや有効な API キーが含まれておらず、初期テンプレートとして安全な既定値のみが定義されていること
 
 ### Requirement: 設定値AIモデルのドロップダウン最上位配置と初期選択
 
@@ -429,14 +432,19 @@
 - **WHEN** 候補一覧を最下部までスクロールしたとき
 - **THEN** リスト内の最後の候補カードの下端、AI COMMENT枠、およびカード外枠の全体が完全に画面内に表示され、その下に快適な余白（約30px以上）が存在すること
 
-### Requirement: 開発環境設定ファイル（appsettings.Development.json）のGit除外
+### Requirement: 環境別設定ファイル（appsettings.Development.json / appsettings.Production.json）のGit管理完全除外
 
-システムは、ローカル環境固有のAPIキーや環境依存設定を含む `appsettings.Development.json` を `.gitignore` に登録してバージョン管理から除外しなければならない（SHALL）。ベース設定 `appsettings.json` がリポジトリに保持されることで、新規クローン後の初回起動性を損なわないものとする。
+システムは、ローカル環境固有のディレクトリパスや API キーを格納する環境別実ファイル（`appsettings.Development.json` および `appsettings.Production.json`）を `.gitignore`（`**/appsettings.Development.json`, `**/appsettings.Production.json`）へ登録し、Web・デスクトップ両プロジェクトにおいて Git バージョン管理対象から完全に除外しなければならない（SHALL）。また、`.env` や `.env.sample` への依存ファイルはリポジトリに保持してはならない（SHALL NOT）。
 
-#### Scenario: appsettings.Development.json の Git 管理除外
+#### Scenario: appsettings.Development.json / appsettings.Production.json の Git 非追跡
 
-- **WHEN** 開発環境で `appsettings.Development.json` を編集または新規作成したとき
-- **THEN** `git status` において `appsettings.Development.json` が未追跡/変更対象として検出されず、リポジトリに誤コミットされないこと
+- **WHEN** Web または Renamer ディレクトリに `appsettings.Development.json` または `appsettings.Production.json` を作成・編集したとき
+- **THEN** 両ファイルとも Git の追跡対象・未追跡差分（`git status`）に現れず、リポジトリに誤コミットされないこと
+
+#### Scenario: 既存追跡環境ファイルおよび .env.sample のリポジトリ除外確認
+
+- **WHEN** `git ls-files` で追跡中ファイルを検査したとき
+- **THEN** `.env.sample`、`appsettings.Development.json`、および `appsettings.Production.json` のいずれも Git インデックスに登録されていないこと
 
 ### Requirement: 制約違反理由の可視化と表示フィルタ
 
@@ -461,3 +469,51 @@
 
 - **WHEN** 走査対象ディレクトリ内に制限超過ファイルが1件も存在しない、またはフィルタ条件に合致する候補が0件である時
 - **THEN** リスト領域に「対象ファイルはありません。すべてのファイルが安全です」の安心メッセージが表示される
+
+### Requirement: アクティブ構成環境および保存先ファイル名のGUI明示表示
+
+システムは、AI File Renamer のメイン画面（ヘッダーまたはフッター領域）に、現在適用されている実行環境名（例: `DEV` / `PROD`）および設定保存先の環境別ファイル名（例: `appsettings.Development.json` / `appsettings.Production.json`）を視認性の高いバッジとして表示しなければならない（SHALL）。
+
+#### Scenario: 画面上のアクティブ環境バッジ表示
+
+- **WHEN** AI File Renamer を `Development` または `Production` 環境で起動したとき
+- **THEN** メイン画面上に現在の環境名バッジと保存先ファイル名（`appsettings.Development.json` または `appsettings.Production.json`）が表示されること
+
+### Requirement: スキャン・AI提案・リネーム/Undo実行中のローディングスピナーUIと確実な解除および回復導線
+
+システムは、AI File Renamer におけるすべての非同期・時間のかかる処理および Zero-State / Error-State において、Fluent Dark テーマと調和する回転スピナーアニメーションおよび適切な回復導線を表示し、処理完了・キャンセル・エラー終了時にはスピナーを確実に解除して次の状態へ遷移させなければならない（SHALL）。
+
+1. **初回・フォルダ未設定時の Zero-State ガイダンス**: `TargetDirectory` が未設定（空文字）である場合は、誤ってスキャンを実行して即エラーとならないよう、一覧領域にフォルダ選択を促す Zero-State ガイダンス（「対象フォルダが未設定です。上の『📁 参照...』からフォルダを選択してください」）を表示しなければならない（SHALL）。
+2. **フォルダスキャン中 (`IsScanning = true`)**: 候補一覧領域に未実行プレースホルダーや Empty State を表示してはならず（SHALL NOT）、中央に回転スピナーおよび「動画ファイルをスキャン中...」メッセージを表示しなければならない（SHALL）。また、スキャン完了後の 0 件判定時は「フォルダ内に動画が 0 本であった」場合と「動画を 1 本以上検査し制限超過ファイルが 0 件であった（安全）」場合を明確に出し分けなければならない（SHALL）。
+3. **AI 提案処理中 (`IsRequestingAi = true` / `c.IsAiProcessing = true`) および個別失敗回復**: フッターの進捗バッジ（「AI提案中... (x/y件完了)」）および処理中の各候補カード（`c.IsAiProcessing = true`）に回転スピナーをインライン表示しなければならない（SHALL）。また、特定ファイルの AI 提案が HTTP エラー・レート制限・タイムアウト等で個別失敗した場合は、該当カードのみ赤枠エラー状態（失敗理由および「↻ この項目を再試行」ボタン付き）として表示し、他ファイルの処理・結果を維持したまま個別再試行できなければならない（SHALL）。
+4. **リネーム・Undo 実行中 (`IsRenaming = true`)**: 候補一覧領域上に半透明の操作ブロックオーバーレイと中央スピナー（「ファイル名を変更中...」または「変更を元に戻しています...」）を表示し、処理完了またはエラー発生までカード編集・条件変更・再実行を防止しなければならない（SHALL）。
+5. **スキャン・リネーム中の入力排他およびエラー時確実解除**: `IsScanning = true` または `IsRenaming = true` の間はディレクトリ・閾値・ルール・モデルの変更入力を受け付けず状態整合性を保護しなければならない（SHALL）。走査エラー、AI 提案キャンセル／タイムアウト、リネーム失敗時は、いずれのビジーフラグも `false` に戻してスピナーを解除し、ユーザーが原因を確認して設定変更・再試行を行えるエラーメッセージを表示しなければならない（SHALL）。
+
+#### Scenario: 対象フォルダ未設定時の Zero-State ガイダンス表示
+
+- **WHEN** `TargetDirectory` が空のクリーン設定状態で AI File Renamer を起動したとき
+- **THEN** 一覧領域にフォルダ未設定の案内メッセージとフォルダ選択を促す表示が現れ、未設定のまま誤ってスキャンが実行されないこと
+
+#### Scenario: ディレクトリスキャン中のスピナー表示と Empty State 抑止・0件出し分け
+
+- **WHEN** ユーザーが有効なディレクトリを指定して「⚡ 抽出 ＆ AI提案を実行」をクリックし、`IsScanning = true` となったとき
+- **THEN** 一覧領域に未実行案内や Empty State は表示されず、中央に回転スピナーと「動画ファイルをスキャン中...」が表示されること
+- **WHEN** スキャンが完了し対象候補が 0 件であったとき
+- **THEN** フォルダ内に動画ファイル自体が 0 本の場合と、1 本以上を検査して全件安全基準内であった場合とでメッセージが明確に出し分けられること
+
+#### Scenario: AI 提案処理中の行インラインスピナーおよび個別カード失敗・再試行
+
+- **WHEN** スキャンが完了し、候補ファイルに対して非同期 AI 提案が実行されているとき（`IsRequestingAi = true`）
+- **THEN** 処理中の候補カード上に回転スピナー付きで「検索・AI提案中...」が表示され、フッターにも回転スピナー付きの完了件数進捗バッジが表示されること
+- **WHEN** 特定の候補カードで API エラーやタイムアウトにより AI 提案が個別失敗したとき
+- **THEN** 該当カードのスピナーが解除されて失敗理由と「↻ 再試行」ボタンがカード内に表示され、他候補の成功結果は維持されたまま個別再試行できること
+
+#### Scenario: リネームおよび Undo 実行中の操作ブロックオーバーレイスピナー表示
+
+- **WHEN** ユーザーがリネーム実行または Undo を実行し `IsRenaming = true` となったとき
+- **THEN** 候補一覧領域に半透明オーバーレイと中央スピナーが表示され、完了後にスピナーが解除されて最新リストへ遷移すること
+
+#### Scenario: 非同期処理エラー・キャンセル時のスピナー確実解除と入力排他維持
+
+- **WHEN** フォルダ不在エラー、API エラー、または「⏹ 中止」ボタンによるキャンセルが発生したとき
+- **THEN** すべてのスピナーが即座に解除され（`IsScanning = false`, `IsRequestingAi = false`, `IsRenaming = false`）、操作ボタンが回復してエラー通知または再開可能な待機状態に戻ること

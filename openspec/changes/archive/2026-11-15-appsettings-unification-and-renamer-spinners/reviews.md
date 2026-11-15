@@ -166,3 +166,39 @@
 - 追加テスト群（`ProgramTests.fs`, `HttpHandlersTests.fs`, `SettingsTests.fs`, `StateTests.fs`, `RenameIntegrationE2ETests.fs`）にトートロジー・甘いアサーション・フレーキー要因・副作用漏れ（環境変数および `%APPDATA%` 設定ファイルの事前退避・復元を含む）が存在せず、ミューテーション耐性および実画面レンダリング検証が満たされていることを確認。
 - **LGTM**: true（Critical: 0, Major: 0, Minor: 0, Suggestion: 0）
 - **承認者**: QA Reviewer Agent
+
+---
+
+## レビュー記録: appsettings-unification-and-renamer-spinners / archive（全 4 ロール総括レビュー）
+
+- **日時**: 2026-11-15
+- **フェーズ**: archive
+- **使用プロトコル**: [checklist_archive.md](file:///D:/programming/repos/MyGitHubRepos/TagBasedVideoManager/openspec/templates/checklist_archive.md)
+
+### 1. User Reviewer Agent（初見エンジニア視点・ドキュメント検証）
+
+- **設計背景（Why）と運用・トラブルシューティング整合**: `.env` 廃止と `appsettings.{Environment}.json` 統一、Renamer の `%APPDATA%` 最優先オーバーライドおよび一意 `.tmp` アトミック置換、単一 `SpinnerControl`（`RotateTransform.AngleProperty`）方式、Zero-State ガイダンスとスキャン 0 件出し分けについて、`proposal.md` / `design.md` / `handover.md` / `README.md` / `PRODUCTION_ENVIRONMENT.md` / `.devcontainer/devcontainer.json` 間で矛盾や Why の欠落がないことを確認。
+- **LGTM**: true（Critical: 0, Major: 0, Minor: 0, Suggestion: 0）
+- **承認者**: User Reviewer Agent
+
+### 2. SE Reviewer Agent（技術的負債の自白・設計境界・ロールバック検証）
+
+- **残存負債と境界の罠確認**: プロセス環境変数テストの並列実行干渉リスク（Apply Cycle 2 Minor 指摘）、リポジトリ外単体配布バイナリの設定探索スモークテスト未実施、`%APPDATA%` 最優先によるローカル編集上書きの注意点、`deploy.sh` と `common.ps1` の二重保守、`SpinnerControl` のビジュアルツリー結合前提が `handover.md` に記録・引き継ぎされていることを確認。
+- **ロールバック安全性**: DB スキーマ変更・破壊的 API 変更はなく、通常の `git revert` で安全に直前状態へ巻き戻し可能であることを確認。
+- **LGTM**: true（Critical: 0, Major: 0, Minor: 0, Suggestion: 0）
+- **承認者**: SE Reviewer Agent
+
+### 3. PG Reviewer Agent（技術的負債の自白・コード保守性検証）
+
+- **コード上の妥協点と将来の罠**: `HttpHandlers.fs`（L149-176）の設定解決重複（`.fsproj` コンパイル順制約）と `Program.resolveConfigValue` との将来的な共通化、`State.fs`（L288-291）排他ガードの網羅性向上、および `Views.fs`（約 3,325 行）分割候補を Suggestion として提起し、`handover.md` 第 4 節へ追記・引き継ぎ完了。
+- **LGTM**: true（Critical: 0, Major: 0, Minor: 0, Suggestion: 1 [handover.md へ転記済み]）
+- **承認者**: PG Reviewer Agent
+
+### 4. QA Reviewer Agent（ロールバック・DoD エビデンス・保留指摘引き継ぎ検証）
+
+- **DoD 最終数値・引き継ぎ確認**: `tasks.md` 全 12 タスク完了（`12 / 12`）、全テスト `578 / 578` 合格（Renamer `377/377`・Web `201/201`・失敗 0・スキップ 0）、全体 Line C0 `86.4%`（`5741/6637`）、差分 Line C0 `96.0%`（`1028/1071`）、差分 Branch C1 `86.4%`（`375/434`）、`TestRun_2026-11-15_01_56_12` の TRX/Cobertura/HTML/Visual PNG エビデンス実在、および Apply Phase 保留指摘の `handover.md` 転記漏れゼロを確認。
+- **総合判定**:
+  - **LGTM**: true
+  - **引き継ぎ完了確認**: `handover.md` に全ての負債・申し送り・ロールバック手順が記録済み
+  - **リリース可否**: 即時リリース可
+  - **承認者**: User / SE / PG / QA Reviewer Agent
