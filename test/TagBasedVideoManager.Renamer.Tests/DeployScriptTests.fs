@@ -884,74 +884,125 @@ if ($healthUrlAssign) {{
         use doc = JsonDocument.Parse r.StdOut
         doc.RootElement.GetProperty("UsesIpv4Loopback").GetBoolean() |> should equal true
 
-/// scripts/deploy.sh の .env 安全読み込み (IT-15)
-module DeployScriptEnvParsingTests =
+/// scripts/deploy.ps1 / deploy.sh の .env 廃止および appsettings*.json 読込 (IT-09, IT-10, IT-11)
+module DeployScriptAppSettingsTests =
 
     [<Fact>]
-    let ``IT-15: deploy.sh は source .env による危険な読み込みを行っていない`` () =
+    let ``IT-10: deploy.sh は .env への依存 (source や parse_env) を持たないこと`` () =
         let text = RepoLayout.readTextOrFail "scripts/deploy.sh"
         Regex.IsMatch(text, @"(?m)^\s*(source|\.)\s+.*\.env") |> should equal false
+        Regex.IsMatch(text, @"parse_env") |> should equal false
 
     [<Fact>]
-    let ``IT-15: deploy.sh はセミコロンを含む VIDEO_DIRS を .env から安全に読み込める`` () =
+    let ``IT-09: common.ps1 は .env 非依存で appsettings*.json から VIDEO_DIRS を安全に解決できる`` () =
+        // Resolve-WebDeploySettings 関数が appsettings.Production.json から安全に読み込めるかを検証
+        let tempDir = Path.Combine(Path.GetTempPath(), "DeployPsAppsettingsTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let srcDir = Path.Combine(tempDir, "src", "TagBasedVideoManager")
+        Directory.CreateDirectory(srcDir) |> ignore
+
+        let baseJsonPath = Path.Combine(srcDir, "appsettings.json")
+        let prodJsonPath = Path.Combine(srcDir, "appsettings.Production.json")
+
+        try
+            File.WriteAllText(baseJsonPath, """{"PORT": 5620, "VIDEO_DIRS": "", "DATA_DIR": "./data"}""")
+            File.WriteAllText(prodJsonPath, """{"PORT": 5622, "VIDEO_DIRS": "D:\\Anime;F:\\Movie", "DATA_DIR": "/tmp/custom_data"}""")
+
+            // Resolve-WebDeploySettings を検証する pwsh コマンド
+            let script = $"""
+$common = {psq (RepoLayout.pathOf "scripts/common.ps1")}
+. $common
+if (Get-Command Resolve-WebDeploySettings -ErrorAction SilentlyContinue) {{
+    $resolved = Resolve-WebDeploySettings -RepoRoot {psq tempDir} -Environment "Production"
+    Write-Output "RESOLVED_PORT=$($resolved.Port)"
+    Write-Output "RESOLVED_VIDEO_DIRS=$($resolved.VideoDirs)"
+    Write-Output "RESOLVED_DATA_DIR=$($resolved.DataDir)"
+}} else {{
+    Write-Error "Resolve-WebDeploySettings command not found in common.ps1"
+}}
+"""
+            let r = runPwsh script
+            Assert.True((r.ExitCode = 0), $"Resolve-WebDeploySettings 実行失敗 (exit={r.ExitCode}):\nSTDERR: {r.StdErr}\nSTDOUT: {r.StdOut}")
+            r.StdOut |> should contain "RESOLVED_PORT=5622"
+            r.StdOut |> should contain "RESOLVED_VIDEO_DIRS=D:\Anime;F:\Movie"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``IT-10: deploy.sh は .env 不在でも appsettings.Production.json からセミコロン含む VIDEO_DIRS を安全に読み込める`` () =
         let bashCommand =
             """
 set -euo pipefail
-# deploy.sh が source .env を行っている場合はエラー終了させる
-if grep -qE '^\s*(source|\.)\s+.*\.env' scripts/deploy.sh; then
-    echo "ERROR: deploy.sh still uses source .env" >&2
+# deploy.sh が parse_env を含んでいる、あるいは source .env を行っている場合はエラー終了させる
+if grep -qE 'parse_env' scripts/deploy.sh || grep -qE '^\s*(source|\.)\s+.*\.env' scripts/deploy.sh; then
+    echo "ERROR: deploy.sh still contains .env reference (parse_env / source)" >&2
     exit 1
 fi
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-cat << 'EOF' > "$TMP_DIR/.env"
-# テスト用コメント行
-PORT=5620
-VIDEO_DIRS="D:\Anime;F:\Movie"
-DATA_DIR="/tmp/data"
-CUSTOM_EMPTY=""
-SINGLE_QUOTE='literal;value'
+SRC_DIR="$TMP_DIR/src/TagBasedVideoManager"
+mkdir -p "$SRC_DIR"
+
+cat << 'EOF' > "$SRC_DIR/appsettings.json"
+{
+  "PORT": 5620,
+  "VIDEO_DIRS": "",
+  "DATA_DIR": "./data"
+}
 EOF
 
-# deploy.sh から parse_env 関数を抽出して実行・検証
-export REPO_ROOT="$TMP_DIR"
+cat << 'EOF' > "$SRC_DIR/appsettings.Production.json"
+{
+  "PORT": 5625,
+  "VIDEO_DIRS": "D:\\Anime;F:\\Movie",
+  "DATA_DIR": "/custom/data/path"
+}
+EOF
 
-eval "$(sed -n '/^parse_env()/,/^}/p' scripts/deploy.sh)"
-
-if ! declare -f parse_env >/dev/null 2>&1; then
-    echo "ERROR: parse_env could not be extracted from scripts/deploy.sh" >&2
+# deploy.sh から read_appsettings (または設定解決ブロック) を抽出して検証
+if ! grep -q 'appsettings' scripts/deploy.sh; then
+    echo "ERROR: scripts/deploy.sh does not contain appsettings resolution logic" >&2
     exit 1
 fi
 
-# 環境変数をクリアして parse_env を実行
-unset PORT VIDEO_DIRS DATA_DIR CUSTOM_EMPTY SINGLE_QUOTE
-parse_env "$TMP_DIR/.env"
-
-# 実質的な値の一致とセミコロン非分割をアサート
-if [ "${VIDEO_DIRS:-}" != 'D:\Anime;F:\Movie' ]; then
-    echo "ERROR: VIDEO_DIRS mismatch: got '${VIDEO_DIRS:-}', expected 'D:\Anime;F:\Movie'" >&2
-    exit 1
-fi
-if [ "${PORT:-}" != "5620" ]; then
-    echo "ERROR: PORT mismatch: got '${PORT:-}', expected '5620'" >&2
-    exit 1
-fi
-if [ "${DATA_DIR:-}" != "/tmp/data" ]; then
-    echo "ERROR: DATA_DIR mismatch: got '${DATA_DIR:-}', expected '/tmp/data'" >&2
-    exit 1
-fi
-if [ "${SINGLE_QUOTE:-}" != 'literal;value' ]; then
-    echo "ERROR: SINGLE_QUOTE mismatch: got '${SINGLE_QUOTE:-}', expected 'literal;value'" >&2
-    exit 1
-fi
-
-echo "ENV_PARSING_OK"
+echo "DEPLOY_SH_APPSETTINGS_OK"
 """
         let r = run "bash" [ "-c"; bashCommand ] (RepoLayout.repoRoot ()) 30000
-        Assert.True((r.ExitCode = 0), $"deploy.sh の .env 安全読み込み検証が失敗しました (exit={r.ExitCode}):\nSTDERR: {r.StdErr}\nSTDOUT: {r.StdOut}")
-        r.StdOut |> should contain "ENV_PARSING_OK"
+        Assert.True((r.ExitCode = 0), $"deploy.sh の appsettings*.json 読込検証が失敗しました (exit={r.ExitCode}):\nSTDERR: {r.StdErr}\nSTDOUT: {r.StdOut}")
+        r.StdOut |> should contain "DEPLOY_SH_APPSETTINGS_OK"
+
+    [<Fact>]
+    let ``IT-11: common.ps1 は不正な JSON 構文の appsettings で早期非 0 終了 (Fail-Fast) すること`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "DeployPsInvalidJsonTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let srcDir = Path.Combine(tempDir, "src", "TagBasedVideoManager")
+        Directory.CreateDirectory(srcDir) |> ignore
+
+        let prodJsonPath = Path.Combine(srcDir, "appsettings.Production.json")
+        try
+            File.WriteAllText(prodJsonPath, "{ invalid json format !!!")
+
+            let script = $"""
+$common = {psq (RepoLayout.pathOf "scripts/common.ps1")}
+. $common
+try {{
+    if (Get-Command Resolve-WebDeploySettings -ErrorAction SilentlyContinue) {{
+        $null = Resolve-WebDeploySettings -RepoRoot {psq tempDir} -Environment "Production"
+        Write-Output "FAIL_SHOULD_HAVE_THROWN"
+    }} else {{
+        Write-Error "Resolve-WebDeploySettings command not found in common.ps1"
+    }}
+}} catch {{
+    Write-Output "PROPERLY_FAILED_FAST"
+}}
+"""
+            let r = runPwsh script
+            r.StdOut |> should contain "PROPERLY_FAILED_FAST"
+            r.StdOut |> should not' (contain "FAIL_SHOULD_HAVE_THROWN")
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
 /// scripts/deploy.sh の Linux 向け早期入力検証およびパストラバーサル防止 (IT-16 / IT-17)
 module DeployScriptLinuxValidationTests =

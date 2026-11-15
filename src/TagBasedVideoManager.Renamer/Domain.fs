@@ -60,6 +60,7 @@ type RenameProposal = {
     LastWriteTime: DateTime
     IsAiProposed: bool      // LLMによる提案完了フラグ (未提案時はfalse)
     IsAiProcessing: bool    // 現在AI提案処理中フラグ (行アニメーション表示用)
+    AiError: string option  // 個別AI提案失敗時のエラーメッセージ (Some msg 時は赤枠・再試行導線表示)
 }
 
 /// 提案データ操作ヘルパー
@@ -80,6 +81,7 @@ module Proposal =
         LastWriteTime = candidate.LastWriteTime
         IsAiProposed = false
         IsAiProcessing = false
+        AiError = None
     }
 
 /// リネームUndo履歴レコード
@@ -144,3 +146,15 @@ type RenamerError =
     | TimeoutError of command: string
     | ValidationError of message: string
     | UndoConflictError of path: string * message: string
+
+module RenamerError =
+    /// エラーをユーザー向けメッセージ文字列に変換する
+    let toMessage (err: RenamerError) : string =
+        match err with
+        | IoError (msg, _) -> msg
+        | SettingsError msg -> msg
+        | OpenRouterError (code, msg) -> $"OpenRouter エラー ({code}): {msg}"
+        | ContainerError (cmd, code, stderr) -> $"コンテナ コマンド '{cmd}' 失敗 (終了コード {code}): {stderr}"
+        | TimeoutError cmd -> $"コンテナ コマンド '{cmd}' がタイムアウトしました。"
+        | ValidationError msg -> msg
+        | UndoConflictError (path, msg) -> $"Undo 衝突エラー ({path}): {msg}"

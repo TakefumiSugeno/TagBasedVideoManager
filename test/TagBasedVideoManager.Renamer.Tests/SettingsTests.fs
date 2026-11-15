@@ -8,6 +8,20 @@ open TagBasedVideoManager.Renamer
 
 module SettingsTests =
 
+    let rec findRepoRoot (dir: DirectoryInfo) (depth: int) : string =
+        if depth <= 0 || box dir = null then
+            failwith "リポジトリルートが見つかりません"
+        else
+            let candidate = Path.Combine(dir.FullName, ".git")
+            if Directory.Exists(candidate) || File.Exists(candidate) then dir.FullName
+            else findRepoRoot dir.Parent (depth - 1)
+
+    let getRepoRoot () : string =
+        let current = DirectoryInfo(Directory.GetCurrentDirectory())
+        let baseDir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
+        try findRepoRoot current 8
+        with _ -> findRepoRoot baseDir 8
+
     let createTempSettingsPath () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerTests_" + Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(tempDir) |> ignore
@@ -120,10 +134,12 @@ module SettingsTests =
             if Directory.Exists(dir) then Directory.Delete(dir, true)
 
     [<Fact>]
-    let ``loadConfiguration は .env から OPENROUTER_API_KEY と VIDEO_DIR を取得できる`` () =
+    let ``UT-01: loadConfiguration は .env および OS環境変数 VIDEO_DIR / OPENROUTER_API_KEY を完全に無視する`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerEnvTest_" + Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(tempDir) |> ignore
         let envPath = Path.Combine(tempDir, ".env")
+        let origVideoDir = Environment.GetEnvironmentVariable("VIDEO_DIR")
+        let origApiKey = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY")
         try
             File.WriteAllLines(envPath, [
                 "PORT=5621"
@@ -132,17 +148,22 @@ module SettingsTests =
                 "OPENROUTER_MODEL=google/gemini-2.0-flash-exp:free"
                 "PATH_LENGTH_THRESHOLD=220"
             ])
+            Environment.SetEnvironmentVariable("VIDEO_DIR", "E:\\FromOsEnvVideoDir")
+            Environment.SetEnvironmentVariable("OPENROUTER_API_KEY", "sk-or-v1-from-os-env-key")
 
             let loaded = Settings.loadConfiguration None (Some envPath)
-            loaded.TargetDirectory |> should equal "E:\\EnvVideos"
-            loaded.ApiKey |> should equal (Some "sk-or-v1-from-env-test-key")
-            loaded.SelectedModel |> should equal "google/gemini-2.0-flash-exp:free"
-            loaded.PathLengthThreshold |> should equal 220
+            // .env や OS環境変数は完全に無視され、組み込み既定値（または appsettings.json）が維持されること
+            loaded.TargetDirectory |> should equal ""
+            loaded.ApiKey |> should equal None
+            loaded.SelectedModel |> should equal "meta-llama/llama-3.3-70b-instruct:free"
+            loaded.PathLengthThreshold |> should equal 240
         finally
+            Environment.SetEnvironmentVariable("VIDEO_DIR", origVideoDir)
+            Environment.SetEnvironmentVariable("OPENROUTER_API_KEY", origApiKey)
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
     [<Fact>]
-    let ``loadConfiguration は appsettings.json の設定を .env より優先する`` () =
+    let ``UT-01: loadConfiguration は .env が存在しても appsettings.json の設定のみを参照する`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerPriorityTest_" + Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(tempDir) |> ignore
         let jsonPath = Path.Combine(tempDir, "appsettings.json")
@@ -151,6 +172,7 @@ module SettingsTests =
             File.WriteAllLines(envPath, [
                 "VIDEO_DIR=E:\\FromEnv"
                 "OPENROUTER_API_KEY=key-from-env"
+                "OPENROUTER_MODEL=model-from-env"
             ])
 
             let customJson = {
@@ -163,8 +185,11 @@ module SettingsTests =
             let loaded = Settings.loadConfiguration (Some jsonPath) (Some envPath)
             loaded.TargetDirectory |> should equal "D:\\FromJson"
             loaded.ApiKey |> should equal (Some "key-from-json")
+            // .env の OPENROUTER_MODEL は無視され、customJson の既定モデルが維持されること
+            loaded.SelectedModel |> should equal customJson.SelectedModel
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
 
     [<Fact>]
     let ``loadConfiguration は外部ファイルの命名規則リストを保持し、先頭ルールを既定とする`` () =
@@ -203,25 +228,31 @@ module SettingsTests =
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
+
     [<Fact>]
-    let ``resolveSavePath は BaseDirectory に appsettings.json があれば BaseDirectory を優先する`` () =
+    let ``UT-02: resolveSavePath はアクティブ環境名に応じた appsettings.{Environment}.json を返しベース appsettings.json を上書きしない`` () =
         let tempBaseDir = Path.Combine(Path.GetTempPath(), "RenamerBase_" + Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(tempBaseDir) |> ignore
         let baseFile = Path.Combine(tempBaseDir, "appsettings.json")
         try
             File.WriteAllText(baseFile, "{}")
             let path = Settings.resolveSavePath (Some tempBaseDir)
-            path |> should equal baseFile
+            let envName = Settings.resolveEnvironmentName ()
+            let expectedFile = Path.Combine(tempBaseDir, $"appsettings.{envName}.json")
+            // 保存先は環境別ファイル名であり、ベース appsettings.json そのものではないこと
+            path |> should equal expectedFile
+            path |> should not' (equal baseFile)
         finally
             if Directory.Exists(tempBaseDir) then Directory.Delete(tempBaseDir, true)
 
     [<Fact>]
-    let ``resolveSavePath は BaseDirectory に appsettings.json がなければ AppData パスを決定する`` () =
+    let ``UT-04: resolveSavePath は BaseDirectory に構成ファイル不在または書込不可時に AppData の環境別パスを決定する`` () =
         let tempBaseDir = Path.Combine(Path.GetTempPath(), "RenamerBaseEmpty_" + Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(tempBaseDir) |> ignore
         try
             let path = Settings.resolveSavePath (Some tempBaseDir)
-            let expectedAppData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TagBasedVideoManager", "appsettings.json")
+            let envName = Settings.resolveEnvironmentName ()
+            let expectedAppData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TagBasedVideoManager", $"appsettings.{envName}.json")
             path |> should equal expectedAppData
         finally
             if Directory.Exists(tempBaseDir) then Directory.Delete(tempBaseDir, true)
@@ -245,31 +276,55 @@ module SettingsTests =
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
     [<Fact>]
-    let ``loadConfiguration は AppData にファイルがあってもプロジェクト直下の構成別設定ファイルを優先ロードする`` () =
+    let ``loadConfiguration は AppData に環境別ファイルがない標準状態でプロジェクト直下の構成別設定ファイルをロードする`` () =
         // 引数なし loadConfiguration None None の実行時に、プロジェクト直下の環境別設定ファイル（Debug構成時は appsettings.Development.json）がオーバーライドマージされることを検証
-        let loaded = Settings.loadConfiguration None None
-        // プロジェクト直下の設定がロードされていること
-        let rec findRoot (dir: DirectoryInfo) (depth: int) =
-            if depth <= 0 || box dir = null then None
-            else
-                let candidateDev = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
-                if File.Exists(candidateDev) then Some dir.FullName
-                else findRoot dir.Parent (depth - 1)
-        let current = DirectoryInfo(Directory.GetCurrentDirectory())
-        let baseDir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
-        let rootDir =
-            findRoot current 8
-            |> Option.orElseWith (fun () -> findRoot baseDir 8)
-            |> Option.defaultWith (fun () -> failwith "src/TagBasedVideoManager.Renamer/appsettings.Development.json が見つかりません")
+        let envName = Settings.resolveEnvironmentName ()
+        let appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TagBasedVideoManager")
+        let appDataEnvFile = Path.Combine(appDataDir, $"appsettings.{envName}.json")
+        let appDataBaseFile = Path.Combine(appDataDir, "appsettings.json")
 
-        let devJsonPath = Path.Combine(rootDir, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
-        let devJson = Settings.load devJsonPath
-        match devJson with
-        | Ok expected ->
-            loaded.TargetDirectory |> should equal expected.TargetDirectory
-            loaded.SelectedModel |> should equal expected.SelectedModel
-            loaded.ApiKey |> should equal expected.ApiKey
-        | Error err -> failwith $"Project dev json load failed: {err}"
+        let hadEnvFile = File.Exists(appDataEnvFile)
+        let origEnvContent = if hadEnvFile then File.ReadAllText(appDataEnvFile) else null
+
+        let hadBaseFile = File.Exists(appDataBaseFile)
+        let origBaseContent = if hadBaseFile then File.ReadAllText(appDataBaseFile) else null
+
+        try
+            if hadEnvFile then File.Delete(appDataEnvFile)
+            if hadBaseFile then File.Delete(appDataBaseFile)
+
+            let loaded = Settings.loadConfiguration None None
+            // プロジェクト直下の設定がロードされていること
+            let rec findRoot (dir: DirectoryInfo) (depth: int) =
+                if depth <= 0 || box dir = null then None
+                else
+                    let candidateDev = Path.Combine(dir.FullName, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
+                    if File.Exists(candidateDev) then Some dir.FullName
+                    else findRoot dir.Parent (depth - 1)
+            let current = DirectoryInfo(Directory.GetCurrentDirectory())
+            let baseDir = DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory)
+            let rootDir =
+                findRoot current 8
+                |> Option.orElseWith (fun () -> findRoot baseDir 8)
+                |> Option.defaultWith (fun () -> failwith "src/TagBasedVideoManager.Renamer/appsettings.Development.json が見つかりません")
+
+            let devJsonPath = Path.Combine(rootDir, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
+            let devJson = Settings.load devJsonPath
+            match devJson with
+            | Ok expected ->
+                loaded.TargetDirectory |> should equal expected.TargetDirectory
+                loaded.SelectedModel |> should equal expected.SelectedModel
+                loaded.ApiKey |> should equal expected.ApiKey
+            | Error err -> failwith $"Project dev json load failed: {err}"
+        finally
+            try
+                if hadEnvFile then File.WriteAllText(appDataEnvFile, origEnvContent)
+                elif File.Exists(appDataEnvFile) then File.Delete(appDataEnvFile)
+            with _ -> ()
+            try
+                if hadBaseFile then File.WriteAllText(appDataBaseFile, origBaseContent)
+                elif File.Exists(appDataBaseFile) then File.Delete(appDataBaseFile)
+            with _ -> ()
 
     [<Fact>]
     let ``save と load は NamingRule の EnableWebSearch フラグを正しく永続化・復元できる`` () =
@@ -416,6 +471,7 @@ module SettingsTests =
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
+
     [<Fact>]
     let ``loadConfigurationWithConfig は Production 環境時に appsettings.Production.json で appsettings.json をオーバーライドマージする`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerProdMergeTest_" + Guid.NewGuid().ToString("N"))
@@ -454,6 +510,7 @@ module SettingsTests =
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
+
     [<Fact>]
     let ``loadConfigurationWithConfig は 環境別ファイル不在時に appsettings.json へ安全にフォールバックする`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerFallbackConfigTest_" + Guid.NewGuid().ToString("N"))
@@ -486,6 +543,7 @@ module SettingsTests =
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
+
     [<Fact>]
     let ``loadConfigurationWithConfig は明示指定パス (jsonPathOpt) を構成別設定よりも最優先する`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerExplicitPathTest_" + Guid.NewGuid().ToString("N"))
@@ -517,8 +575,9 @@ module SettingsTests =
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
 
+
     [<Fact>]
-    let ``loadConfigurationWithConfig は構成別設定と .env の併存時に構成別JSONを優先し未定義項目を .env から補完する`` () =
+    let ``UT-01: loadConfigurationWithConfig は構成別設定と .env の併存時でも .env から未定義項目を補完しない`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), "RenamerEnvCoexistTest_" + Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(tempDir) |> ignore
         let envPath = Path.Combine(tempDir, ".env")
@@ -547,15 +606,16 @@ module SettingsTests =
 
             // Development構成下で、appsettings.json + appsettings.Development.json + .env が存在する場合
             // TargetDirectory は Development JSON 優先
-            // ApiKey は JSON 未指定のため .env から補完
+            // ApiKey は JSON 未指定でも .env は無視され None のままであること
             // PathLengthThreshold は baseJson から継承
             let loaded = Settings.loadConfigurationWithConfig (Some "Development") None (Some envPath)
             loaded.TargetDirectory |> should equal "D:\\FromDevJson"
-            loaded.ApiKey |> should equal (Some "key-from-env")
+            loaded.ApiKey |> should equal None
             loaded.SelectedModel |> should equal "model-from-dev-json"
             loaded.PathLengthThreshold |> should equal 200
         finally
             if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
 
     [<Fact>]
     let ``resolveEnvironmentName は環境変数を最優先し未設定時はコンパイル構成にフォールバックする`` () =
@@ -608,5 +668,346 @@ module SettingsTests =
             if File.Exists(filePath) then File.Delete(filePath)
             let dir = Path.GetDirectoryName(filePath)
             if Directory.Exists(dir) then Directory.Delete(dir, true)
+
+    [<Fact>]
+    let ``UT-05: 空 rules: [] 指定時にベースルールのゾンビ復元が発生しないこと`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerEmptyRules_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let baseJsonPath = Path.Combine(tempDir, "appsettings.json")
+        let devJsonPath = Path.Combine(tempDir, "appsettings.Development.json")
+        try
+            let baseJson = """
+            {
+              "rules": [
+                {
+                  "id": "base-rule-1",
+                  "name": "ベースルール",
+                  "pattern": "{Title}.mp4",
+                  "promptInstruction": "指示文",
+                  "order": 0
+                }
+              ]
+            }
+            """
+            let devJson = """
+            {
+              "rules": []
+            }
+            """
+            File.WriteAllText(baseJsonPath, baseJson)
+            File.WriteAllText(devJsonPath, devJson)
+
+            let loaded = Settings.loadConfigurationWithConfig (Some "Development") (Some devJsonPath) None
+            // 明示的に空配列 [] を指定した場合は、ベース設定のルールがゾンビ復元されず空であること
+            loaded.Rules |> should be Empty
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+
+    [<Fact>]
+    let ``UT-06: resolveEnvironmentName は不正な環境名（空文字・パストラバーサル ../evil）をサニタイズして安全にフォールバックする`` () =
+        let origDotnet = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+        let origAspnet = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+        try
+            // 1. パストラバーサル文字を含む環境名
+            Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", "../evil")
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", null)
+            let safeEnv1 = Settings.resolveEnvironmentName ()
+            safeEnv1 |> should not' (equal "../evil")
+            safeEnv1 |> should not' (contain "/")
+            safeEnv1 |> should not' (contain "\\")
+
+            // 2. 空白のみの環境名
+            Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", "   ")
+            let safeEnv2 = Settings.resolveEnvironmentName ()
+            safeEnv2 |> should not' (be EmptyString)
+        finally
+            Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", origDotnet)
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", origAspnet)
+
+    [<Fact>]
+    let ``UT-07: クリーンテンプレート検査: appsettings.json に個人固有パスやAPIキー等の秘密情報が含まれないこと`` () =
+        let root = getRepoRoot ()
+        let webAppSettingsPath = Path.Combine(root, "src", "TagBasedVideoManager", "appsettings.json")
+        let renamerAppSettingsPath = Path.Combine(root, "src", "TagBasedVideoManager.Renamer", "appsettings.json")
+
+        File.Exists(webAppSettingsPath) |> should equal true
+        File.Exists(renamerAppSettingsPath) |> should equal true
+
+        // 1. Web 側の appsettings.json 検証
+        let webContent = File.ReadAllText(webAppSettingsPath)
+        webContent |> should not' (contain "E:\\")
+        webContent |> should not' (contain "sk-or-v1-")
+
+        use webDoc = System.Text.Json.JsonDocument.Parse(webContent)
+        let webRoot = webDoc.RootElement
+        if webRoot.TryGetProperty("VIDEO_DIRS", ref Unchecked.defaultof<_>) then
+            let vdirs = webRoot.GetProperty("VIDEO_DIRS").GetString()
+            vdirs |> should equal ""
+        if webRoot.TryGetProperty("PORT", ref Unchecked.defaultof<_>) then
+            let port = webRoot.GetProperty("PORT").GetInt32()
+            port |> should equal 5620
+
+        // 2. Renamer 側の appsettings.json 検証（個人固有パスやAPIキーが除去されていること）
+        let renamerContent = File.ReadAllText(renamerAppSettingsPath)
+        renamerContent |> should not' (contain "E:\\e")
+        renamerContent |> should not' (contain "sk-or-v1-")
+
+        use renamerDoc = System.Text.Json.JsonDocument.Parse(renamerContent)
+        let renamerRoot = renamerDoc.RootElement
+        renamerRoot.GetProperty("targetDirectory").GetString() |> should equal ""
+        let apiKeyElement = renamerRoot.GetProperty("apiKey")
+        (apiKeyElement.ValueKind = System.Text.Json.JsonValueKind.Null || apiKeyElement.GetString() = "") |> should equal true
+
+    [<Fact>]
+    let ``IT-04: .gitignore に appsettings.Development.json と appsettings.Production.json が除外登録されていること`` () =
+        let root = getRepoRoot ()
+        let gitignorePath = Path.Combine(root, ".gitignore")
+        File.Exists(gitignorePath) |> should equal true
+        let lines = File.ReadAllLines(gitignorePath) |> Array.map (fun s -> s.Trim())
+
+        let hasDev = lines |> Array.exists (fun l -> l = "**/appsettings.Development.json" || l = "appsettings.Development.json")
+        let hasProd = lines |> Array.exists (fun l -> l = "**/appsettings.Production.json" || l = "appsettings.Production.json")
+
+        hasDev |> should equal true
+        hasProd |> should equal true
+
+    [<Fact>]
+    let ``IT-05: git ls-files に .env.sample および環境別 JSON が追跡対象として含まれないこと`` () =
+        let root = getRepoRoot ()
+        let psi = System.Diagnostics.ProcessStartInfo("git", "ls-files")
+        psi.WorkingDirectory <- root
+        psi.RedirectStandardOutput <- true
+        psi.UseShellExecute <- false
+        psi.CreateNoWindow <- true
+        use proc = System.Diagnostics.Process.Start(psi)
+        let output = proc.StandardOutput.ReadToEnd()
+        proc.WaitForExit(10000) |> ignore
+
+        let trackedFiles = output.Split([| '\r'; '\n' |], StringSplitOptions.RemoveEmptyEntries)
+        trackedFiles |> should not' (contain ".env.sample")
+        trackedFiles |> should not' (contain "src/TagBasedVideoManager/appsettings.Development.json")
+        trackedFiles |> should not' (contain "src/TagBasedVideoManager.Renamer/appsettings.Production.json")
+
+    [<Fact>]
+    let ``IT-01: GUID 一意一時ファイル (.tmp) による並行保存競合防止`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerConcurrentSave_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let filePath = Path.Combine(tempDir, "appsettings.Development.json")
+        try
+            let initial = Settings.defaultSettings ()
+            let saveTasks =
+                [ 1 .. 10 ]
+                |> List.map (fun i ->
+                    async {
+                        let custom = { initial with PathLengthThreshold = 200 + i }
+                        return Settings.save filePath custom
+                    }
+                )
+            let results = Async.RunSynchronously (Async.Parallel saveTasks)
+            // すべての保存が IOException による失敗なく Ok () を返すこと
+            results |> Array.iter (fun r ->
+                match r with
+                | Ok () -> ()
+                | Error (IoError (msg, _)) -> failwith $"並行書き込みで IoError が発生しました: {msg}"
+                | Error (SettingsError msg) -> failwith $"並行書き込みで SettingsError が発生しました: {msg}"
+                | Error other -> failwith $"予期しないエラー: {other}"
+            )
+            File.Exists(filePath) |> should equal true
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+
+    [<Fact>]
+    let ``IT-02: ReadOnly 基底ディレクトリ時の %APPDATA% 環境別保存と再読込整合`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerReadOnly_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let baseFile = Path.Combine(tempDir, "appsettings.json")
+        File.WriteAllText(baseFile, "{}")
+
+        let envName = Settings.resolveEnvironmentName ()
+        let expectedAppData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TagBasedVideoManager", $"appsettings.{envName}.json")
+        let hadExisting = File.Exists(expectedAppData)
+        let origContent = if hadExisting then File.ReadAllText(expectedAppData) else null
+
+        try
+            // 保存先を解決 -> 書込不可または未配置時は AppData 側へ
+            // 擬似的に AppData 側へ保存
+            let custom = { Settings.defaultSettings () with TargetDirectory = "C:\\AppDataSavedDir" }
+            let saveResult = Settings.save expectedAppData custom
+            match saveResult with
+            | Error err -> failwith $"Save to AppData failed: {err}"
+            | Ok () -> ()
+
+            File.Exists(expectedAppData) |> should equal true
+
+            // 再読込時に %APPDATA% の環境別設定が反映されること
+            let loaded = Settings.loadConfiguration (Some expectedAppData) None
+            loaded.TargetDirectory |> should equal "C:\\AppDataSavedDir"
+        finally
+            try
+                if hadExisting then
+                    File.WriteAllText(expectedAppData, origContent)
+                elif File.Exists(expectedAppData) then
+                    File.Delete(expectedAppData)
+            with _ -> ()
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``回帰テスト: loadConfigurationWithConfig において %APPDATA% の環境別設定がベース層を最優先上書きすること`` () =
+        let appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TagBasedVideoManager")
+        if not (Directory.Exists(appDataDir)) then Directory.CreateDirectory(appDataDir) |> ignore
+        let testEnvName = "RegressionTestEnv_" + Guid.NewGuid().ToString("N")
+        let targetFile = Path.Combine(appDataDir, $"appsettings.{testEnvName}.json")
+        let hadExisting = File.Exists(targetFile)
+        let origContent = if hadExisting then File.ReadAllText(targetFile) else null
+
+        try
+            // %APPDATA% 側にオーバーライド設定を配置
+            let overrideJson = """{ "targetDirectory": "C:\\AppDataOverriddenDir", "selectedModel": "custom/appdata-model:v1" }"""
+            File.WriteAllText(targetFile, overrideJson)
+
+            // jsonPathOpt = None, envPathOpt = None で通常階層探索を行わせ、%APPDATA% の優先マージを検証
+            let loaded = Settings.loadConfigurationWithConfig (Some testEnvName) None None
+            loaded.TargetDirectory |> should equal "C:\\AppDataOverriddenDir"
+            loaded.SelectedModel |> should equal "custom/appdata-model:v1"
+        finally
+            try
+                if hadExisting then
+                    File.WriteAllText(targetFile, origContent)
+                elif File.Exists(targetFile) then
+                    File.Delete(targetFile)
+            with _ -> ()
+
+    [<Fact>]
+    let ``RenamerError.toMessage は全 7 種のエラーケースで適切なユーザー向けメッセージを生成する`` () =
+        // 1. IoError
+        let ex = exn "ディスク書き込み制限"
+        RenamerError.toMessage (IoError ("ファイル書き込みに失敗しました", Some ex))
+        |> should equal "ファイル書き込みに失敗しました"
+
+        // 2. SettingsError
+        RenamerError.toMessage (SettingsError "設定JSONの構文解析エラー")
+        |> should equal "設定JSONの構文解析エラー"
+
+        // 3. OpenRouterError
+        RenamerError.toMessage (OpenRouterError (429, "Rate limit exceeded"))
+        |> should equal "OpenRouter エラー (429): Rate limit exceeded"
+
+        // 4. ContainerError
+        RenamerError.toMessage (ContainerError ("docker ps", 1, "Cannot connect to Docker daemon"))
+        |> should equal "コンテナ コマンド 'docker ps' 失敗 (終了コード 1): Cannot connect to Docker daemon"
+
+        // 5. TimeoutError
+        RenamerError.toMessage (TimeoutError "docker-compose up")
+        |> should equal "コンテナ コマンド 'docker-compose up' がタイムアウトしました。"
+
+        // 6. ValidationError
+        RenamerError.toMessage (ValidationError "パス長が閾値を超過しています")
+        |> should equal "パス長が閾値を超過しています"
+
+        // 7. UndoConflictError
+        RenamerError.toMessage (UndoConflictError ("C:\\videos\\sample.mp4", "同名ファイルが既に存在します"))
+        |> should equal "Undo 衝突エラー (C:\\videos\\sample.mp4): 同名ファイルが既に存在します"
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は jsonPathOpt に不正JSON指定時は既定値へフォールバックし正常JSON時はそれを採用する`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerJsonFallback_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let brokenPath = Path.Combine(tempDir, "broken.json")
+        let validPath = Path.Combine(tempDir, "valid.json")
+        File.WriteAllText(brokenPath, "{ invalid json content ...")
+        File.WriteAllText(validPath, """{ "targetDirectory": "C:\\ExplicitValidDir", "pathLengthThreshold": 210 }""")
+
+        try
+            // 不正 JSON の場合は baseSettings（既定値）へフォールバック
+            let fallbackSettings = Settings.loadConfigurationWithConfig (Some "Development") (Some brokenPath) None
+            let defaults = Settings.defaultSettings ()
+            fallbackSettings.TargetDirectory |> should equal defaults.TargetDirectory
+            fallbackSettings.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+
+            // 正常 JSON の場合はその内容を最優先採用
+            let validSettings = Settings.loadConfigurationWithConfig (Some "Development") (Some validPath) None
+            validSettings.TargetDirectory |> should equal "C:\\ExplicitValidDir"
+            validSettings.PathLengthThreshold |> should equal 210
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig はディレクトリ内 appsettings.{env}.json に構文エラーがあってもクラッシュせずフォールバックする`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerEnvSyntaxError_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let basePath = Path.Combine(tempDir, "appsettings.json")
+        let brokenEnvPath = Path.Combine(tempDir, "appsettings.BrokenEnv.json")
+        let dummyEnv = Path.Combine(tempDir, ".env")
+
+        File.WriteAllText(basePath, """{ "pathLengthThreshold": 222, "selectedModel": "base-model" }""")
+        File.WriteAllText(brokenEnvPath, "{ broken json syntax !!!")
+        File.WriteAllText(dummyEnv, "# dummy")
+
+        try
+            // BrokenEnv 環境下の設定読み込みで構文エラーがあっても例外終了せず、basePath の設定を採用
+            let loaded = Settings.loadConfigurationWithConfig (Some "BrokenEnv") None (Some dummyEnv)
+            loaded.PathLengthThreshold |> should equal 222
+            loaded.SelectedModel |> should equal "base-model"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は configNameOpt に不正文字が含まれる場合に resolveEnvironmentName へ安全フォールバックする`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerSanitizeEnv_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        let dummyEnv = Path.Combine(tempDir, ".env")
+        File.WriteAllText(dummyEnv, "# dummy")
+
+        try
+            // 不正ファイル名文字（* : ? " < > | 等）を含む環境名
+            let loaded = Settings.loadConfigurationWithConfig (Some "env*with:bad?chars") None (Some dummyEnv)
+            let defaults = Settings.defaultSettings ()
+            // クラッシュせず正常に設定がロードされること
+            loaded.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``save は保存先パスが既存ディレクトリなどの書き込み不能パスの場合に Error IoError を返す`` () =
+        let tempDir = Path.Combine(Path.GetTempPath(), "RenamerSaveErrorTest_" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(tempDir) |> ignore
+        try
+            // tempDir は既存ディレクトリであるため、ここにファイルを保存しようとすると File.Move 等でエラー
+            let settings = Settings.defaultSettings ()
+            let result = Settings.save tempDir settings
+            match result with
+            | Error (IoError (msg, Some _)) ->
+                msg |> should contain "設定ファイルの保存中にエラーが発生しました"
+            | Error other -> failwith $"予期しないエラー型: {other}"
+            | Ok () -> failwith "既存ディレクトリへの保存で成功してはいけません"
+        finally
+            if Directory.Exists(tempDir) then Directory.Delete(tempDir, true)
+
+    [<Fact>]
+    let ``loadConfigurationWithConfig は空白環境名・パストラバーサル文字列・不在ディレクトリ指定時に安全フォールバックする`` () =
+        let defaults = Settings.defaultSettings ()
+
+        // 1. configNameOpt = Some "   " (空白文字のみ) -> 既定環境名へフォールバック
+        let loadedWhitespace = Settings.loadConfigurationWithConfig (Some "   ") None None
+        loadedWhitespace.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+
+        // 2. configNameOpt = Some "bad\\sub" (バックスラッシュ含む) -> サニタイズされ既定環境名へフォールバック
+        let loadedBackslash = Settings.loadConfigurationWithConfig (Some "bad\\sub") None None
+        loadedBackslash.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+
+        // 3. configNameOpt = Some "bad/../env" (スラッシュ・親ディレクトリトラバーサル含む) -> サニタイズされ既定環境名へフォールバック
+        let loadedTraversal = Settings.loadConfigurationWithConfig (Some "bad/../env") None None
+        loadedTraversal.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+
+        // 4. envPathOpt = Some nonexistentPath (存在しないディレクトリ) -> 例外なくベース設定を返す
+        let nonExistentEnv = Path.Combine(Path.GetTempPath(), "nonexistent_dir_" + Guid.NewGuid().ToString("N"), ".env")
+        let loadedNonExistent = Settings.loadConfigurationWithConfig (Some "Development") None (Some nonExistentEnv)
+        loadedNonExistent.PathLengthThreshold |> should equal defaults.PathLengthThreshold
+
+
 
 

@@ -86,6 +86,7 @@ module RenameIntegrationE2ETests =
                     IsAiProcessing = false
                     IsSelected = true
                     LastWriteTime = DateTime.UtcNow
+                    AiError = None
                 }
 
                 let proposal2: RenameProposal = {
@@ -103,6 +104,7 @@ module RenameIntegrationE2ETests =
                     IsAiProcessing = false
                     IsSelected = true
                     LastWriteTime = DateTime.UtcNow
+                    AiError = None
                 }
 
                 // AIコメントの条件付き格納検証
@@ -191,6 +193,7 @@ module RenameIntegrationE2ETests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
 
             let propB: RenameProposal = {
@@ -208,6 +211,7 @@ module RenameIntegrationE2ETests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
 
             // リネーム実行: 自動で 2件目が _1 に一意化される
@@ -273,6 +277,7 @@ module RenameIntegrationE2ETests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
             {
                 OriginalFullPath = "D:\\Videos\\strange_title_without_date_recorded_by_random_camera_device_and_extremely_long_filename_that_exceeds_threshold_character_limit_for_docker_mount_failure_demonstration_file_sample_data.mp4"
@@ -289,6 +294,7 @@ module RenameIntegrationE2ETests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
         ]
 
@@ -303,6 +309,10 @@ module RenameIntegrationE2ETests =
             IsRenaming = false
             IsDockerBusy = false
             ErrorMessage = None
+            HasScanned = false
+            ScannedVideoCount = 0
+            ActiveEnvironment = "Development"
+            SettingsSavePath = ""
             Candidates = []
             UndoStack = []
             Docker = {
@@ -440,6 +450,7 @@ module RenameIntegrationE2ETests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
         ]
         let unproposedModel = {
@@ -469,6 +480,7 @@ module RenameIntegrationE2ETests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
         ]
         let increasedModel = {
@@ -495,6 +507,7 @@ module RenameIntegrationE2ETests =
                 IsAiProcessing = false
                 IsSelected = true
                 LastWriteTime = DateTime.UtcNow
+                AiError = None
             }
         ]
         let multiWidthModel = { baseModel with Candidates = multiWidthCandidates }
@@ -628,6 +641,7 @@ module RenameIntegrationE2ETests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
+            AiError = None
         }
         let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
 
@@ -690,6 +704,7 @@ module RenameIntegrationE2ETests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
+            AiError = None
         }
         let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
 
@@ -752,6 +767,7 @@ module RenameIntegrationE2ETests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
+            AiError = None
         }
         let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
 
@@ -841,6 +857,7 @@ module RenameIntegrationE2ETests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
+            AiError = None
         }
         let candidate2: RenameProposal = {
             OriginalFullPath = "D:\\videos\\in_progress_sample_video.mp4"
@@ -857,6 +874,7 @@ module RenameIntegrationE2ETests =
             IsAiProcessing = true // 処理中フラグ
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
+            AiError = None
         }
         let testModel = {
             baseModel with
@@ -946,6 +964,10 @@ module RenameIntegrationE2ETests =
             IsRenaming = false
             IsDockerBusy = false
             ErrorMessage = None
+            HasScanned = false
+            ScannedVideoCount = 0
+            ActiveEnvironment = "Development"
+            SettingsSavePath = ""
             Candidates = []
             UndoStack = []
             Docker = {
@@ -1154,6 +1176,7 @@ module RenameIntegrationE2ETests =
             IsAiProcessing = false
             IsSelected = true
             LastWriteTime = DateTime.UtcNow
+            AiError = None
         }
         let testModel = {
             baseModel with
@@ -1208,6 +1231,339 @@ module RenameIntegrationE2ETests =
 
         File.Exists(outputPath) |> should equal true
         FileInfo(outputPath).Length |> should be (greaterThan 1000L)
+
+    [<Fact>]
+    let ``E2E: 新UI状態の実描画（Zero-State, 各スピナー状態, エラーリカバリ）およびスクリーンショット出力`` () =
+        ensureAppInitialized ()
+
+        let rec findRepoRoot (dir: DirectoryInfo) =
+            if dir = null then AppContext.BaseDirectory
+            elif File.Exists(Path.Combine(dir.FullName, "AGENTS.md")) then dir.FullName
+            elif dir.Parent = null then AppContext.BaseDirectory
+            else findRepoRoot dir.Parent
+        let repoRoot = findRepoRoot (DirectoryInfo(AppContext.BaseDirectory))
+        let outputDir = Path.Combine(repoRoot, "test", "TestResults")
+        if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
+
+        let renderAndCapture (m: Model) (fileName: string) : string * string list =
+            let width = 1100.0
+            let height = 720.0
+            let w = new Avalonia.FuncUI.Hosts.HostWindow()
+            w.Width <- width
+            w.Height <- height
+            w.Background <- Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#1a1a1a"))
+
+            Elmish.Program.mkProgram (fun () -> m, Elmish.Cmd.none) State.update Views.view
+            |> Avalonia.FuncUI.Elmish.Program.withHost w
+            |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+
+            w.Show()
+            w.UpdateLayout()
+
+            let rec collect (control: Avalonia.Controls.Control) : string list =
+                let current =
+                    match control with
+                    | :? Avalonia.Controls.TextBlock as tb when tb.Text <> null -> [ tb.Text ]
+                    | :? Avalonia.Controls.SelectableTextBlock as stb when stb.Text <> null -> [ stb.Text ]
+                    | :? Avalonia.Controls.TextBox as tb when tb.Text <> null -> [ tb.Text ]
+                    | :? Avalonia.Controls.ContentControl as cc when cc.Content <> null && (cc.Content :? string) -> [ cc.Content :?> string ]
+                    | _ -> []
+                let children =
+                    match control with
+                    | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collect |> Seq.toList
+                    | :? Avalonia.Controls.ContentControl as cc ->
+                        match cc.Content with
+                        | :? Avalonia.Controls.Control as c -> collect c
+                        | _ -> []
+                    | :? Avalonia.Controls.Decorator as d when d.Child <> null -> collect d.Child
+                    | _ -> []
+                current @ children
+            let texts = collect w
+
+            let pixelSize = Avalonia.PixelSize(int width, int height)
+            let dpi = Avalonia.Vector(96.0, 96.0)
+            let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
+            rtb.Render(w)
+
+            let outputPath = Path.Combine(outputDir, fileName)
+            rtb.Save(outputPath)
+            w.Close()
+
+            File.Exists(outputPath) |> should equal true
+            FileInfo(outputPath).Length |> should be (greaterThan 1000L)
+            (outputPath, texts)
+
+        // =================================================================
+        // 1. E2E-01: クリーン起動 Zero-State (Development 環境バッジ + 保存先 + フォルダ未設定導線)
+        // =================================================================
+        let baseModel, _ = State.init ()
+        let devSavePath = Path.Combine(repoRoot, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
+        let zeroStateModel =
+            { baseModel with
+                Settings = { baseModel.Settings with TargetDirectory = "" }
+                Candidates = []
+                IsScanning = false
+                IsRequestingAi = false
+                IsRenaming = false
+                IsDockerBusy = false
+                HasScanned = false
+                ScannedVideoCount = 0
+                ActiveEnvironment = "Development"
+                SettingsSavePath = devSavePath
+            }
+
+        let pngPath12, texts12 = renderAndCapture zeroStateModel "E2E_12_Spinner_ZeroState_DEV.png"
+        texts12 |> List.exists (fun t -> t.Contains("ENV: Development")) |> should equal true
+        texts12 |> List.exists (fun t -> t.Contains("appsettings.Development.json")) |> should equal true
+        texts12 |> List.exists (fun t -> t.Contains("対象フォルダが設定されていません")) |> should equal true
+        texts12 |> List.exists (fun t -> t.Contains("フォルダを選択して設定")) |> should equal true
+
+        // =================================================================
+        // 2. E2E-02: 各スピナー状態の実描画
+        // =================================================================
+        // (a) IsScanning = true (スキャン中中央スピナー)
+        let scanningModel =
+            { baseModel with
+                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                IsScanning = true
+                Candidates = []
+            }
+        let pngPath13, texts13 = renderAndCapture scanningModel "E2E_13_Spinner_Scanning.png"
+        texts13 |> List.exists (fun t -> t.Contains("動画ファイルをスキャン中...")) |> should equal true
+        texts13 |> List.exists (fun t -> t.Contains("走査対象: D:\\Videos")) |> should equal true
+
+        // (b) IsRequestingAi = true ＋ 処理中候補行 (IsAiProcessing) ＋ 失敗エラー再試行行 (AiError) ＋ フッター進捗スピナー
+        let cand1: RenameProposal = {
+            OriginalFullPath = "D:\\Videos\\2024-01-01_completed_sample_documentary_video_file.mp4"
+            OriginalFileName = "2024-01-01_completed_sample_documentary_video_file.mp4"
+            DirectoryPath = "D:\\Videos"
+            OriginalLength = 250
+            OriginalFileNameBytes = 55
+            OriginalViolation = WindowsPathOnly
+            ProposedFileName = "2024-01-01_completed_doc.mp4"
+            ProposedLength = 29
+            ProposedFileNameBytes = 29
+            AiComment = Some "命名規則に基づき適切に短縮しました。"
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            IsAiProposed = true
+            IsAiProcessing = false
+            AiError = None
+        }
+        let cand2: RenameProposal = {
+            OriginalFullPath = "D:\\Videos\\2024-01-02_processing_in_progress_long_path_video_file.mp4"
+            OriginalFileName = "2024-01-02_processing_in_progress_long_path_video_file.mp4"
+            DirectoryPath = "D:\\Videos"
+            OriginalLength = 260
+            OriginalFileNameBytes = 58
+            OriginalViolation = WindowsPathOnly
+            ProposedFileName = "2024-01-02_processing_in_progress_long_path_video_file.mp4"
+            ProposedLength = 260
+            ProposedFileNameBytes = 58
+            AiComment = None
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            IsAiProposed = false
+            IsAiProcessing = true
+            AiError = None
+        }
+        let cand3: RenameProposal = {
+            OriginalFullPath = "D:\\Videos\\2024-01-03_failed_llm_request_timeout_sample_file.mp4"
+            OriginalFileName = "2024-01-03_failed_llm_request_timeout_sample_file.mp4"
+            DirectoryPath = "D:\\Videos"
+            OriginalLength = 255
+            OriginalFileNameBytes = 54
+            OriginalViolation = WindowsPathOnly
+            ProposedFileName = "2024-01-03_failed_llm_request_timeout_sample_file.mp4"
+            ProposedLength = 255
+            ProposedFileNameBytes = 54
+            AiComment = Some "AI提案取得失敗: タイムアウト"
+            IsSelected = true
+            LastWriteTime = DateTime.UtcNow
+            IsAiProposed = false
+            IsAiProcessing = false
+            AiError = Some "AI提案取得失敗: HTTP 504 タイムアウト"
+        }
+        // 待機中・未選択候補カード (IsSelected = false, IsAiProcessing = false, AiError = None)
+        // 縦・横双方でのボーダー色 (borderZinc800) およびボーダー太さ (1.0) の描画分岐を網羅
+        let cand4: RenameProposal = {
+            OriginalFullPath = "D:\\Videos\\2024-01-04_waiting_idle_unselected_candidate_video_file.mp4"
+            OriginalFileName = "2024-01-04_waiting_idle_unselected_candidate_video_file.mp4"
+            DirectoryPath = "D:\\Videos"
+            OriginalLength = 265
+            OriginalFileNameBytes = 60
+            OriginalViolation = WindowsPathOnly
+            ProposedFileName = "2024-01-04_waiting_idle_unselected_candidate_video_file.mp4"
+            ProposedLength = 265
+            ProposedFileNameBytes = 60
+            AiComment = None
+            IsSelected = false
+            LastWriteTime = DateTime.UtcNow
+            IsAiProposed = false
+            IsAiProcessing = false
+            AiError = None
+        }
+
+        let aiProcessingModel =
+            { baseModel with
+                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                IsRequestingAi = true
+                Candidates = [ cand1; cand2; cand3; cand4 ]
+            }
+        let pngPath14, texts14 = renderAndCapture aiProcessingModel "E2E_14_Spinner_AiProcessing_And_ErrorRetry.png"
+        texts14 |> List.exists (fun t -> t.Contains("処理中")) |> should equal true
+        texts14 |> List.exists (fun t -> t.Contains("⚠️ 失敗")) |> should equal true
+        texts14 |> List.exists (fun t -> t.Contains("↻ 再試行")) |> should equal true
+        texts14 |> List.exists (fun t -> t.Contains("AI提案中...") && t.Contains("2/4件完了")) |> should equal true
+        texts14 |> List.exists (fun t -> t.Contains("waiting_idle_unselected_candidate")) |> should equal true
+
+        // (c) IsRenaming = true (半透明暗転オーバーレイ＋中央スピナー)
+        let renamingModel =
+            { baseModel with
+                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                IsRenaming = true
+                Candidates = [ cand1 ]
+            }
+        let pngPath15, texts15 = renderAndCapture renamingModel "E2E_15_Spinner_Renaming_Overlay.png"
+        texts15 |> List.exists (fun t -> t.Contains("ファイル名を変更中...")) |> should equal true
+        texts15 |> List.exists (fun t -> t.Contains("物理リネームおよび Undo 履歴の確定完了まで操作をお待ちください")) |> should equal true
+
+        // (d) IsDockerBusy = true (コンテナ操作スピナー) ＋ 全件安全状態 (HasScanned=true, ScannedVideoCount=3, Candidates=[])
+        let dockerBusyAllSafeModel =
+            { baseModel with
+                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                IsDockerBusy = true
+                Candidates = []
+                HasScanned = true
+                ScannedVideoCount = 3
+                ActiveEnvironment = "Development"
+                SettingsSavePath = devSavePath
+            }
+        let pngPath16, texts16 = renderAndCapture dockerBusyAllSafeModel "E2E_16_Spinner_DockerBusy_AllSafe.png"
+        texts16 |> List.exists (fun t -> t.Contains("コンテナ操作中...")) |> should equal true
+        texts16 |> List.exists (fun t -> t.Contains("対象ファイルはありません（全件安全）")) |> should equal true
+        texts16 |> List.exists (fun t -> t.Contains("動画 3 本を検査しましたが")) |> should equal true
+
+        // =================================================================
+        // 3. E2E-03: 不在ディレクトリ指定スキャン失敗 → 回復・再スキャン成功
+        // =================================================================
+        withTempDirectory (fun tempDir ->
+            let nonExistentDir = Path.Combine(tempDir, "absent_dir_" + Guid.NewGuid().ToString("N"))
+            let initialScanningModel =
+                { baseModel with
+                    Settings = { baseModel.Settings with TargetDirectory = nonExistentDir }
+                    IsScanning = true
+                }
+
+            // 不在エラーによる ScanCompleted イベント発行
+            let scanError = IoError ($"指定されたディレクトリが存在しません: {nonExistentDir}", None)
+            let failedModel, _ = State.update (ScanCompleted (Error scanError)) initialScanningModel
+
+            // スピナー解除およびエラーメッセージ設定のアサート
+            failedModel.IsScanning |> should equal false
+            failedModel.ErrorMessage |> should not' (equal None)
+            failedModel.ErrorMessage.Value |> should contain "存在しません"
+
+            // 失敗画面のUI描画検証
+            let _, failedTexts = renderAndCapture failedModel "E2E_17_Scan_Failure_ErrorBanner.png"
+            failedTexts |> List.exists (fun t -> t.Contains("存在しません")) |> should equal true
+            failedTexts |> List.exists (fun t -> t.Contains("動画ファイルをスキャン中...")) |> should equal false
+
+            // 有効ディレクトリへの変更
+            let validModel, _ = State.update (TargetDirectoryChanged tempDir) failedModel
+            validModel.Settings.TargetDirectory |> should equal tempDir
+
+            // 有効ディレクトリで走査結果を受信（回復）
+            let recoveredCandidate: ScanCandidate = {
+                FullPath = Path.Combine(tempDir, "valid_long_name_video.mp4")
+                FileName = "valid_long_name_video.mp4"
+                DirectoryPath = tempDir
+                PathLength = 245
+                FileNameBytes = 25
+                Violation = WindowsPathOnly
+                FileSizeBytes = 1024L
+                LastWriteTime = DateTime.UtcNow
+            }
+            let recoveredModel, _ = State.update (ScanCompleted (Ok [ recoveredCandidate ])) validModel
+
+            // スピナー解除、候補反映、HasScanned 整合性のアサート
+            recoveredModel.IsScanning |> should equal false
+            recoveredModel.Candidates.Length |> should equal 1
+            recoveredModel.HasScanned |> should equal true
+
+            // 回復後画面のUI描画検証
+            let _, recoveredTexts = renderAndCapture recoveredModel "E2E_18_Scan_Recovery_Success.png"
+            recoveredTexts |> List.exists (fun t -> t.Contains("valid_long_name_video")) |> should equal true
+        )
+
+        // =================================================================
+        // 4. 追加描画検証: 横並びレイアウト (Horizontal) での AI 提案中・エラー再試行実描画
+        // =================================================================
+        let horizontalAiErrorModel =
+            { baseModel with
+                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                Layout = Horizontal
+                IsRequestingAi = true
+                Candidates = [ cand1; cand2; cand3; cand4 ]
+            }
+        let pngPath14b, texts14b = renderAndCapture horizontalAiErrorModel "E2E_14b_Spinner_Horizontal_AiError.png"
+        texts14b |> List.exists (fun t -> t.Contains("処理中")) |> should equal true
+        texts14b |> List.exists (fun t -> t.Contains("⚠️ 取得エラー") || t.Contains("HTTP 504")) |> should equal true
+        texts14b |> List.exists (fun t -> t.Contains("AI提案中...") && t.Contains("2/4件完了")) |> should equal true
+        texts14b |> List.exists (fun t -> t.Contains("waiting_idle_unselected_candidate")) |> should equal true
+
+        // =================================================================
+        // 5. 追加描画検証: 動画ファイル 0 件検出時の Empty State 画面実描画
+        // =================================================================
+        let emptyScannedModel =
+            { baseModel with
+                Settings = { baseModel.Settings with TargetDirectory = "D:\\EmptyVideos" }
+                HasScanned = true
+                ScannedVideoCount = 0
+                Candidates = []
+            }
+        let pngPath19, texts19 = renderAndCapture emptyScannedModel "E2E_19_Scanned_Zero_Videos_EmptyState.png"
+        texts19 |> List.exists (fun t -> t.Contains("動画ファイル（.mp4）が見つかりませんでした")) |> should equal true
+        texts19 |> List.exists (fun t -> t.Contains("📁 別のフォルダを指定する")) |> should equal true
+
+        // =================================================================
+        // 6. 追加描画検証: フィルタ条件に一致する候補 0 件時の画面実描画 (E2E_20)
+        // =================================================================
+        // cand1 は WindowsPathOnly なので、FilterLinuxOnly 適用時は該当 0 件となる
+        let filterZeroModel =
+            { baseModel with
+                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                HasScanned = true
+                ScannedVideoCount = 1
+                Candidates = [ cand1 ]
+                FilterConstraint = FilterLinuxOnly
+            }
+        let pngPath20, texts20 = renderAndCapture filterZeroModel "E2E_20_Filter_Zero_Matches.png"
+        texts20 |> List.exists (fun t -> t.Contains("フィルタ該当 0 / 全 1 件") || t.Contains("該当するファイルがありません")) |> should equal true
+        texts20 |> List.exists (fun t -> t.Contains("フィルタを「すべて」に戻す")) |> should equal true
+
+    [<Fact>]
+    let ``UI: SpinnerControl の CLR プロパティラッパーおよび MeasureOverride によるサイズ計測の検証`` () =
+        ensureAppInitialized ()
+        let spinner = new TagBasedVideoManager.Renamer.SpinnerControl()
+
+        // 1. SpinnerSize
+        spinner.SpinnerSize <- 24.0
+        spinner.SpinnerSize |> should equal 24.0
+
+        // 2. SpinnerColor
+        spinner.SpinnerColor <- Avalonia.Media.Colors.Cyan
+        spinner.SpinnerColor |> should equal Avalonia.Media.Colors.Cyan
+
+        // 3. StrokeThickness
+        spinner.StrokeThickness <- 3.0
+        spinner.StrokeThickness |> should equal 3.0
+
+        // 4. MeasureOverride -> DesiredSize
+        spinner.Measure(Avalonia.Size(100.0, 100.0))
+        spinner.DesiredSize.Width |> should equal 24.0
+        spinner.DesiredSize.Height |> should equal 24.0
+
 
 
 

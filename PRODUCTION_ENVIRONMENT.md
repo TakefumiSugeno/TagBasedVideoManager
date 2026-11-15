@@ -1,6 +1,6 @@
 # 本番環境におけるパス・環境変数・コンテナ構成仕様
 
-本書では、TagBasedVideoManager の本番環境における **Dockerfile**、**.env**、**ホストOSのパス**、**WSL3のパス**、**コンテナのパス** の関係性、パス変換ルール、およびマウント仕様を整理します。
+本書では、TagBasedVideoManager の本番環境における **Dockerfile**、**appsettings.Production.json**（※旧 `.env` は廃止・移行済み）、**ホストOSのパス**、**WSL3のパス**、**コンテナのパス** の関係性、パス変換ルール、およびマウント仕様を整理します。
 
 ---
 
@@ -11,7 +11,7 @@ Windows 11（WSL 3.0 環境）でデプロイスクリプト（`scripts/deploy.p
 ```mermaid
 flowchart TD
     subgraph Host["① ホストOS (Windows 11)"]
-        DotEnv[".env 設定ファイル<br>VIDEO_DIRS=C:\...\Videos;D:\Movies<br>PORT=5620"]
+        AppSettings["appsettings.Production.json<br>VIDEO_DIRS=C:\...\Videos;D:\Movies<br>PORT=5620"]
         WinVideo1["C:\Users\...\Videos"]
         WinVideo2["D:\Movies"]
         WinData[".\data\ (永続データ)<br>- metadata.db<br>- thumbnails/"]
@@ -36,7 +36,7 @@ flowchart TD
         ContEnv["注入される環境変数 (-e)<br>VIDEO_DIRS=/app/videos/Videos;/app/videos/Movies<br>DATABASE_PATH=/app/data/metadata.db<br>THUMBNAIL_DIR=/app/data/thumbnails<br>PORT=5620"]
     end
 
-    DotEnv --> Deploy
+    AppSettings --> Deploy
     WinVideo1 --> Deploy
     WinVideo2 --> Deploy
     WinData --> Deploy
@@ -59,15 +59,15 @@ flowchart TD
 
 ## 2. パス・環境変数の対応関係表
 
-| 項目                     | ① ホストOS (Windows)                            | ② WSL3 (`wslc` 実行時)                | ③ コンテナ内パス         | ④ 注入される環境変数 / Dockerfile                  |
-| :----------------------- | :---------------------------------------------- | :------------------------------------ | :----------------------- | :------------------------------------------------- |
-| **動画フォルダ 1**       | `C:\Users\...\Videos`                           | `/mnt/c/Users/.../Videos`             | `/app/videos/Videos`     | `-v /mnt/c/.../Videos:/app/videos/Videos:ro`       |
-| **動画フォルダ 2**       | `D:\Movies`                                     | `/mnt/d/Movies`                       | `/app/videos/Movies`     | `-v /mnt/d/Movies:/app/videos/Movies:ro`           |
-| **動画スキャン対象一覧** | `.env` の `VIDEO_DIRS` にセミコロン区切りで記述 | スクリプト内で各パスを WSL 形式に変換 | 各フォルダが独立マウント | `VIDEO_DIRS=/app/videos/Videos;/app/videos/Movies` |
-| **データ永続化ルート**   | `.\data` (プロジェクト直下)                     | `/mnt/<ドライブ>/.../data`            | `/app/data`              | `-v /mnt/.../data:/app/data`                       |
-| **SQLite データベース**  | `.\data\metadata.db`                            | `/mnt/.../data/metadata.db`           | `/app/data/metadata.db`  | `DATABASE_PATH=/app/data/metadata.db`              |
-| **サムネイル保存先**     | `.\data\thumbnails\`                            | `/mnt/.../data/thumbnails`            | `/app/data/thumbnails`   | `THUMBNAIL_DIR=/app/data/thumbnails`               |
-| **Web ポート**           | `http://localhost:5620`                         | ポート 5620 (ホスト共有)              | ポート 5620              | `PORT=5620`（コンテナ実行時 `-p 5620:5620`）       |
+| 項目                     | ① ホストOS (Windows)                                                                            | ② WSL3 (`wslc` 実行時)                | ③ コンテナ内パス         | ④ 注入される環境変数 / Dockerfile                  |
+| :----------------------- | :---------------------------------------------------------------------------------------------- | :------------------------------------ | :----------------------- | :------------------------------------------------- |
+| **動画フォルダ 1**       | `C:\Users\...\Videos`                                                                           | `/mnt/c/Users/.../Videos`             | `/app/videos/Videos`     | `-v /mnt/c/.../Videos:/app/videos/Videos:ro`       |
+| **動画フォルダ 2**       | `D:\Movies`                                                                                     | `/mnt/d/Movies`                       | `/app/videos/Movies`     | `-v /mnt/d/Movies:/app/videos/Movies:ro`           |
+| **動画スキャン対象一覧** | `appsettings.Production.json` の `VIDEO_DIRS` にセミコロン区切りで記述（環境変数/引数上書き可） | スクリプト内で各パスを WSL 形式に変換 | 各フォルダが独立マウント | `VIDEO_DIRS=/app/videos/Videos;/app/videos/Movies` |
+| **データ永続化ルート**   | `.\data` (プロジェクト直下、`DATA_DIR` で指定可)                                                | `/mnt/<ドライブ>/.../data`            | `/app/data`              | `-v /mnt/.../data:/app/data`                       |
+| **SQLite データベース**  | `.\data\metadata.db`                                                                            | `/mnt/.../data/metadata.db`           | `/app/data/metadata.db`  | `DATABASE_PATH=/app/data/metadata.db`              |
+| **サムネイル保存先**     | `.\data\thumbnails\`                                                                            | `/mnt/.../data/thumbnails`            | `/app/data/thumbnails`   | `THUMBNAIL_DIR=/app/data/thumbnails`               |
+| **Web ポート**           | `http://localhost:5620`                                                                         | ポート 5620 (ホスト共有)              | ポート 5620              | `PORT=5620`（コンテナ実行時 `-p 5620:5620`）       |
 
 ---
 
@@ -88,27 +88,26 @@ flowchart TD
 - **ポート公開**:
   - `EXPOSE 5620`
 
-### (2) .env の役割
+### (2) appsettings.Production.json の役割
 
-ホストOS（ユーザー環境）における入力設定インターフェースです。
-デプロイスクリプト起動時に読み込まれ、コンテナ起動引数へ変換されます。
+ホストOS（ユーザー環境）における本番設定ファイルです（`src/TagBasedVideoManager/appsettings.Production.json`）。
+デプロイスクリプト起動時（`scripts/deploy.ps1` / `scripts/deploy.sh`）に自動読み込みされ、コンテナ起動引数へ変換されます（※従来の `.env` は廃止され、存在しても無視されます）。
 
-```env
-PORT=5620
-# Web アプリ / コンテナ用の動画ルートフォルダ（セミコロン ';' 区切りで複数指定可能）
-VIDEO_DIRS="C:\Users\YourUserName\Videos;D:\Movies"
-
-# データ永続化ディレクトリ（未指定時はリポジトリ直下の ./data が使用されます）
-# DATA_DIR=D:\MyData
-
-# 以下は AI File Renamer (デスクトップアプリ) 専用の設定（コンテナ本体は参照しません）
-VIDEO_DIR=C:\Users\YourUserName\Videos
+```json
+{
+  "PORT": 5620,
+  "VIDEO_DIRS": "C:\\Users\\YourUserName\\Videos;D:\\Movies",
+  "THUMBNAIL_DIR": "thumbnails",
+  "DATABASE_PATH": "metadata.db",
+  "DATA_DIR": "./data"
+}
 ```
 
 > [!NOTE]
 >
-> - `VIDEO_DIRS`（複数形）: Web アプリ本体および Docker コンテナ専用です。
-> - `VIDEO_DIR`（単数形）: AI File Renamer（デスクトップコンパニオンアプリ）専用です。
+> - `VIDEO_DIRS`: Web アプリ本体および Docker コンテナ専用の動画フォルダパス一覧（セミコロン `;` 区切り）です。
+> - 旧 `.env` の `VIDEO_DIR`（単数形）は廃止されました。デプロイスクリプト実行時に旧パラメータのみ残存している場合は、移行案内を表示して安全に終了します。
+> - CLI 引数（例: `-VideoDirs "..."`, `-Port 5630`）やシェル環境変数（`VIDEO_DIRS`, `PORT`）が指定された場合は、`appsettings.Production.json` の値より優先されます。
 
 ### (3) ホストOS ⇄ WSL3 間のパス解決 (`scripts/common.ps1`)
 

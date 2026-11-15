@@ -251,3 +251,62 @@ function New-RunArguments {
 
     return $argsList.ToArray()
 }
+
+function Resolve-WebDeploySettings {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [string]$Environment = "Production"
+    )
+
+    $srcDir = Join-Path $RepoRoot "src" | Join-Path -ChildPath "TagBasedVideoManager"
+    $baseFile = Join-Path $srcDir "appsettings.json"
+    $envFile = if (-not [string]::IsNullOrWhiteSpace($Environment)) {
+        Join-Path $srcDir "appsettings.$Environment.json"
+    } else { $null }
+
+    $baseObj = $null
+    if (Test-Path -LiteralPath $baseFile) {
+        $raw = Get-Content -LiteralPath $baseFile -Raw -Encoding UTF8
+        $baseObj = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
+    }
+
+    $envObj = $null
+    if ($envFile -and (Test-Path -LiteralPath $envFile)) {
+        $raw = Get-Content -LiteralPath $envFile -Raw -Encoding UTF8
+        $envObj = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
+    }
+
+    # 優先順: envObj -> baseObj -> 既定値
+    $port = 5620
+    if ($envObj -and $null -ne $envObj.PORT) {
+        $port = Resolve-WebPort "$($envObj.PORT)"
+    }
+    elseif ($baseObj -and $null -ne $baseObj.PORT) {
+        $port = Resolve-WebPort "$($baseObj.PORT)"
+    }
+
+    $videoDirs = ""
+    if ($envObj -and $null -ne $envObj.VIDEO_DIRS) {
+        $videoDirs = "$($envObj.VIDEO_DIRS)"
+    }
+    elseif ($baseObj -and $null -ne $baseObj.VIDEO_DIRS) {
+        $videoDirs = "$($baseObj.VIDEO_DIRS)"
+    }
+
+    $dataDir = "./data"
+    if ($envObj -and $null -ne $envObj.DATA_DIR) {
+        $dataDir = "$($envObj.DATA_DIR)"
+    }
+    elseif ($baseObj -and $null -ne $baseObj.DATA_DIR) {
+        $dataDir = "$($baseObj.DATA_DIR)"
+    }
+
+    return [PSCustomObject]@{
+        Port = $port
+        VideoDirs = $videoDirs
+        DataDir = $dataDir
+    }
+}
+

@@ -2,17 +2,113 @@ namespace TagBasedVideoManager.Renamer
 
 open System
 open Avalonia
+open Avalonia.Animation
+open Avalonia.Styling
 open Avalonia.Controls
 open Avalonia.Controls.Primitives
 open Avalonia.Controls.ApplicationLifetimes
 open Avalonia.Platform.Storage
 open Avalonia.FuncUI.DSL
+open Avalonia.FuncUI.Builder
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.Interactivity
 open TagBasedVideoManager.Renamer
 
+/// <summary>
+/// Avalonia 11 ネイティブアニメーションによる単一回転スピナーコントロール。
+/// MVU の再描画ループに負荷を掛けず、GPU/コンポジタ側で滑らかに 360° 無限回転します。
+/// </summary>
+type SpinnerControl () as this =
+    inherit Control ()
+
+    static let sizeProperty = AvaloniaProperty.Register<SpinnerControl, float>("SpinnerSize", 24.0)
+    static let colorProperty = AvaloniaProperty.Register<SpinnerControl, Color>("SpinnerColor", Color.Parse("#38bdf8"))
+    static let strokeThicknessProperty = AvaloniaProperty.Register<SpinnerControl, float>("StrokeThickness", 2.5)
+
+    let rotateTransform = RotateTransform()
+    let mutable runningAnimCts: System.Threading.CancellationTokenSource option = None
+
+    do
+        this.RenderTransform <- rotateTransform
+        this.RenderTransformOrigin <- RelativePoint.Center
+
+    static member SpinnerSizeProperty = sizeProperty
+    static member SpinnerColorProperty = colorProperty
+    static member StrokeThicknessProperty = strokeThicknessProperty
+
+    member this.SpinnerSize
+        with get () = this.GetValue(sizeProperty)
+        and set v = this.SetValue(sizeProperty, v) |> ignore
+
+    member this.SpinnerColor
+        with get () = this.GetValue(colorProperty)
+        and set v = this.SetValue(colorProperty, v) |> ignore
+
+    member this.StrokeThickness
+        with get () = this.GetValue(strokeThicknessProperty)
+        and set v = this.SetValue(strokeThicknessProperty, v) |> ignore
+
+    override this.MeasureOverride(availableSize) =
+        let s = this.SpinnerSize
+        Size(s, s)
+
+    override this.OnAttachedToVisualTree(e) =
+        base.OnAttachedToVisualTree(e)
+        let animation = Animation()
+        animation.Duration <- TimeSpan.FromMilliseconds(850.0)
+        animation.IterationCount <- IterationCount.Infinite
+
+        let kf1 = KeyFrame()
+        kf1.Cue <- Cue(0.0)
+        kf1.Setters.Add(Setter(RotateTransform.AngleProperty, 0.0))
+
+        let kf2 = KeyFrame()
+        kf2.Cue <- Cue(1.0)
+        kf2.Setters.Add(Setter(RotateTransform.AngleProperty, 360.0))
+
+        animation.Children.Add(kf1)
+        animation.Children.Add(kf2)
+
+        let cts = new System.Threading.CancellationTokenSource()
+        runningAnimCts <- Some cts
+        animation.RunAsync(this, cts.Token) |> ignore
+
+    override this.OnDetachedFromVisualTree(e) =
+        base.OnDetachedFromVisualTree(e)
+        runningAnimCts |> Option.iter (fun cts ->
+            try cts.Cancel(); cts.Dispose() with _ -> ()
+        )
+        runningAnimCts <- None
+
+    override this.Render(context: DrawingContext) =
+        let s = this.SpinnerSize
+        let th = this.StrokeThickness
+        let center = Point(s / 2.0, s / 2.0)
+        let radius = max 1.0 ((s - th) / 2.0)
+        let brush = SolidColorBrush(this.SpinnerColor)
+
+        // 背景の薄い円
+        let bgPen = Pen(SolidColorBrush(Color.FromArgb(40uy, 255uy, 255uy, 255uy)), th)
+        context.DrawEllipse(null, bgPen, center, radius, radius)
+
+        // 円弧 (90度)
+        let pathGeom = new StreamGeometry()
+        using (pathGeom.Open()) (fun ctx ->
+            ctx.BeginFigure(Point(center.X, center.Y - radius), false)
+            ctx.ArcTo(Point(center.X + radius, center.Y), Size(radius, radius), 0.0, false, SweepDirection.Clockwise)
+        )
+        let strokePen = Pen(brush, th, lineCap = PenLineCap.Round)
+        context.DrawGeometry(null, strokePen, pathGeom)
+
 module Views =
+
+    let private spinnerView (size: float) (color: Color) (thickness: float) =
+        ViewBuilder.Create<SpinnerControl>([
+            AttrBuilder<SpinnerControl>.CreateProperty(SpinnerControl.SpinnerSizeProperty, size, ValueNone)
+            AttrBuilder<SpinnerControl>.CreateProperty(SpinnerControl.SpinnerColorProperty, color, ValueNone)
+            AttrBuilder<SpinnerControl>.CreateProperty(SpinnerControl.StrokeThicknessProperty, thickness, ValueNone)
+        ])
 
     let private getCheckBoxValue (e: RoutedEventArgs) : bool option =
         match e.Source with
@@ -123,28 +219,95 @@ module Views =
                                     TextBlock.fontWeight FontWeight.SemiBold
                                     TextBlock.fontSize 12.0
                                 ]
-                                // 丸角ピルバッジ
-                                Border.create [
-                                    Border.background (SolidColorBrush badgeBg)
-                                    Border.borderBrush (SolidColorBrush badgeBorder)
-                                    Border.borderThickness 1.0
-                                    Border.cornerRadius 12.0
-                                    Border.padding (10.0, 3.0)
-                                    Border.child (
-                                        TextBlock.create [
-                                            TextBlock.text badgeText
-                                            TextBlock.foreground (SolidColorBrush badgeFg)
-                                            TextBlock.fontWeight FontWeight.Bold
-                                            TextBlock.fontSize 11.0
-                                        ]
-                                    )
-                                ]
+                                // 丸角ピルバッジ (IsDockerBusy 時はスピナー表示)
+                                if model.IsDockerBusy then
+                                    Border.create [
+                                        Border.background (SolidColorBrush (Color.Parse("#172554")))
+                                        Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
+                                        Border.borderThickness 1.0
+                                        Border.cornerRadius 12.0
+                                        Border.padding (10.0, 3.0)
+                                        Border.child (
+                                            StackPanel.create [
+                                                StackPanel.orientation Orientation.Horizontal
+                                                StackPanel.spacing 6.0
+                                                StackPanel.verticalAlignment VerticalAlignment.Center
+                                                StackPanel.children [
+                                                    spinnerView 12.0 (Color.Parse("#60a5fa")) 2.0
+                                                    TextBlock.create [
+                                                        TextBlock.text "コンテナ操作中..."
+                                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                        TextBlock.fontWeight FontWeight.Bold
+                                                        TextBlock.fontSize 11.0
+                                                    ]
+                                                ]
+                                            ]
+                                        )
+                                    ]
+                                else
+                                    Border.create [
+                                        Border.background (SolidColorBrush badgeBg)
+                                        Border.borderBrush (SolidColorBrush badgeBorder)
+                                        Border.borderThickness 1.0
+                                        Border.cornerRadius 12.0
+                                        Border.padding (10.0, 3.0)
+                                        Border.child (
+                                            TextBlock.create [
+                                                TextBlock.text badgeText
+                                                TextBlock.foreground (SolidColorBrush badgeFg)
+                                                TextBlock.fontWeight FontWeight.Bold
+                                                TextBlock.fontSize 11.0
+                                            ]
+                                        )
+                                    ]
                                 TextBlock.create [
                                     TextBlock.text "tag-based-video-manager"
                                     TextBlock.foreground (SolidColorBrush textSub)
                                     TextBlock.fontFamily (FontFamily "Consolas, monospace")
                                     TextBlock.fontSize 11.0
                                     TextBlock.verticalAlignment VerticalAlignment.Center
+                                ]
+
+                                // NEW: Active Environment & Save Target Badge (mockup.html 準拠)
+                                let envName = model.ActiveEnvironment
+                                let isDev = envName = "Development"
+                                let envBg = if isDev then Color.Parse("#172554") else Color.Parse("#064e3b")
+                                let envBorder = if isDev then Color.Parse("#1d4ed8") else Color.Parse("#047857")
+                                let envFg = if isDev then Color.Parse("#93c5fd") else Color.Parse("#6ee7b7")
+                                let saveFileName =
+                                    if String.IsNullOrWhiteSpace(model.SettingsSavePath) then $"appsettings.{envName}.json"
+                                    else System.IO.Path.GetFileName(model.SettingsSavePath)
+
+                                StackPanel.create [
+                                    StackPanel.orientation Orientation.Horizontal
+                                    StackPanel.spacing 6.0
+                                    StackPanel.verticalAlignment VerticalAlignment.Center
+                                    StackPanel.margin (8.0, 0.0, 0.0, 0.0)
+                                    ToolTip.tip (if String.IsNullOrWhiteSpace(model.SettingsSavePath) then "未設定" else $"保存先: {model.SettingsSavePath}")
+                                    StackPanel.children [
+                                        Border.create [
+                                            Border.background (SolidColorBrush envBg)
+                                            Border.borderBrush (SolidColorBrush envBorder)
+                                            Border.borderThickness 1.0
+                                            Border.cornerRadius 4.0
+                                            Border.padding (6.0, 2.0)
+                                            Border.child (
+                                                TextBlock.create [
+                                                    TextBlock.text $"ENV: {envName}"
+                                                    TextBlock.foreground (SolidColorBrush envFg)
+                                                    TextBlock.fontWeight FontWeight.Bold
+                                                    TextBlock.fontSize 10.0
+                                                ]
+                                            )
+                                        ]
+                                        TextBlock.create [
+                                            TextBlock.text $"💾 {saveFileName}"
+                                            TextBlock.foreground (SolidColorBrush textSub)
+                                            TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                            TextBlock.fontSize 11.0
+                                            TextBlock.verticalAlignment VerticalAlignment.Center
+                                        ]
+                                    ]
                                 ]
                             ]
                         ]
@@ -269,6 +432,7 @@ module Views =
                                         ]
                                         TextBox.create [
                                             TextBox.text model.Settings.TargetDirectory
+                                            TextBox.isEnabled (not model.IsScanning && not model.IsRenaming)
                                             TextBox.height 30.0
                                             TextBox.width 220.0
                                             TextBox.verticalAlignment VerticalAlignment.Center
@@ -285,6 +449,7 @@ module Views =
                                         ]
                                         Button.create [
                                             Button.content "参照..."
+                                            Button.isEnabled (not model.IsScanning && not model.IsRenaming)
                                             Button.background (SolidColorBrush btnDark)
                                             Button.foreground (SolidColorBrush textWhite)
                                             Button.borderBrush (SolidColorBrush borderFluent)
@@ -327,6 +492,7 @@ module Views =
                                                 ]
                                                 TextBox.create [
                                                     TextBox.text (string model.CurrentThreshold)
+                                                    TextBox.isEnabled (not model.IsScanning && not model.IsRenaming)
                                                     TextBox.width 50.0
                                                     TextBox.height 26.0
                                                     TextBox.verticalAlignment VerticalAlignment.Center
@@ -462,6 +628,7 @@ module Views =
                                                 CheckBox.create [
                                                     CheckBox.content "ファイル名に日本語を含まないもののみ抽出"
                                                     CheckBox.isChecked model.FilterNonJapaneseOnly
+                                                    CheckBox.isEnabled (not model.IsScanning && not model.IsRenaming)
                                                     CheckBox.foreground (SolidColorBrush textSub)
                                                     CheckBox.fontSize 11.0
                                                     CheckBox.verticalAlignment VerticalAlignment.Center
@@ -520,6 +687,7 @@ module Views =
 
                                         ComboBox.create [
                                             ComboBox.dataItems availableModels
+                                            ComboBox.isEnabled (not model.IsScanning && not model.IsRenaming)
                                             ComboBox.selectedIndex selectedIdx
                                             ComboBox.height 30.0
                                             ComboBox.fontSize 11.0
@@ -552,6 +720,7 @@ module Views =
                                                 model.Settings.Rules
                                                 |> List.mapi (fun idx r -> if idx = 0 then $"★ {r.Name}" else r.Name)
                                             )
+                                            ComboBox.isEnabled (not model.IsScanning && not model.IsRenaming)
                                             ComboBox.selectedIndex (
                                                 model.Settings.Rules
                                                 |> List.tryFindIndex (fun r -> r.Id = model.SelectedRuleId)
@@ -567,6 +736,7 @@ module Views =
                                         ]
                                         Button.create [
                                             Button.content "⚙ 管理..."
+                                            Button.isEnabled (not model.IsScanning && not model.IsRenaming)
                                             Button.background (SolidColorBrush btnDark)
                                             Button.foreground (SolidColorBrush textWhite)
                                             Button.borderBrush (SolidColorBrush borderFluent)
@@ -711,7 +881,7 @@ module Views =
 
         let commentBoxBg, commentBoxBorder, commentLabelText, commentFg, commentText =
             if c.IsAiProcessing then
-                Color.Parse("#172554"), Color.Parse("#1e40af"), "🌐 AI COMMENT:", Color.Parse("#93c5fd"), "（DuckDuckGo (ddgs) より作品情報を検索中、またはLLMが命名理由を構成中...）"
+                Color.Parse("#172554"), Color.Parse("#1e40af"), "💬 AI COMMENT:", Color.Parse("#93c5fd"), "（DuckDuckGo (ddgs) より作品情報を検索中、またはLLMが命名理由を構成中...）"
             elif isDanger || isIncrease then
                 let txt = c.AiComment |> Option.defaultValue "（文字数基準を超過しているため短縮が必要です）"
                 bgAiComment, borderAiComment, "⚠️ AI COMMENT:", textAiComment, txt
@@ -728,8 +898,15 @@ module Views =
 
         Border.create [
             Border.background (SolidColorBrush bgInput)
-            Border.borderBrush (SolidColorBrush (if c.IsSelected then accentBlue else borderZinc800))
-            Border.borderThickness (if c.IsSelected then 1.5 else 1.0)
+            Border.borderBrush (
+                SolidColorBrush (
+                    if c.AiError.IsSome then Color.Parse("#dc2626")
+                    elif c.IsAiProcessing then Color.Parse("#1d4ed8")
+                    elif c.IsSelected then accentBlue
+                    else borderZinc800
+                )
+            )
+            Border.borderThickness (if c.IsSelected || c.AiError.IsSome then 1.5 else 1.0)
             Border.cornerRadius 6.0
             Border.margin (2.0, 2.0, 10.0, 8.0)
             Border.padding 8.0
@@ -955,29 +1132,98 @@ module Views =
                                                 ]
                                             )
                                         ]
-                                        // 右端: AI提案済 / 未提案 バッジ (width 64px)
-                                        Border.create [
-                                            DockPanel.dock Dock.Right
-                                            Border.width 64.0
-                                            Border.height 26.0
-                                            Border.background (SolidColorBrush rightBadgeBg)
-                                            Border.borderBrush (SolidColorBrush rightBadgeBorder)
-                                            Border.borderThickness 1.0
-                                            Border.cornerRadius 3.0
-                                            Border.padding (4.0, 0.0)
-                                            Border.margin (8.0, 0.0, 0.0, 0.0)
-                                            Border.verticalAlignment VerticalAlignment.Center
-                                            Border.child (
-                                                TextBlock.create [
-                                                    TextBlock.text rightBadgeText
-                                                    TextBlock.fontSize 10.0
-                                                    TextBlock.fontWeight FontWeight.Bold
-                                                    TextBlock.foreground (SolidColorBrush rightBadgeFg)
-                                                    TextBlock.horizontalAlignment HorizontalAlignment.Center
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                        // 右端: AI状態バッジ (処理中スピナー / 失敗+再試行 / 通常バッジ)
+                                        if c.IsAiProcessing then
+                                            Border.create [
+                                                DockPanel.dock Dock.Right
+                                                Border.background (SolidColorBrush (Color.Parse("#172554")))
+                                                Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
+                                                Border.borderThickness 1.0
+                                                Border.cornerRadius 3.0
+                                                Border.height 26.0
+                                                Border.padding (6.0, 0.0)
+                                                Border.margin (8.0, 0.0, 0.0, 0.0)
+                                                Border.verticalAlignment VerticalAlignment.Center
+                                                Border.child (
+                                                    StackPanel.create [
+                                                        StackPanel.orientation Orientation.Horizontal
+                                                        StackPanel.spacing 4.0
+                                                        StackPanel.verticalAlignment VerticalAlignment.Center
+                                                        StackPanel.children [
+                                                            spinnerView 11.0 (Color.Parse("#60a5fa")) 1.5
+                                                            TextBlock.create [
+                                                                TextBlock.text "処理中"
+                                                                TextBlock.fontSize 10.0
+                                                                TextBlock.fontWeight FontWeight.Bold
+                                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#93c5fd")))
+                                                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                                            ]
+                                                        ]
+                                                    ]
+                                                )
+                                            ]
+                                        elif c.AiError.IsSome then
+                                            StackPanel.create [
+                                                DockPanel.dock Dock.Right
+                                                StackPanel.orientation Orientation.Horizontal
+                                                StackPanel.spacing 4.0
+                                                StackPanel.verticalAlignment VerticalAlignment.Center
+                                                StackPanel.margin (8.0, 0.0, 0.0, 0.0)
+                                                StackPanel.children [
+                                                    Border.create [
+                                                        Border.background (SolidColorBrush (Color.Parse("#450a0a")))
+                                                        Border.borderBrush (SolidColorBrush (Color.Parse("#b91c1c")))
+                                                        Border.borderThickness 1.0
+                                                        Border.cornerRadius 3.0
+                                                        Border.height 26.0
+                                                        Border.padding (6.0, 0.0)
+                                                        Border.child (
+                                                            TextBlock.create [
+                                                                TextBlock.text "⚠️ 失敗"
+                                                                TextBlock.fontSize 10.0
+                                                                TextBlock.fontWeight FontWeight.Bold
+                                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#fca5a5")))
+                                                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                                            ]
+                                                        )
+                                                    ]
+                                                    Button.create [
+                                                        Button.content "↻ 再試行"
+                                                        Button.background (SolidColorBrush (Color.Parse("#991b1b")))
+                                                        Button.borderBrush (SolidColorBrush (Color.Parse("#ef4444")))
+                                                        Button.borderThickness 1.0
+                                                        Button.cornerRadius 3.0
+                                                        Button.padding (6.0, 2.0)
+                                                        Button.fontSize 10.0
+                                                        Button.fontWeight FontWeight.Bold
+                                                        Button.foreground (SolidColorBrush textWhite)
+                                                        Button.onClick (fun _ -> dispatch (RetryCandidateAiProposal c.OriginalFullPath))
+                                                    ]
                                                 ]
-                                            )
-                                        ]
+                                            ]
+                                        else
+                                            Border.create [
+                                                DockPanel.dock Dock.Right
+                                                Border.width 64.0
+                                                Border.height 26.0
+                                                Border.background (SolidColorBrush rightBadgeBg)
+                                                Border.borderBrush (SolidColorBrush rightBadgeBorder)
+                                                Border.borderThickness 1.0
+                                                Border.cornerRadius 3.0
+                                                Border.padding (4.0, 0.0)
+                                                Border.margin (8.0, 0.0, 0.0, 0.0)
+                                                Border.verticalAlignment VerticalAlignment.Center
+                                                Border.child (
+                                                    TextBlock.create [
+                                                        TextBlock.text rightBadgeText
+                                                        TextBlock.fontSize 10.0
+                                                        TextBlock.fontWeight FontWeight.Bold
+                                                        TextBlock.foreground (SolidColorBrush rightBadgeFg)
+                                                        TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                        TextBlock.verticalAlignment VerticalAlignment.Center
+                                                    ]
+                                                )
+                                            ]
                                         // 右側: 拡張子ラベル（ラベル項目として独立表示）
                                         Border.create [
                                             DockPanel.dock Dock.Right
@@ -1016,12 +1262,7 @@ module Views =
                                                         StackPanel.spacing 6.0
                                                         StackPanel.verticalAlignment VerticalAlignment.Center
                                                         StackPanel.children [
-                                                            TextBlock.create [
-                                                                TextBlock.text "⠋"
-                                                                TextBlock.fontSize 11.0
-                                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
-                                                                TextBlock.fontWeight FontWeight.Bold
-                                                            ]
+                                                            spinnerView 11.0 (Color.Parse("#60a5fa")) 1.5
                                                             TextBlock.create [
                                                                 TextBlock.text "🌐 DuckDuckGo (ddgs) 検索・LLM提案を実行中..."
                                                                 TextBlock.fontFamily monoFontFamily
@@ -1036,6 +1277,7 @@ module Views =
                                         else
                                             TextBox.create [
                                                 TextBox.text proposedBaseName
+                                                TextBox.isEnabled (not c.IsAiProcessing)
                                                 TextBox.height 26.0
                                                 TextBox.verticalAlignment VerticalAlignment.Center
                                                 TextBox.verticalContentAlignment VerticalAlignment.Center
@@ -1056,6 +1298,24 @@ module Views =
                                 ]
                             )
                         ]
+
+                        // Individual Error Detail
+                        if c.AiError.IsSome then
+                            Border.create [
+                                Border.background (SolidColorBrush (Color.Parse("#450a0a")))
+                                Border.borderBrush (SolidColorBrush (Color.Parse("#b91c1c")))
+                                Border.borderThickness 1.0
+                                Border.cornerRadius 4.0
+                                Border.padding (8.0, 4.0)
+                                Border.child (
+                                    TextBlock.create [
+                                        TextBlock.text $"⚠️ 取得エラー: {c.AiError.Value}"
+                                        TextBlock.fontSize 11.0
+                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#fca5a5")))
+                                        TextBlock.textWrapping TextWrapping.Wrap
+                                    ]
+                                )
+                            ]
 
                         // Line 4: AI Comment Box (3行固定レイアウト・常時表示)
                         Border.create [
@@ -1183,8 +1443,15 @@ module Views =
 
         Border.create [
             Border.background (SolidColorBrush bgInput)
-            Border.borderBrush (SolidColorBrush (if c.IsSelected then accentBlue else borderZinc800))
-            Border.borderThickness (if c.IsSelected then 1.5 else 1.0)
+            Border.borderBrush (
+                SolidColorBrush (
+                    if c.AiError.IsSome then Color.Parse("#dc2626")
+                    elif c.IsAiProcessing then Color.Parse("#1d4ed8")
+                    elif c.IsSelected then accentBlue
+                    else borderZinc800
+                )
+            )
+            Border.borderThickness (if c.IsSelected || c.AiError.IsSome then 1.5 else 1.0)
             Border.cornerRadius 6.0
             Border.margin (2.0, 2.0, 10.0, 8.0)
             Border.padding 8.0
@@ -1392,6 +1659,20 @@ module Views =
                                                             TextBlock.fontWeight FontWeight.Bold
                                                             TextBlock.foreground (SolidColorBrush afterLabelFg)
                                                         ]
+                                                        if c.AiError.IsSome then
+                                                            Button.create [
+                                                                DockPanel.dock Dock.Right
+                                                                Button.content "↻ 再試行"
+                                                                Button.background (SolidColorBrush (Color.Parse("#991b1b")))
+                                                                Button.borderBrush (SolidColorBrush (Color.Parse("#ef4444")))
+                                                                Button.borderThickness 1.0
+                                                                Button.cornerRadius 3.0
+                                                                Button.padding (6.0, 1.0)
+                                                                Button.fontSize 10.0
+                                                                Button.fontWeight FontWeight.Bold
+                                                                Button.foreground (SolidColorBrush textWhite)
+                                                                Button.onClick (fun _ -> dispatch (RetryCandidateAiProposal c.OriginalFullPath))
+                                                            ]
                                                         TextBlock.create [
                                                             DockPanel.dock Dock.Right
                                                             TextBlock.text afterLengthText
@@ -1399,6 +1680,7 @@ module Views =
                                                             TextBlock.fontFamily monoFontFamily
                                                             TextBlock.fontWeight FontWeight.Bold
                                                             TextBlock.foreground (SolidColorBrush afterLengthFg)
+                                                            TextBlock.margin (0.0, 0.0, 6.0, 0.0)
                                                         ]
                                                     ]
                                                 ]
@@ -1442,12 +1724,7 @@ module Views =
                                                                         StackPanel.spacing 6.0
                                                                         StackPanel.verticalAlignment VerticalAlignment.Center
                                                                         StackPanel.children [
-                                                                            TextBlock.create [
-                                                                                TextBlock.text "⠋"
-                                                                                TextBlock.fontSize 11.0
-                                                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
-                                                                                TextBlock.fontWeight FontWeight.Bold
-                                                                            ]
+                                                                            spinnerView 11.0 (Color.Parse("#60a5fa")) 1.5
                                                                             TextBlock.create [
                                                                                 TextBlock.text "🌐 DuckDuckGo (ddgs) 検索・LLM提案を実行中..."
                                                                                 TextBlock.fontFamily monoFontFamily
@@ -1462,6 +1739,7 @@ module Views =
                                                         else
                                                             TextBox.create [
                                                                 TextBox.text proposedBaseName
+                                                                TextBox.isEnabled (not c.IsAiProcessing)
                                                                 TextBox.height 28.0
                                                                 TextBox.verticalAlignment VerticalAlignment.Center
                                                                 TextBox.verticalContentAlignment VerticalAlignment.Center
@@ -1481,10 +1759,27 @@ module Views =
                                                     ]
                                                 ]
 
+                                                if c.AiError.IsSome then
+                                                    Border.create [
+                                                        Border.background (SolidColorBrush (Color.Parse("#450a0a")))
+                                                        Border.borderBrush (SolidColorBrush (Color.Parse("#b91c1c")))
+                                                        Border.borderThickness 1.0
+                                                        Border.cornerRadius 4.0
+                                                        Border.padding (6.0, 3.0)
+                                                        Border.child (
+                                                            TextBlock.create [
+                                                                TextBlock.text $"⚠️ 取得エラー: {c.AiError.Value}"
+                                                                TextBlock.fontSize 10.0
+                                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#fca5a5")))
+                                                                TextBlock.textWrapping TextWrapping.Wrap
+                                                            ]
+                                                        )
+                                                    ]
+
                                                 // AI Comment Box (常時表示)
                                                 let hCommentBoxBg, hCommentBoxBorder, hCommentLabelText, hCommentFg, hCommentText =
                                                     if c.IsAiProcessing then
-                                                        Color.Parse("#172554"), Color.Parse("#1e40af"), "🌐 AI COMMENT:", Color.Parse("#93c5fd"), "（DuckDuckGo (ddgs) より作品情報を検索中、またはLLMが命名理由を構成中...）"
+                                                        Color.Parse("#172554"), Color.Parse("#1e40af"), "💬 AI COMMENT:", Color.Parse("#93c5fd"), "（DuckDuckGo (ddgs) より作品情報を検索中、またはLLMが命名理由を構成中...）"
                                                     elif isDanger || isIncrease then
                                                         let txt = c.AiComment |> Option.defaultValue "（文字数基準を超過しているため短縮が必要です）"
                                                         bgAiComment, borderAiComment, "⚠️ AI COMMENT:", textAiComment, txt
@@ -1543,280 +1838,501 @@ module Views =
         let selectedCount = filteredCandidates |> List.filter (fun c -> c.IsSelected) |> List.length
         let allSelected = filteredCandidates.Length > 0 && selectedCount = filteredCandidates.Length
 
-        Border.create [
-            Border.background (SolidColorBrush bgSurface)
-            Border.borderBrush (SolidColorBrush borderFluent)
-            Border.borderThickness 1.0
-            Border.cornerRadius 8.0
-            Border.child (
-                DockPanel.create [
-                    DockPanel.children [
-                        // ヘッダーツールバー
-                        Border.create [
-                            DockPanel.dock Dock.Top
-                            Border.background (SolidColorBrush bgInput)
-                            Border.borderBrush (SolidColorBrush borderFluent)
-                            Border.borderThickness (0.0, 0.0, 0.0, 1.0)
-                            Border.padding (12.0, 8.0)
-                            Border.child (
-                                WrapPanel.create [
-                                    WrapPanel.orientation Orientation.Horizontal
-                                    WrapPanel.children [
-                                        // 左側: 全選択チェックボックス + タイトル + 選択カウント
-                                        StackPanel.create [
-                                            StackPanel.orientation Orientation.Horizontal
-                                            StackPanel.spacing 10.0
-                                            StackPanel.verticalAlignment VerticalAlignment.Center
-                                            StackPanel.margin (0.0, 0.0, 16.0, 4.0)
-                                            StackPanel.children [
-                                                CheckBox.create [
-                                                    CheckBox.isChecked allSelected
-                                                    CheckBox.isEnabled (filteredCandidates.Length > 0)
-                                                    CheckBox.onIsCheckedChanged (fun e ->
-                                                        match getCheckBoxValue e with
-                                                        | Some isChecked when isChecked <> allSelected ->
-                                                            dispatch (SelectAllCandidates isChecked)
-                                                        | _ -> ()
-                                                    )
-                                                    CheckBox.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                TextBlock.create [
-                                                    TextBlock.text "Before / After 対比確認"
-                                                    TextBlock.foreground (SolidColorBrush textWhite)
-                                                    TextBlock.fontWeight FontWeight.Bold
-                                                    TextBlock.fontSize 12.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                TextBlock.create [
-                                                    let countText =
-                                                        if filteredCandidates.Length > 0 then $"({selectedCount} / {filteredCandidates.Length} 件選択中)"
-                                                        elif model.Candidates.Length > 0 then $"(フィルタ該当 0 / 全 {model.Candidates.Length} 件)"
-                                                        else "(実行ボタンを押して抽出)"
-                                                    TextBlock.text countText
-                                                    TextBlock.foreground (SolidColorBrush textSub)
-                                                    TextBlock.fontSize 11.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                            ]
-                                        ]
-
-                                        // 右側: ソート順指定 ＆ 表示形式切替 (上下並び / 左右並び)
-                                        StackPanel.create [
-                                            StackPanel.orientation Orientation.Horizontal
-                                            StackPanel.spacing 12.0
-                                            StackPanel.verticalAlignment VerticalAlignment.Center
-                                            StackPanel.margin (0.0, 0.0, 0.0, 4.0)
-                                            StackPanel.children [
-                                                // ソート順選択
+        Grid.create [
+            Grid.children [
+                // Layer 0: リスト本体
+                Border.create [
+                    Border.background (SolidColorBrush bgSurface)
+                    Border.borderBrush (SolidColorBrush borderFluent)
+                    Border.borderThickness 1.0
+                    Border.cornerRadius 8.0
+                    Border.child (
+                        DockPanel.create [
+                            DockPanel.children [
+                                // ヘッダーツールバー
+                                Border.create [
+                                    DockPanel.dock Dock.Top
+                                    Border.background (SolidColorBrush bgInput)
+                                    Border.borderBrush (SolidColorBrush borderFluent)
+                                    Border.borderThickness (0.0, 0.0, 0.0, 1.0)
+                                    Border.padding (12.0, 8.0)
+                                    Border.child (
+                                        WrapPanel.create [
+                                            WrapPanel.orientation Orientation.Horizontal
+                                            WrapPanel.children [
+                                                // 左側: 全選択チェックボックス + タイトル + 選択カウント
                                                 StackPanel.create [
                                                     StackPanel.orientation Orientation.Horizontal
-                                                    StackPanel.spacing 6.0
+                                                    StackPanel.spacing 10.0
                                                     StackPanel.verticalAlignment VerticalAlignment.Center
+                                                    StackPanel.margin (0.0, 0.0, 16.0, 4.0)
                                                     StackPanel.children [
+                                                        CheckBox.create [
+                                                            CheckBox.isChecked allSelected
+                                                            CheckBox.isEnabled (filteredCandidates.Length > 0 && not model.IsScanning && not model.IsRenaming)
+                                                            CheckBox.onIsCheckedChanged (fun e ->
+                                                                match getCheckBoxValue e with
+                                                                | Some isChecked when isChecked <> allSelected ->
+                                                                    dispatch (SelectAllCandidates isChecked)
+                                                                | _ -> ()
+                                                            )
+                                                            CheckBox.verticalAlignment VerticalAlignment.Center
+                                                        ]
                                                         TextBlock.create [
-                                                            TextBlock.text "ソート順:"
+                                                            TextBlock.text "Before / After 対比確認"
+                                                            TextBlock.foreground (SolidColorBrush textWhite)
+                                                            TextBlock.fontWeight FontWeight.Bold
+                                                            TextBlock.fontSize 12.0
+                                                            TextBlock.verticalAlignment VerticalAlignment.Center
+                                                        ]
+                                                        TextBlock.create [
+                                                            let countText =
+                                                                if model.IsScanning then "(スキャン中...)"
+                                                                elif filteredCandidates.Length > 0 then $"({selectedCount} / {filteredCandidates.Length} 件選択中)"
+                                                                elif model.Candidates.Length > 0 then $"(フィルタ該当 0 / 全 {model.Candidates.Length} 件)"
+                                                                elif model.HasScanned then "(走査完了)"
+                                                                else "(実行ボタンを押して抽出)"
+                                                            TextBlock.text countText
                                                             TextBlock.foreground (SolidColorBrush textSub)
                                                             TextBlock.fontSize 11.0
                                                             TextBlock.verticalAlignment VerticalAlignment.Center
-                                                        ]
-                                                        let sortOptions = [
-                                                            "パス長 (降順)", PathLengthDesc
-                                                            "パス長 (昇順)", PathLengthAsc
-                                                            "元ファイル名 (昇順)", FileNameAsc
-                                                            "元ファイル名 (降順)", FileNameDesc
-                                                            "更新日時 (新しい順)", LastModifiedDesc
-                                                            "更新日時 (古い順)", LastModifiedAsc
-                                                        ]
-                                                        let currentSortText =
-                                                            sortOptions
-                                                            |> List.tryFind (fun (_, crit) -> crit = model.SortCriterion)
-                                                            |> Option.map fst
-                                                            |> Option.defaultValue "パス長 (降順)"
-
-                                                        ComboBox.create [
-                                                            ComboBox.dataItems (sortOptions |> List.map fst)
-                                                            ComboBox.selectedItem currentSortText
-                                                            ComboBox.onSelectedItemChanged (fun item ->
-                                                                if item <> null then
-                                                                    let itemStr = string item
-                                                                    sortOptions
-                                                                    |> List.tryFind (fun (name, _) -> name = itemStr)
-                                                                    |> Option.iter (fun (_, crit) -> dispatch (ChangeSortCriterion crit))
-                                                            )
-                                                            ComboBox.fontSize 11.0
-                                                            ComboBox.height 26.0
-                                                            ComboBox.verticalAlignment VerticalAlignment.Center
-                                                            ComboBox.background (SolidColorBrush btnDark)
-                                                            ComboBox.foreground (SolidColorBrush textWhite)
-                                                            ComboBox.borderBrush (SolidColorBrush borderZinc700)
-                                                            ComboBox.borderThickness 1.0
-                                                            ComboBox.cornerRadius 4.0
-                                                            ComboBox.padding (6.0, 2.0)
                                                         ]
                                                     ]
                                                 ]
 
-                                                // 表示形式切替
+                                                // 右側: ソート順指定 ＆ 表示形式切替 (上下並び / 左右並び)
                                                 StackPanel.create [
                                                     StackPanel.orientation Orientation.Horizontal
-                                                    StackPanel.spacing 6.0
+                                                    StackPanel.spacing 12.0
                                                     StackPanel.verticalAlignment VerticalAlignment.Center
+                                                    StackPanel.margin (0.0, 0.0, 0.0, 4.0)
                                                     StackPanel.children [
-                                                        TextBlock.create [
-                                                            TextBlock.text "表示形式:"
-                                                            TextBlock.foreground (SolidColorBrush textSub)
-                                                            TextBlock.fontSize 11.0
-                                                            TextBlock.verticalAlignment VerticalAlignment.Center
+                                                        // ソート順選択
+                                                        StackPanel.create [
+                                                            StackPanel.orientation Orientation.Horizontal
+                                                            StackPanel.spacing 6.0
+                                                            StackPanel.verticalAlignment VerticalAlignment.Center
+                                                            StackPanel.children [
+                                                                TextBlock.create [
+                                                                    TextBlock.text "ソート順:"
+                                                                    TextBlock.foreground (SolidColorBrush textSub)
+                                                                    TextBlock.fontSize 11.0
+                                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                ]
+                                                                let sortOptions = [
+                                                                    "パス長 (降順)", PathLengthDesc
+                                                                    "パス長 (昇順)", PathLengthAsc
+                                                                    "元ファイル名 (昇順)", FileNameAsc
+                                                                    "元ファイル名 (降順)", FileNameDesc
+                                                                    "更新日時 (新しい順)", LastModifiedDesc
+                                                                    "更新日時 (古い順)", LastModifiedAsc
+                                                                ]
+                                                                let currentSortText =
+                                                                    sortOptions
+                                                                    |> List.tryFind (fun (_, crit) -> crit = model.SortCriterion)
+                                                                    |> Option.map fst
+                                                                    |> Option.defaultValue "パス長 (降順)"
+
+                                                                ComboBox.create [
+                                                                    ComboBox.dataItems (sortOptions |> List.map fst)
+                                                                    ComboBox.selectedItem currentSortText
+                                                                    ComboBox.isEnabled (not model.IsScanning && not model.IsRenaming)
+                                                                    ComboBox.onSelectedItemChanged (fun item ->
+                                                                        if item <> null then
+                                                                            let itemStr = string item
+                                                                            sortOptions
+                                                                            |> List.tryFind (fun (name, _) -> name = itemStr)
+                                                                            |> Option.iter (fun (_, crit) -> dispatch (ChangeSortCriterion crit))
+                                                                    )
+                                                                    ComboBox.fontSize 11.0
+                                                                    ComboBox.height 26.0
+                                                                    ComboBox.verticalAlignment VerticalAlignment.Center
+                                                                    ComboBox.background (SolidColorBrush btnDark)
+                                                                    ComboBox.foreground (SolidColorBrush textWhite)
+                                                                    ComboBox.borderBrush (SolidColorBrush borderZinc700)
+                                                                    ComboBox.borderThickness 1.0
+                                                                    ComboBox.cornerRadius 4.0
+                                                                    ComboBox.padding (6.0, 2.0)
+                                                                ]
+                                                            ]
                                                         ]
+
+                                                        // 表示形式切替
+                                                        StackPanel.create [
+                                                            StackPanel.orientation Orientation.Horizontal
+                                                            StackPanel.spacing 6.0
+                                                            StackPanel.verticalAlignment VerticalAlignment.Center
+                                                            StackPanel.children [
+                                                                TextBlock.create [
+                                                                    TextBlock.text "表示形式:"
+                                                                    TextBlock.foreground (SolidColorBrush textSub)
+                                                                    TextBlock.fontSize 11.0
+                                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                ]
+                                                                Border.create [
+                                                                    Border.background (SolidColorBrush btnDark)
+                                                                    Border.borderBrush (SolidColorBrush borderZinc700)
+                                                                    Border.borderThickness 1.0
+                                                                    Border.cornerRadius 4.0
+                                                                    Border.padding 2.0
+                                                                    Border.child (
+                                                                        StackPanel.create [
+                                                                            StackPanel.orientation Orientation.Horizontal
+                                                                            StackPanel.spacing 2.0
+                                                                            StackPanel.children [
+                                                                                Button.create [
+                                                                                    Button.content "▤ 上下並び"
+                                                                                    Button.fontSize 10.0
+                                                                                    Button.padding (8.0, 3.0)
+                                                                                    Button.background (SolidColorBrush (if model.Layout = Vertical then accentBlue else Colors.Transparent))
+                                                                                    Button.foreground (SolidColorBrush (if model.Layout = Vertical then textWhite else textZinc400))
+                                                                                    Button.fontWeight (if model.Layout = Vertical then FontWeight.Bold else FontWeight.Normal)
+                                                                                    Button.cornerRadius 3.0
+                                                                                    Button.borderThickness 0.0
+                                                                                    Button.onClick (fun _ -> dispatch (SetLayoutMode Vertical))
+                                                                                ]
+                                                                                Button.create [
+                                                                                    Button.content "◫ 左右並び"
+                                                                                    Button.fontSize 10.0
+                                                                                    Button.padding (8.0, 3.0)
+                                                                                    Button.background (SolidColorBrush (if model.Layout = Horizontal then accentBlue else Colors.Transparent))
+                                                                                    Button.foreground (SolidColorBrush (if model.Layout = Horizontal then textWhite else textZinc400))
+                                                                                    Button.fontWeight (if model.Layout = Horizontal then FontWeight.Bold else FontWeight.Normal)
+                                                                                    Button.cornerRadius 3.0
+                                                                                    Button.borderThickness 0.0
+                                                                                    Button.onClick (fun _ -> dispatch (SetLayoutMode Horizontal))
+                                                                                ]
+                                                                            ]
+                                                                        ]
+                                                                    )
+                                                                ]
+                                                            ]
+                                                        ]
+                                                    ]
+                                                ]
+                                            ]
+                                        ]
+                                    )
+                                ]
+
+                                // リスト本体 (ScrollViewer)
+                                ScrollViewer.create [
+                                    ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Disabled
+                                    ScrollViewer.padding 10.0
+                                    ScrollViewer.content (
+                                        // 3B. IsScanning = true 中央ローディングスピナー (mockup.html 準拠)
+                                        if model.IsScanning then
+                                            StackPanel.create [
+                                                StackPanel.horizontalAlignment HorizontalAlignment.Center
+                                                StackPanel.verticalAlignment VerticalAlignment.Center
+                                                StackPanel.spacing 14.0
+                                                StackPanel.margin (0.0, 60.0)
+                                                StackPanel.children [
+                                                    spinnerView 56.0 (Color.Parse("#38bdf8")) 3.0
+                                                    TextBlock.create [
+                                                        TextBlock.text "動画ファイルをスキャン中..."
+                                                        TextBlock.fontSize 14.0
+                                                        TextBlock.fontWeight FontWeight.Bold
+                                                        TextBlock.foreground (SolidColorBrush textWhite)
+                                                        TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                    ]
+                                                    TextBlock.create [
+                                                        TextBlock.text $"走査対象: {model.Settings.TargetDirectory} （パス長および UTF-8 バイト数を検査しています）"
+                                                        TextBlock.fontSize 11.0
+                                                        TextBlock.foreground (SolidColorBrush textSub)
+                                                        TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                    ]
+                                                ]
+                                            ]
+                                        // 3D. 候補リストが存在する場合
+                                        elif not model.Candidates.IsEmpty then
+                                            if filteredCandidates.IsEmpty then
+                                                // 3D-0. フィルタ該当 0件 (候補リストは存在するが表示フィルタで 0件)
+                                                StackPanel.create [
+                                                    StackPanel.horizontalAlignment HorizontalAlignment.Center
+                                                    StackPanel.verticalAlignment VerticalAlignment.Center
+                                                    StackPanel.spacing 12.0
+                                                    StackPanel.margin (0.0, 48.0)
+                                                    StackPanel.children [
                                                         Border.create [
-                                                            Border.background (SolidColorBrush btnDark)
+                                                            Border.width 56.0
+                                                            Border.height 56.0
+                                                            Border.cornerRadius 28.0
+                                                            Border.background (SolidColorBrush (Color.Parse("#27272a")))
                                                             Border.borderBrush (SolidColorBrush borderZinc700)
                                                             Border.borderThickness 1.0
-                                                            Border.cornerRadius 4.0
-                                                            Border.padding 2.0
+                                                            Border.horizontalAlignment HorizontalAlignment.Center
                                                             Border.child (
-                                                                StackPanel.create [
-                                                                    StackPanel.orientation Orientation.Horizontal
-                                                                    StackPanel.spacing 2.0
-                                                                    StackPanel.children [
-                                                                        Button.create [
-                                                                            Button.content "▤ 上下並び"
-                                                                            Button.fontSize 10.0
-                                                                            Button.padding (8.0, 3.0)
-                                                                            Button.background (SolidColorBrush (if model.Layout = Vertical then accentBlue else Colors.Transparent))
-                                                                            Button.foreground (SolidColorBrush (if model.Layout = Vertical then textWhite else textZinc400))
-                                                                            Button.fontWeight (if model.Layout = Vertical then FontWeight.Bold else FontWeight.Normal)
-                                                                            Button.cornerRadius 3.0
-                                                                            Button.borderThickness 0.0
-                                                                            Button.onClick (fun _ -> dispatch (SetLayoutMode Vertical))
-                                                                        ]
-                                                                        Button.create [
-                                                                            Button.content "◫ 左右並び"
-                                                                            Button.fontSize 10.0
-                                                                            Button.padding (8.0, 3.0)
-                                                                            Button.background (SolidColorBrush (if model.Layout = Horizontal then accentBlue else Colors.Transparent))
-                                                                            Button.foreground (SolidColorBrush (if model.Layout = Horizontal then textWhite else textZinc400))
-                                                                            Button.fontWeight (if model.Layout = Horizontal then FontWeight.Bold else FontWeight.Normal)
-                                                                            Button.cornerRadius 3.0
-                                                                            Button.borderThickness 0.0
-                                                                            Button.onClick (fun _ -> dispatch (SetLayoutMode Horizontal))
-                                                                        ]
-                                                                    ]
+                                                                TextBlock.create [
+                                                                    TextBlock.text "🔍"
+                                                                    TextBlock.fontSize 22.0
+                                                                    TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                                    TextBlock.verticalAlignment VerticalAlignment.Center
                                                                 ]
                                                             )
                                                         ]
+                                                        TextBlock.create [
+                                                            TextBlock.text "該当するファイルがありません"
+                                                            TextBlock.fontSize 14.0
+                                                            TextBlock.fontWeight FontWeight.Bold
+                                                            TextBlock.foreground (SolidColorBrush textWhite)
+                                                            TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                        ]
+                                                        TextBlock.create [
+                                                            TextBlock.text $"現在のフィルタ条件（該当: 0 / 全 {model.Candidates.Length} 件）に一致するファイルはありません。"
+                                                            TextBlock.fontSize 11.0
+                                                            TextBlock.foreground (SolidColorBrush textZinc400)
+                                                            TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                        ]
+                                                        Button.create [
+                                                            Button.content "フィルタを「すべて」に戻す"
+                                                            Button.background (SolidColorBrush btnDark)
+                                                            Button.borderBrush (SolidColorBrush borderZinc700)
+                                                            Button.borderThickness 1.0
+                                                            Button.foreground (SolidColorBrush textZinc400)
+                                                            Button.fontSize 11.0
+                                                            Button.cornerRadius 4.0
+                                                            Button.padding (12.0, 6.0)
+                                                            Button.horizontalAlignment HorizontalAlignment.Center
+                                                            Button.onClick (fun _ -> dispatch (SetConstraintFilter FilterAll))
+                                                        ]
+                                                    ]
+                                                ]
+                                            else
+                                                // 候補カード一覧
+                                                StackPanel.create [
+                                                    StackPanel.spacing 4.0
+                                                    StackPanel.margin (0.0, 0.0, 0.0, 36.0)
+                                                    StackPanel.children [
+                                                        for idx, c in List.indexed filteredCandidates do
+                                                            match model.Layout with
+                                                            | Vertical -> candidateCardVertical idx c model.CurrentThreshold dispatch
+                                                            | Horizontal -> candidateCardHorizontal idx c model.CurrentThreshold dispatch
+                                                    ]
+                                                ]
+                                        // 3C. 候補 0 件の場合
+                                        elif model.HasScanned then
+                                            if model.ScannedVideoCount = 0 then
+                                                // 3C-2. Empty State (そもそもフォルダ内に動画ファイル自体が 0 本)
+                                                StackPanel.create [
+                                                    StackPanel.horizontalAlignment HorizontalAlignment.Center
+                                                    StackPanel.verticalAlignment VerticalAlignment.Center
+                                                    StackPanel.spacing 12.0
+                                                    StackPanel.margin (0.0, 48.0)
+                                                    StackPanel.children [
+                                                        Border.create [
+                                                            Border.width 56.0
+                                                            Border.height 56.0
+                                                            Border.cornerRadius 28.0
+                                                            Border.background (SolidColorBrush (Color.Parse("#3f2c06")))
+                                                            Border.borderBrush (SolidColorBrush (Color.Parse("#b45309")))
+                                                            Border.borderThickness 1.0
+                                                            Border.horizontalAlignment HorizontalAlignment.Center
+                                                            Border.child (
+                                                                TextBlock.create [
+                                                                    TextBlock.text "🔎"
+                                                                    TextBlock.fontSize 24.0
+                                                                    TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                ]
+                                                            )
+                                                        ]
+                                                        TextBlock.create [
+                                                            TextBlock.text "動画ファイル（.mp4）が見つかりませんでした"
+                                                            TextBlock.fontSize 14.0
+                                                            TextBlock.fontWeight FontWeight.Bold
+                                                            TextBlock.foreground (SolidColorBrush (Color.Parse("#fde68a")))
+                                                            TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                        ]
+                                                        TextBlock.create [
+                                                            TextBlock.text $"指定されたフォルダ（{model.Settings.TargetDirectory}）内に動画ファイルが存在しないため検査対象がありません。別のフォルダを指定してください。"
+                                                            TextBlock.fontSize 11.0
+                                                            TextBlock.foreground (SolidColorBrush textSub)
+                                                            TextBlock.textAlignment TextAlignment.Center
+                                                            TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                        ]
+                                                        Button.create [
+                                                            Button.content "📁 別のフォルダを指定する"
+                                                            Button.background (SolidColorBrush btnDark)
+                                                            Button.borderBrush (SolidColorBrush borderZinc700)
+                                                            Button.borderThickness 1.0
+                                                            Button.foreground (SolidColorBrush textWhite)
+                                                            Button.fontSize 11.0
+                                                            Button.cornerRadius 4.0
+                                                            Button.padding (12.0, 6.0)
+                                                            Button.horizontalAlignment HorizontalAlignment.Center
+                                                            Button.onClick (fun _ -> pickFolder dispatch)
+                                                        ]
+                                                    ]
+                                                ]
+                                            else
+                                                // 3C-1. Empty State (動画検査済・制限超過 0件 = 安全達成)
+                                                StackPanel.create [
+                                                    StackPanel.horizontalAlignment HorizontalAlignment.Center
+                                                    StackPanel.verticalAlignment VerticalAlignment.Center
+                                                    StackPanel.spacing 12.0
+                                                    StackPanel.margin (0.0, 48.0)
+                                                    StackPanel.children [
+                                                        Border.create [
+                                                            Border.width 56.0
+                                                            Border.height 56.0
+                                                            Border.cornerRadius 28.0
+                                                            Border.background (SolidColorBrush (Color.Parse("#064e3b")))
+                                                            Border.borderBrush (SolidColorBrush (Color.Parse("#047857")))
+                                                            Border.borderThickness 1.0
+                                                            Border.horizontalAlignment HorizontalAlignment.Center
+                                                            Border.child (
+                                                                TextBlock.create [
+                                                                    TextBlock.text "🎉"
+                                                                    TextBlock.fontSize 24.0
+                                                                    TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                                                ]
+                                                            )
+                                                        ]
+                                                        TextBlock.create [
+                                                            TextBlock.text "対象ファイルはありません（全件安全）"
+                                                            TextBlock.fontSize 14.0
+                                                            TextBlock.fontWeight FontWeight.Bold
+                                                            TextBlock.foreground (SolidColorBrush textWhite)
+                                                            TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                        ]
+                                                        TextBlock.create [
+                                                            TextBlock.text $"フォルダ内の動画 {model.ScannedVideoCount} 本を検査しましたが、制限基準を超過するファイルはありませんでした。\nすべてのファイルが Windows ({model.CurrentThreshold}字) および Linux (240B) の安全制限をクリアしています。"
+                                                            TextBlock.fontSize 11.0
+                                                            TextBlock.foreground (SolidColorBrush textZinc400)
+                                                            TextBlock.textAlignment TextAlignment.Center
+                                                            TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                        ]
+                                                    ]
+                                                ]
+                                        // 3A-0. Folder Unset Zero-State (未走査かつ TargetDirectory が空: mockup.html 準拠)
+                                        elif String.IsNullOrWhiteSpace(model.Settings.TargetDirectory) then
+                                            StackPanel.create [
+                                                StackPanel.horizontalAlignment HorizontalAlignment.Center
+                                                StackPanel.verticalAlignment VerticalAlignment.Center
+                                                StackPanel.spacing 12.0
+                                                StackPanel.margin (0.0, 48.0)
+                                                StackPanel.children [
+                                                    Border.create [
+                                                        Border.width 56.0
+                                                        Border.height 56.0
+                                                        Border.cornerRadius 28.0
+                                                        Border.background (SolidColorBrush (Color.Parse("#172554")))
+                                                        Border.borderBrush (SolidColorBrush (Color.Parse("#1d4ed8")))
+                                                        Border.borderThickness 1.0
+                                                        Border.horizontalAlignment HorizontalAlignment.Center
+                                                        Border.child (
+                                                            TextBlock.create [
+                                                                TextBlock.text "📂"
+                                                                TextBlock.fontSize 24.0
+                                                                TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                                            ]
+                                                        )
+                                                    ]
+                                                    TextBlock.create [
+                                                        TextBlock.text "対象フォルダが設定されていません"
+                                                        TextBlock.fontSize 14.0
+                                                        TextBlock.fontWeight FontWeight.Bold
+                                                        TextBlock.foreground (SolidColorBrush textWhite)
+                                                        TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                    ]
+                                                    TextBlock.create [
+                                                        TextBlock.text "まずは上の「参照...」ボタンから、長いファイル名を整理したい動画フォルダを指定してください。"
+                                                        TextBlock.fontSize 11.0
+                                                        TextBlock.foreground (SolidColorBrush textSub)
+                                                        TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                    ]
+                                                    Button.create [
+                                                        Button.content "📁 フォルダを選択して設定"
+                                                        Button.background (SolidColorBrush accentBlue)
+                                                        Button.foreground (SolidColorBrush textWhite)
+                                                        Button.fontSize 11.0
+                                                        Button.fontWeight FontWeight.Bold
+                                                        Button.cornerRadius 4.0
+                                                        Button.padding (14.0, 6.0)
+                                                        Button.horizontalAlignment HorizontalAlignment.Center
+                                                        Button.onClick (fun _ -> pickFolder dispatch)
                                                     ]
                                                 ]
                                             ]
-                                        ]
-                                    ]
-                                ]
-                            )
-                        ]
-
-                        // リスト本体 (ScrollViewer)
-                        ScrollViewer.create [
-                            ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Disabled
-                            ScrollViewer.padding 10.0
-                            ScrollViewer.content (
-                                if model.Candidates.IsEmpty then
-                                    // 未実行時のプレースホルダー (mockup.html 準拠)
-                                    StackPanel.create [
-                                        StackPanel.horizontalAlignment HorizontalAlignment.Center
-                                        StackPanel.verticalAlignment VerticalAlignment.Center
-                                        StackPanel.spacing 10.0
-                                        StackPanel.margin (0.0, 40.0)
-                                        StackPanel.children [
-                                            TextBlock.create [
-                                                TextBlock.text "📁"
-                                                TextBlock.fontSize 40.0
-                                                TextBlock.horizontalAlignment HorizontalAlignment.Center
-                                                TextBlock.foreground (SolidColorBrush textZinc500)
-                                            ]
-                                            TextBlock.create [
-                                                TextBlock.text "上の「リネーム対象抽出 ＆ AI提案を実行」ボタンを押してください"
-                                                TextBlock.fontSize 12.0
-                                                TextBlock.fontWeight FontWeight.Bold
-                                                TextBlock.foreground (SolidColorBrush textSub)
-                                                TextBlock.horizontalAlignment HorizontalAlignment.Center
-                                            ]
-                                            TextBlock.create [
-                                                TextBlock.text $"設定済みのフォルダから指定文字数（初期値: {model.CurrentThreshold}字）またはLinuxファイル名（240B）以上の制限超過ファイルを検出し、AI提案を生成します"
-                                                TextBlock.fontSize 11.0
-                                                TextBlock.foreground (SolidColorBrush textZinc500)
-                                                TextBlock.horizontalAlignment HorizontalAlignment.Center
-                                            ]
-                                        ]
-                                    ]
-                                elif filteredCandidates.IsEmpty then
-                                    // Empty State (0件時の安心案内表示: mockup.html 準拠)
-                                    StackPanel.create [
-                                        StackPanel.horizontalAlignment HorizontalAlignment.Center
-                                        StackPanel.verticalAlignment VerticalAlignment.Center
-                                        StackPanel.spacing 12.0
-                                        StackPanel.margin (0.0, 48.0)
-                                        StackPanel.children [
-                                            Border.create [
-                                                Border.width 60.0
-                                                Border.height 60.0
-                                                Border.cornerRadius 30.0
-                                                Border.background (SolidColorBrush (Color.Parse("#064e3b")))
-                                                Border.borderBrush (SolidColorBrush (Color.Parse("#047857")))
-                                                Border.borderThickness 1.0
-                                                Border.horizontalAlignment HorizontalAlignment.Center
-                                                Border.child (
+                                        // 3A-1. Initial Idle Placeholder (フォルダ設定済・未走査)
+                                        else
+                                            StackPanel.create [
+                                                StackPanel.horizontalAlignment HorizontalAlignment.Center
+                                                StackPanel.verticalAlignment VerticalAlignment.Center
+                                                StackPanel.spacing 10.0
+                                                StackPanel.margin (0.0, 40.0)
+                                                StackPanel.children [
                                                     TextBlock.create [
-                                                        TextBlock.text "🎉"
-                                                        TextBlock.fontSize 26.0
+                                                        TextBlock.text "📁"
+                                                        TextBlock.fontSize 40.0
                                                         TextBlock.horizontalAlignment HorizontalAlignment.Center
-                                                        TextBlock.verticalAlignment VerticalAlignment.Center
+                                                        TextBlock.foreground (SolidColorBrush textZinc500)
                                                     ]
-                                                )
+                                                    TextBlock.create [
+                                                        TextBlock.text "上の「⚡ 抽出 ＆ AI提案を実行」ボタンを押してください"
+                                                        TextBlock.fontSize 12.0
+                                                        TextBlock.fontWeight FontWeight.Bold
+                                                        TextBlock.foreground (SolidColorBrush textSub)
+                                                        TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                    ]
+                                                    TextBlock.create [
+                                                        TextBlock.text $"設定済みのフォルダから指定文字数（初期値: {model.CurrentThreshold}字）またはLinuxファイル名（240B）以上の制限超過ファイルを検出し、AI提案を生成します"
+                                                        TextBlock.fontSize 11.0
+                                                        TextBlock.foreground (SolidColorBrush textZinc500)
+                                                        TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                                    ]
+                                                ]
                                             ]
+                                    )
+                                ]
+                            ]
+                        ]
+                    )
+                ]
+
+                // Layer 1: IsRenaming = true 暗転半透明オーバーレイ (背後操作完全遮断: mockup.html 3E 準拠)
+                if model.IsRenaming then
+                    Border.create [
+                        Border.background (SolidColorBrush (Color.Parse("#cc0f172a")))
+                        Border.cornerRadius 8.0
+                        Border.child (
+                            Border.create [
+                                Border.horizontalAlignment HorizontalAlignment.Center
+                                Border.verticalAlignment VerticalAlignment.Center
+                                Border.background (SolidColorBrush (Color.Parse("#252526")))
+                                Border.borderBrush (SolidColorBrush (Color.Parse("#0078d4")))
+                                Border.borderThickness 1.0
+                                Border.cornerRadius 8.0
+                                Border.padding (32.0, 24.0)
+                                Border.child (
+                                    StackPanel.create [
+                                        StackPanel.spacing 12.0
+                                        StackPanel.horizontalAlignment HorizontalAlignment.Center
+                                        StackPanel.children [
+                                            spinnerView 48.0 (Color.Parse("#60a5fa")) 3.0
                                             TextBlock.create [
-                                                TextBlock.text "対象ファイルはありません"
+                                                TextBlock.text "ファイル名を変更中..."
                                                 TextBlock.fontSize 14.0
                                                 TextBlock.fontWeight FontWeight.Bold
                                                 TextBlock.foreground (SolidColorBrush textWhite)
                                                 TextBlock.horizontalAlignment HorizontalAlignment.Center
                                             ]
                                             TextBlock.create [
-                                                TextBlock.text $"現在の閾値・フィルタ条件に合致する制限超過ファイルは存在しません。\nすべてのファイルが Windows ({model.CurrentThreshold}字) および Linux (240B) の安全制限をクリアしています。"
+                                                TextBlock.text "物理リネームおよび Undo 履歴の確定完了まで操作をお待ちください"
                                                 TextBlock.fontSize 11.0
-                                                TextBlock.foreground (SolidColorBrush textZinc400)
-                                                TextBlock.textAlignment TextAlignment.Center
+                                                TextBlock.foreground (SolidColorBrush textSub)
                                                 TextBlock.horizontalAlignment HorizontalAlignment.Center
                                             ]
-                                            Button.create [
-                                                Button.content "フィルタを「すべて」に戻す"
-                                                Button.background (SolidColorBrush btnDark)
-                                                Button.borderBrush (SolidColorBrush borderZinc700)
-                                                Button.borderThickness 1.0
-                                                Button.foreground (SolidColorBrush textZinc400)
-                                                Button.fontSize 11.0
-                                                Button.cornerRadius 4.0
-                                                Button.padding (12.0, 6.0)
-                                                Button.horizontalAlignment HorizontalAlignment.Center
-                                                Button.onClick (fun _ -> dispatch (SetConstraintFilter FilterAll))
-                                            ]
                                         ]
                                     ]
-                                else
-                                    StackPanel.create [
-                                        StackPanel.spacing 4.0
-                                        StackPanel.margin (0.0, 0.0, 0.0, 36.0)
-                                        StackPanel.children [
-                                            for idx, c in List.indexed filteredCandidates do
-                                                match model.Layout with
-                                                | Vertical -> candidateCardVertical idx c model.CurrentThreshold dispatch
-                                                | Horizontal -> candidateCardHorizontal idx c model.CurrentThreshold dispatch
-                                        ]
-                                    ]
-                            )
-                        ]
+                                )
+                            ]
+                        )
                     ]
-                ]
-            )
+            ]
         ]
 
     // ==========================================
@@ -1859,7 +2375,7 @@ module Views =
                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                 ]
                                 if model.IsRequestingAi then
-                                    let completedCount = model.Candidates |> List.filter (fun c -> c.IsAiProposed) |> List.length
+                                    let completedCount = model.Candidates |> List.filter (fun c -> c.IsAiProposed || c.AiError.IsSome) |> List.length
                                     Border.create [
                                         Border.background (SolidColorBrush (Color.Parse("#172554")))
                                         Border.borderBrush (SolidColorBrush (Color.Parse("#1e40af")))
@@ -1868,12 +2384,20 @@ module Views =
                                         Border.padding (8.0, 3.0)
                                         Border.verticalAlignment VerticalAlignment.Center
                                         Border.child (
-                                            TextBlock.create [
-                                                TextBlock.text $"🤖 AI提案中... ({completedCount}/{model.Candidates.Length}件完了)"
-                                                TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
-                                                TextBlock.fontSize 11.0
-                                                TextBlock.fontWeight FontWeight.Bold
-                                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                            StackPanel.create [
+                                                StackPanel.orientation Orientation.Horizontal
+                                                StackPanel.spacing 6.0
+                                                StackPanel.verticalAlignment VerticalAlignment.Center
+                                                StackPanel.children [
+                                                    spinnerView 11.0 (Color.Parse("#60a5fa")) 1.5
+                                                    TextBlock.create [
+                                                        TextBlock.text $"🤖 AI提案中... ({completedCount}/{model.Candidates.Length}件完了)"
+                                                        TextBlock.foreground (SolidColorBrush (Color.Parse("#60a5fa")))
+                                                        TextBlock.fontSize 11.0
+                                                        TextBlock.fontWeight FontWeight.Bold
+                                                        TextBlock.verticalAlignment VerticalAlignment.Center
+                                                    ]
+                                                ]
                                             ]
                                         )
                                     ]

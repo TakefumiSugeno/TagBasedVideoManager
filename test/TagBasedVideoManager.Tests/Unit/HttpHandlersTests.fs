@@ -251,6 +251,33 @@ module HttpHandlersTests =
         )
 
     /// <summary>
+    /// triggerScan は RequestServices が null の HttpContext において、
+    /// VIDEO_DIRS 未設定時に HTTP 500 テキスト応答を安全に返すこと（L151, L153 分岐のカバー）。
+    /// </summary>
+    [<Fact>]
+    let ``triggerScan should return 500 when RequestServices is null and VIDEO_DIRS is absent`` () =
+        withEnvVars [ ("VIDEO_DIRS", None); ("VIDEO_DIR", None) ] (fun () ->
+            task {
+                let ctx = new DefaultHttpContext()
+                ctx.RequestServices <- null
+                use stream = new MemoryStream()
+                ctx.Response.Body <- stream
+
+                let handler = HttpHandlers.triggerScan
+                let next : HttpFunc = fun c -> task { return Some c }
+
+                let! resCtxOpt = handler next ctx
+
+                resCtxOpt.IsSome |> should be True
+                let resCtx = resCtxOpt.Value
+                resCtx.Response.StatusCode |> should equal 500
+
+                let! body = readResponseBody stream
+                body.Contains("VIDEO_DIRS") |> should be True
+            } :> Task
+        )
+
+    /// <summary>
     /// IT-07b: VIDEO_DIRS にドライブ直下（例: D:\）が指定されている状態で triggerScan を実行した際、
     /// HTTP 500 が返り、フォルダ名を持たないパスは不可である旨のメッセージが含まれること。
     /// </summary>
@@ -275,6 +302,40 @@ module HttpHandlersTests =
                 body.Contains(@"VIDEO_DIRS=D:\Anime;F:\Movie") |> should be True
             } :> Task
         )
+
+    /// <summary>
+    /// triggerScan は IConfiguration が未登録の ServiceCollection かつ THUMBNAIL_DIR 環境変数が未設定の場合、
+    /// デフォルト "thumbnails" を使用し、動画0件のディレクトリ走査を正常完了して HTTP 200 JSON ({ addedCount = 0 }) を返すこと
+    /// （L172 null config 分岐および L176 null/空白 THUMBNAIL_DIR 分岐のカバー）。
+    /// </summary>
+    [<Fact>]
+    let ``triggerScan should fallback thumbnailDir to default and return 200 when IConfiguration is absent and THUMBNAIL_DIR is unset`` () =
+        task {
+            let tempVideoDir = Path.Combine(Path.GetTempPath(), "TriggerScanEmptyDir_" + Guid.NewGuid().ToString("N"))
+            Directory.CreateDirectory(tempVideoDir) |> ignore
+            try
+                do! withEnvVars [ ("VIDEO_DIRS", Some tempVideoDir); ("VIDEO_DIR", None); ("THUMBNAIL_DIR", None) ] (fun () ->
+                    task {
+                        use conn = createInMemoryDb ()
+                        // setupTestContext は IConfiguration を登録しない最小構成
+                        let (ctx, stream) = setupTestContext conn
+                        let handler = HttpHandlers.triggerScan
+                        let next : HttpFunc = fun c -> task { return Some c }
+
+                        let! resCtxOpt = handler next ctx
+
+                        resCtxOpt.IsSome |> should be True
+                        let resCtx = resCtxOpt.Value
+                        resCtx.Response.StatusCode |> should equal 200
+
+                        let! body = readResponseBody stream
+                        body.Contains("\"addedCount\":0") |> should be True
+                    } :> Task
+                )
+            finally
+                if Directory.Exists(tempVideoDir) then
+                    try Directory.Delete(tempVideoDir, true) with _ -> ()
+        } :> Task
 
     /// <summary>
     /// IT-08: 旧変数 VIDEO_DIR のみが設定され VIDEO_DIRS が未設定の状態で triggerScan を実行した際、
