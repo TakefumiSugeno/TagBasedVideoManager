@@ -289,3 +289,234 @@
 - **条件付きLGTM**: なし
 - **保留指摘（申し送り）**: 指摘1（Suggestion: `inspect` タイムアウト時の `Write-Warning` 出力、`Resolve-VideoMounts` の `$RepoRoot` 空文字ガード）
 - **次のアクション**: 次フェーズへ（Gate 1 通過後、Apply Phase 1 `qa-tester` へ進行）
+
+---
+
+# レビュー記録: deploy-data-dir-wsl-path / apply / task-2.1-2.3 (PG Reviewer Cycle 1)
+
+- **日時**: 2026-11-20
+- **フェーズ**: apply
+- **タスク**: 2.1〜2.3 (`scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh` 実装レビュー Cycle 1)
+- **レビュアー**: pg
+- **使用プロトコル**: openspec/templates/checklist_apply_impl.md
+- **対象成果物**: `scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh`
+
+## 1. 挑戦的設問への回答（暗黙の仮定・例外握りつぶし・コード削減検証）
+
+- **確認内容・回答**: `///home/user/data` の非 WSL UNC 誤認、`Resolve-DataDir` における `$RepoRoot` が WSL UNC 時の相対パス `//wsl.localhost/...` 破壊、`deploy.sh` の `VIDEO_DIRS` 相対パス未正規化、WSL サブパス大小文字区別、`resolve_unc_path_for_linux` のホスト境界欠落、`Resolve-WebDeploySettings` の JSON エラー時ファイル名欠落、`deploy.sh` `inspect` の 5 秒タイムアウトと `SIGPIPE` 回避、および `Resolve-HostDirectoryInfo` / `resolve_host_dir_for_linux` への共通化によるコード削減案を指摘した。
+- **確認根拠**: `scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（破壊テスト実行は QA Reviewer 側で実施）
+
+## 3. 指摘事項
+
+### 指摘1〜6
+
+- **内容**: (1) `deploy.sh` の `VIDEO_DIRS` 相対パス正規化と検証統合、(2) `common.ps1` の WSL UNC `$RepoRoot` 下での相対パス解決、(3) `///home/...` 正規化と UNC ホスト境界厳格化、(4) `Resolve-WebDeploySettings` の JSON ファイル名表示・`Get-DefaultWslDistro` の `StdErr`/`StdOut` 出力・`deploy.sh` `inspect` 5秒タイムアウトと `jq` `first(...)` 化、(5) WSL サブパスの `Ordinal` 大小文字区別、(6) 共通ヘルパー抽出による重複コード削減。
+- **重要度**: Major (指摘1〜5) / Suggestion (指摘6)
+- **対応方針**: 採用（Cycle 2 実装にて全件反映済み）
+- **理由**: 境界入力での仕様整合と保守性向上のため。
+- **対応コミット**: Cycle 2 Apply 修正にて解消
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー（Cycle 2 へ）
+
+---
+
+# レビュー記録: deploy-data-dir-wsl-path / apply / task-1.1-2.3 (QA Reviewer Cycle 1)
+
+- **日時**: 2026-11-20
+- **フェーズ**: apply
+- **タスク**: Tasks 1.1〜2.3（テストレビュー兼 Adversarial QA 実装レビュー Cycle 1）
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_apply_test.md, openspec/templates/checklist_apply_impl.md
+- **対象成果物**: `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs`, `scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh`
+
+## 1. 挑戦的設問への回答（トートロジー・甘いアサーション・ミューテーション検証）
+
+- **確認内容・回答**: 期待値のコピペがないことを確認する一方、`assertCommonFails ... |> ignore` によるエラー理由未検証、`UT-DATA-11` の `-CreateIfMissing` なし時の通常ファイル拒否未検証、`deploy.sh` の同一マウント元非警告テスト（`IT-SH-WARN-02`）と `inspect` 実プロセスタイムアウトテストの不足、`New-Item -Path` による角括弧 `[` `]` ワイルドカード例外、`deploy.sh` L147 の偽装 UNC ホスト境界欠落を指摘した。
+- **確認根拠**: `DeployScriptTests.fs` L1123-2664, `scripts/common.ps1`, `scripts/deploy.sh`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- **対象関数/モジュール**: `Resolve-DataDir`, `resolve_unc_path_for_linux`
+- **破壊テストコード名**: Cycle 1 静的境界抽出（Cycle 2 にて実コマンド実行）
+- **実行コマンド**: Cycle 2 の `qa-reviewer-exec` にて実コマンド実行
+- **実行判定**: バグ検出（Red / Cycle 2 で修正・再実行し Green 確認）
+- **実行ログ要約**:
+
+```text
+Cycle 1 では偽装 UNC (//wsl$evil/data)、角括弧ディレクトリ (tbvm-qa[1])、先頭3本スラッシュ (///home/user/data) の3点を検出し、Cycle 2 で修正および実コマンド破壊テストを実行。
+```
+
+## 3. 指摘事項
+
+### 指摘1〜5
+
+- **内容**: (1) `deploy.sh` の WSL UNC ホスト境界厳格化、(2) `common.ps1` の `[System.IO.Directory]::CreateDirectory($hostPath)` による角括弧パス対応、(3) `DeployScriptTests.fs` のエラーメッセージ明示アサート・`-CreateIfMissing` なし時の通常ファイル拒否・`IT-SH-WARN-02`・`inspect` タイムアウトテスト追加、(4) `///home/user/data` の先頭スラッシュ正規化、(5) 実コマンドによる Adversarial QA 実行。
+- **重要度**: Critical (指摘5) / Major (指摘1〜3) / Minor (指摘4)
+- **対応方針**: 採用（Cycle 2 にて全件反映・実コマンド実行済み）
+- **理由**: ミューテーション耐性と実環境堅牢性の客観的証明のため。
+- **対応コミット**: Cycle 2 Apply 修正にて解消
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー（Cycle 2 へ）
+
+---
+
+# レビュー記録: deploy-data-dir-wsl-path / apply / se-apply-review
+
+- **日時**: 2026-11-20 01:58 +09:00
+- **フェーズ**: apply
+- **タスク**: Tasks 2.1〜2.4（Apply 設計適合・耐障害性レビュー: SE Reviewer 視点）
+- **レビュアー**: se
+- **使用プロトコル**: openspec/templates/checklist_apply_impl.md
+- **対象成果物**: `scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh`, `README.md`, `PRODUCTION_ENVIRONMENT.md`
+
+## 1. 挑戦的設問への回答（設計適合・故障シミュレーション・可観測性）
+
+### 設問1: `design.md` の公開関数 I/F 契約と `scripts/common.ps1` 実装の厳密一致検証
+
+- **確認内容・回答**: `design.md` 公開関数・I/F 契約表の全 8 関数および Propose 申し送り事項（`Get-ExistingContainerDataMount` の 5000ms タイムアウト時 `Write-Warning` 出力、`Resolve-VideoMounts` の `$RepoRoot` 空文字ガード）がすべて厳密に実装されていることを確認した。
+- **確認根拠**: `design.md` L60-159、`scripts/common.ps1` L5-809
+
+### 設問2: 外部プロセス異常終了・ハング時の故障シミュレーションと `$ErrorActionPreference = 'Stop'` 耐性
+
+- **確認内容・回答**: `Invoke-ExternalProcessWithTimeout` の非同期ストリーム読み取り＋`WaitForExit($TimeoutMs)`＋プロセスツリー `Kill($true)`、`deploy.sh` の `timeout 5` 付き `inspect`、および `$ErrorActionPreference = 'Stop'` / `set -euo pipefail` 下での安全なエラー伝播と Fail-Fast を確認した。
+- **確認根拠**: `scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh`
+
+### 設問3: 起動前サマリ・実行順序・警告 4 要素・運用ドキュメント整合性
+
+- **確認内容・回答**: ビルド・コンテナ停止前の検証順序、設定元・ディストロ名・`HostPath`・`MountSource` のサマリ出力、不一致警告の必須 4 要素、および `README.md` / `PRODUCTION_ENVIRONMENT.md` の記載整合を確認した。
+- **確認根拠**: `scripts/deploy.ps1`, `scripts/deploy.sh`, `README.md`, `PRODUCTION_ENVIRONMENT.md`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（破壊テスト作成・実行は QA Reviewer が担当、実機 `wslc` 非破壊 E2E 検証は下記セクションに記載）
+
+## 3. 指摘事項
+
+### 指摘1〜2
+
+- **内容**: (1) `scripts/deploy.sh` の `get_existing_container_data_mount` に `timeout 5`（終了コード 124 時の診断警告）を追加、(2) `deploy.sh` の WSL UNC ホスト境界追加および `common.ps1` `Resolve-WebDeploySettings` の JSON エラー時ファイル名出力。
+- **重要度**: Minor (指摘1) / Suggestion (指摘2)
+- **対応方針**: 採用（Cycle 2 実装にて両方とも反映済み）
+- **理由**: Linux 側のデーモンハング耐性と JSON 構文エラー時の調査性向上のため。
+- **対応コミット**: Cycle 2 Apply 修正にて解消
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし（指摘1・2とも Cycle 2 で採用・解消済み）
+- **次のアクション**: 次タスクへ
+
+---
+
+# レビュー記録: deploy-data-dir-wsl-path / apply / task-2.1-2.4-pg-cycle2
+
+- **日時**: 2026-11-20T02:27:00+09:00
+- **フェーズ**: apply
+- **タスク**: Tasks 2.1〜2.4（Cycle 2: PG Reviewer 実装再レビュー）
+- **レビュアー**: pg
+- **使用プロトコル**: openspec/templates/checklist_apply_impl.md
+- **対象成果物**: `scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh`, `README.md`, `PRODUCTION_ENVIRONMENT.md`
+
+## 1. 挑戦的設問への回答（Cycle 1 指摘解消確認）
+
+- **確認内容・回答**: Cycle 1 で指摘した Major 5 件およびコード削減リファクタリング（`scripts/deploy.sh` の `resolve_host_dir_for_linux` 統合・UNC ホスト境界 `([\\/].*)?$`・`timeout 5`・`jq` `first(...) // empty`・`utf-8-sig` 対応、`scripts/common.ps1` の `Resolve-HostDirectoryInfo` 共通化・WSL UNC `$RepoRoot` 相対解決・`///home/...` 正規化・WSL サブパス `Ordinal` 比較・JSON エラー時ファイル名出力・`wsl.exe` エラー出力保持、`scripts/deploy.ps1` の到達不能分岐削除と `$resolvedPort` 表示）がすべて的確に反映されていることを確認した。
+- **確認根拠**: `scripts/deploy.sh` L48-318、`scripts/common.ps1` L26-905、`scripts/deploy.ps1` L28-123
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（QA Reviewer の Cycle 2 実コマンド実行記録を参照）
+
+## 3. 指摘事項
+
+なし（理由: Cycle 1 の全指摘が解消され、堅牢性およびコードの簡潔性が確認されたため）
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 次フェーズへ
+
+---
+
+# レビュー記録: deploy-data-dir-wsl-path / apply / task-1.1-3.1-qa-cycle2
+
+- **日時**: 2026-11-20T02:29:00+09:00
+- **フェーズ**: apply
+- **タスク**: Tasks 1.1〜3.1（Cycle 2: テストレビュー兼 Adversarial QA 破壊テスト・実機 `wslc` E2E 検証）
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_apply_test.md, openspec/templates/checklist_apply_impl.md
+- **対象成果物**: `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs`, `scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh`
+
+## 1. 挑戦的設問への回答（テスト品質・ミューテーション耐性再確認）
+
+- **確認内容・回答**:
+  1. `DeployScriptTests.fs`（L1122〜L2781）から `assertCommonFails ... |> ignore` が全廃され、全異常系テストで理由キーワード・設定例（`"空"`, `"ディストロ名"`, `"サブパス"`, `"ルート"`, `"UNC"`, `".."`, `"ドライブ直下"`, `"ドライブ相対"`, `"ファイル"`, `"wsl --status"`, `"appsettings.Production.json"`）が明示アサートされていることを確認した。
+  2. `UT-DATA-11`（`-CreateIfMissing` あり・なし双方での通常ファイル拒否）、`UT-DATA-12`（角括弧 `tbvm[2026]`、`///home/spjao/data`、WSL UNC `$RepoRoot` 相対解決）、`UT-WARN-02`（WSL サブパス大小文字区別）、`UT-WARN-05`（実モックプロセス `wslc.exe` に対する `-TimeoutMs 150` タイムアウト警告）、`IT-SH-WARN-02`（同一マウント元非警告）、`IT-SH-DATA-04`（偽装 UNC 拒否）が追加され、計 70 テスト全件 Pass を確認した。
+- **確認根拠**: `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs` L1600-2781
+
+## 2. Adversarial QA（破壊テスト実行結果および実機 `wslc` 非破壊 E2E 検証ログ）
+
+- **対象関数/モジュール**: `scripts/common.ps1`（`Resolve-DataDir`, `Resolve-WslUncPath`, `Resolve-VideoMounts`, `Test-SameMountSource`, `Get-ExistingContainerDataMount`）、`scripts/deploy.sh`（`resolve_unc_path_for_linux`, `resolve_host_dir_for_linux`, `get_existing_container_data_mount`）、および実機 `wslc 3.0.5.0`
+- **破壊テストコード名**: インライン PowerShell / WSL Bash Adversarial QA スクリプトおよび Task 3.1 実機 `wslc` 非破壊 E2E 検証スクリプト
+- **実行コマンド**: `pwsh -NoProfile -NonInteractive -Command '. "./scripts/common.ps1"; ...'` および `$lf | wsl.exe -e bash -s`
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+- **実行ログ要約**:
+
+```text
+[Adversarial QA 1: PowerShell common.ps1]
+[PASS-1] Spoofed UNC rejected (//wsl$evil/data): 非 WSL のネットワーク UNC パスはサポートされていません: //wsl$evil/data
+[PASS-1] Spoofed UNC rejected (\\wsl.localhost.evil\Ubuntu\data): エラー: DATA_DIR に非 WSL のネットワーク UNC パスは指定できません
+[PASS-2] Bracket/special dir created: HostPath=...\tbvm-qa[1]\sub$dir;test MountSource=.../tbvm-qa[1]/sub$dir;test
+[PASS-3A] Triple slash normalized: \\wsl.localhost\Ubuntu-24.04\home\user\data
+[PASS-3B] Triple slash root rejected: エラー: DATA_DIR にルート '/' 単体はフォルダ名（マウント先）を決定できないため指定できません
+[PASS-4] Regular file rejected (CreateIfMissing=False / True): DATA_DIR にディレクトリではなく既存の通常ファイルが指定されています
+[PASS-5] Test-SameMountSource: WinCaseInsensitive=True WslDistroInsensitive=True WslSubpathCaseSensitive=False LinuxCaseSensitive=False
+[PASS-6] Inspect payload (not-json / [{}] / []) handled safely: WarnCount=1
+
+[Adversarial QA 2: WSL Bash deploy.sh]
+[PASS-SH-1] Spoofed UNC rejected (RC=1): エラー: DATA_DIR に非 WSL のネットワーク UNC パスは指定できません: //wsl$evil/data
+[PASS-SH-2] Spoofed wsl.localhost.evil rejected (RC=1): エラー: DATA_DIR に非 WSL のネットワーク UNC パスは指定できません: //wsl.localhost.evil/Ubuntu-24.04/data
+[PASS-SH-3] Triple slash + bracket + rel VIDEO_DIRS + malformed inspect JSON succeeded
+[PASS-SH-3A] Malformed inspect JSON warning verified
+[PASS-SH-3B] Docker run args: ["run", "-d", "--name", "tag-based-video-manager", "-p", "5620:5620", "-v", "/tmp/.../repo/rel_videos/Anime:/app/videos/Anime:ro", "-v", "/tmp/.../tbvm-qa[1]/data dir:/app/data", ...]
+
+[Task 3.1 実機 wslc 非破壊 E2E 検証]
+=== 1. Read-only wslc inspect via Get-ExistingContainerDataMount ===
+Extracted /app/data Source: \\wsl.localhost\Ubuntu-24.04\home\spjao\var\apps\TagBasedVideoManager\data
+=== 2. Non-destructive wslc run --rm mount check ===
+Resolved Video Mount: -v C:/Users/spjao/AppData/Local/Temp/tvm-e2e-vids-a226bb65d80340a1815c67827d42989e:/app/videos/tvm-e2e-vids-a226bb65d80340a1815c67827d42989e:ro
+Resolved Data HostPath: \\wsl.localhost\Ubuntu-24.04\tmp\tvm-e2e-wsl-data-a226bb65d80340a1815c67827d42989e / MountSource: \\wsl.localhost\Ubuntu-24.04\tmp\tvm-e2e-wsl-data-a226bb65d80340a1815c67827d42989e
+wslc run exit=0
+  OUT: sample-video-marker
+  OUT: touch: cannot touch '/app/videos/tvm-e2e-vids-a226bb65d80340a1815c67827d42989e/ro_fail': Read-only file system
+  OUT: RO_PROTECTED
+Host-visible WSL probe content: wsl_rw_ok
+RO file leak=False / Spurious D:\mnt\c\... created=False
+```
+
+## 3. 指摘事項
+
+なし（理由: Cycle 1 の全指摘が解消され、実コマンドによる Adversarial QA 破壊テストおよび実機 `wslc` 非破壊 E2E 検証ですべて堅牢性が確認されたため）
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 次フェーズへ（Gate 2 通過確認・タスク完了更新へ）
