@@ -150,6 +150,7 @@ SQLite データベース（`metadata.db`）および生成済みサムネイル
    ```
 
 3. デプロイ実行時（`pwsh ./scripts/deploy.ps1`）、ビルド・既存コンテナ停止より前に解決結果サマリ（設定元・生値・WSL ディストロ名・`HostPath`・`MountSource`）が出力され、対象ディレクトリが存在しない場合は自動作成されます。
+   - **複数ディストロ導入環境での注意**: `Get-DefaultWslDistro` は `wsl.exe -l -q` の出力からシステム用ディストロ（`docker-desktop` / `docker-desktop-data`）を除外した先頭行を採用します。複数のユーザーディストロが存在する環境では、事前に `wsl -l -v` および起動前サマリの `DATA_DIR WSLディストロ` 出力で意図したディストロが選ばれているか確認してください（異なる場合は方法 2 の `\\wsl.localhost\<Distro名>\...` を明示指定してください）。
 
 ### (5) 既存 `/mnt/...` や別 `DATA_DIR` からの切り替え時のデータ移行手順・注意点
 
@@ -171,8 +172,11 @@ SQLite データベース（`metadata.db`）および生成済みサムネイル
   wslc stop tag-based-video-manager
 
   # 2. 旧 DATA_DIR から新 DATA_DIR へコピー
+  # ※ 既に <新DATA_DIR>\thumbnails が存在する状態でフォルダ自体を指定すると
+  #   thumbnails\thumbnails\ へ二重ネストされるため、配下 (thumbnails\*) を指定します。
   Copy-Item -Path "<旧DATA_DIR>\metadata.db" -Destination "<新DATA_DIR>\" -Force
-  Copy-Item -Path "<旧DATA_DIR>\thumbnails" -Destination "<新DATA_DIR>\" -Recurse -Force
+  New-Item -ItemType Directory -Path "<新DATA_DIR>\thumbnails" -Force | Out-Null
+  Copy-Item -Path "<旧DATA_DIR>\thumbnails\*" -Destination "<新DATA_DIR>\thumbnails\" -Recurse -Force
 
   # 3. コンテナを再起動
   wslc start tag-based-video-manager
@@ -222,3 +226,50 @@ SQLite データベース（`metadata.db`）および生成済みサムネイル
    - `VIDEO_DIRS` に指定する複数フォルダのフォルダ名（Leaf名）が重複している場合（例: `C:\Anime;D:\Anime`）、コンテナ内のマウント先 `/app/videos/Anime` が競合するためエラーとなります。
 4. **コンテナ内での `FilePath`**:
    - データベース（SQLite）の `Videos.FilePath` には、コンテナ内パス（例: `/app/videos/Videos/sample.mp4`）が記録されます。
+
+---
+
+## 5. 本番トラブルシューティング手順
+
+デプロイ失敗やコンテナ起動後のデータ／動画未認識・権限エラー等が発生した場合は、以下の順で切り分けてください。
+
+1. **デプロイスクリプト起動前サマリの確認**:
+   - `deploy.ps1` / `deploy.sh` がビルド前に出力する設定サマリで、`設定元`（`CLI` / `環境変数` / `appsettings.*.json` / `既定値`）、`生入力値`、`WSLディストロ名`、`ホスト参照パス (HostPath)`、`コンテナマウント元 (MountSource)` が意図通りか確認します。
+2. **コンテナ稼働ログの確認**:
+   - 起動後やアプリエラー時に直近ログを確認します。
+
+   ```powershell
+   # Windows (wslc)
+   wslc logs --tail 50 tag-based-video-manager
+   ```
+
+   ```bash
+   # Linux (docker / podman)
+   docker logs --tail 50 tag-based-video-manager
+   ```
+
+3. **実マウント構成の検査（`inspect`）**:
+   - コンテナ内の `/app/data` および `/app/videos/...` がホスト上の意図したパスに結び付いているか、`Mounts` 配列の `Destination` と `Source` を確認します。
+
+   ```powershell
+   # Windows (wslc)
+   wslc inspect tag-based-video-manager
+   ```
+
+   ```bash
+   # Linux (docker / podman)
+   docker inspect tag-based-video-manager
+   ```
+
+4. **WSL3 ディストロ・Linux 環境変数の切り分け**:
+   - Windows で `/home/...` 解決に失敗または別ディストロへ解決された場合:
+     ```powershell
+     wsl --status
+     wsl -l -v
+     ```
+     目的のディストロ名が既定でない場合は `appsettings.Production.json` に `\\wsl.localhost\<Distro名>\...` を明示指定してください。
+   - Linux / WSL Bash（`deploy.sh`）で WSL UNC パスが拒否された場合:
+     ```bash
+     echo "$WSL_DISTRO_NAME"
+     ```
+     `$WSL_DISTRO_NAME` が空（ネイティブ Linux・`cron`/`ssh` 等）または別ディストロの場合は UNC 自動変換を行わないため、Linux パス（例: `/home/<user>/var/apps/TagBasedVideoManager/data` や `./data`）を指定してください。

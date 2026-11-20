@@ -520,3 +520,213 @@ RO file leak=False / Spurious D:\mnt\c\... created=False
 - **条件付きLGTM**: なし
 - **保留指摘（申し送り）**: なし
 - **次のアクション**: 次フェーズへ（Gate 2 通過確認・タスク完了更新へ）
+
+---
+
+# レビュー記録: deploy-data-dir-wsl-path / archive / archive-se-review
+
+- **日時**: 2026-11-21T00:13:00+09:00
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー（SE Reviewer 視点：技術的負債・将来の罠・ロールバック安全性・保留指摘引き継ぎ確認）
+- **レビュアー**: se
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: `openspec/changes/deploy-data-dir-wsl-path/design.md`, `openspec/changes/deploy-data-dir-wsl-path/handover.md`, `openspec/changes/deploy-data-dir-wsl-path/reviews.md`, `scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh`
+
+## 1. 挑戦的設問への回答（技術的負債・ロールバック安全性・引き継ぎ確認）
+
+- **確認内容・回答**: `ConvertTo-ContainerMountPath` と `Resolve-HostDirectoryInfo` の並存および `$script:SystemWslDistros` ハードコード前提を含む技術的負債・将来罠の `handover.md` 記載、Propose/Apply 保留指摘の全件解消確認、ならびに本変更が DB スキーマ変更・データ自動破壊を含まず `git revert` および `DATA_DIR` 戻しのみで安全にロールバック可能であることを確認した。
+- **確認根拠**: `design.md`, `handover.md`, `reviews.md`, `scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（Archive 総括レビューのため新規コード変更なし。Apply Phase 2 QA Reviewer Cycle 2 にて実コマンド破壊テストおよび実機 `wslc 3.0.5.0` 非破壊 E2E 検証を実施・合格済み）
+
+## 3. 指摘事項
+
+### 指摘1〜2
+
+- **内容**: (1) `ConvertTo-ContainerMountPath` と `Resolve-HostDirectoryInfo` の二重管理整理候補の追記、(2) `$script:SystemWslDistros` 固定値前提の追記。
+- **重要度**: Minor
+- **対応方針**: 採用（`handover.md` セクション 3〜4 へ追記反映済み）
+- **理由**: 次期保守者が拡張・改修する際の暗黙前提を明文化するため。
+- **対応コミット**: Archive 前ドキュメント更新にて反映済み
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし（指摘1・2とも `handover.md` へ反映済み）
+- **次のアクション**: Archive実行
+
+---
+
+# レビュー記録: deploy-data-dir-wsl-path / archive / archive-qa-review
+
+- **日時**: 2026-11-21
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー（QA Reviewer 視点：死角・未検証領域・保留負債引き継ぎ・エビデンス整合確認）
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: `openspec/changes/deploy-data-dir-wsl-path/handover.md`, `openspec/changes/deploy-data-dir-wsl-path/reviews.md`, `openspec/changes/deploy-data-dir-wsl-path/test_plan.md`, `test/TagBasedVideoManager.Renamer.Tests/DeployScriptTests.fs`, `test/TestResults/TestRun_2026-11-20_02_33_18/TestRun_2026-11-20_02_33_18_net10.0.trx`
+
+## 1. 挑戦的設問への回答（テスト・カバレッジ実測エビデンス突合・死角確認）
+
+- **確認内容・回答**: `TestRun_2026-11-20_02_33_18_net10.0.trx` にて新規 7 テストクラス 70 件すべて Pass・既存失敗 8 件の内訳（`IT-10` 1件, `IT-16` 2件, `IT-17` 4件, `SettingsTests` 1件）・Cobertura XML（Line 87.57% / Branch 64.66%）との整合を確認した。`deploy.sh` の `jq` のみ経路・純粋 Bash フォールバックの動的未検証領域と `coverlet.MTP` 未復元を含む負債が `handover.md` に記録されていることを確認した。
+- **確認根拠**: `TestRun_2026-11-20_02_33_18_net10.0.trx`, `coverage.cobertura.191126173533147.xml`, `CoverageReport/index.html`, `handover.md`, `DeployScriptTests.fs`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（Archive 総括レビューのため新規コード変更なし。Apply Phase 2 Cycle 2 の破壊テスト・実機 `wslc` E2E ログ参照）
+
+## 3. 指摘事項
+
+### 指摘1〜2
+
+- **内容**: (1) `deploy.sh` `jq` のみ経路・純粋 Bash フォールバックの動的未検証領域の記録、(2) メソッド網羅率表示（コンソール出力 vs Cobertura XML 属性差）の出典明記。
+- **重要度**: Minor / Suggestion
+- **対応方針**: 採用（`handover.md` セクション 2〜4 へ反映済み）
+- **理由**: 計測実態・残余未検証経路を正確に引き継ぐため。
+- **対応コミット**: Archive 前ドキュメント更新にて反映済み
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし（`handover.md` セクション 2〜4 へ反映済み）
+- **次のアクション**: Archive実行
+
+---
+
+# レビュー記録: deploy-data-dir-wsl-path / archive / archive-pg-review (Cycle 1)
+
+- **日時**: 2026-11-21T00:12:37+09:00
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー Cycle 1（PG Reviewer 視点）
+- **レビュアー**: pg
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: `openspec/changes/deploy-data-dir-wsl-path/handover.md`, `scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh`
+
+## 1. 挑戦的設問への回答
+
+- **確認内容・回答**: `handover.md` への記述対象として、`scripts/deploy.sh` L328 の Bash 3.2 `${var,,}` 2箇所目、`python3` / `jq` 二重 JSON パース実装・グローバル変数契約、`common.ps1` の `-TargetIsWindows $true` 固定・UNC 正規表現二重管理・`$script:SystemWslDistros` 前提、および移行 `Copy-Item` の `/mnt/...` 読み替え補足を特定した。
+- **確認根拠**: `scripts/common.ps1`, `scripts/deploy.ps1`, `scripts/deploy.sh`, `handover.md`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（Archive 総括レビュー）
+
+## 3. 指摘事項
+
+### 指摘1〜2
+
+- **内容**: (1) `handover.md` セクション 3〜4 への技術的負債・将来罠の追記、(2) セクション 5 への旧 `/mnt/...` 読み替え補足追記。
+- **重要度**: Major (指摘1) / Minor (指摘2)
+- **対応方針**: 採用（Cycle 2 で `handover.md` へ反映済み）
+- **理由**: 次期改修エンジニアの踏み抜き事故防止のため。
+- **対応コミット**: `handover.md` 更新にて解消
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー（Cycle 2 へ）
+
+---
+
+# レビュー記録: deploy-data-dir-wsl-path / archive / archive-user-review (Cycle 1)
+
+- **日時**: 2026-11-21
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー Cycle 1（User Reviewer 視点）
+- **レビュアー**: user
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: `PRODUCTION_ENVIRONMENT.md`, `openspec/changes/deploy-data-dir-wsl-path/handover.md`, `README.md`
+
+## 1. 挑戦的設問への回答
+
+- **確認内容・回答**: 設計 Why の追跡可能性を確認する一方、恒久運用ドキュメント `PRODUCTION_ENVIRONMENT.md` に本番トラブルシューティング手順（`wslc logs`, `wslc inspect`, `WSL_DISTRO_NAME` / `wsl -l -v` 切り分け）、`Copy-Item` での `thumbnails\thumbnails\` 二重ネスト防止策、複数 WSL ディストロ確認導線が不足している点を特定した。
+- **確認根拠**: `PRODUCTION_ENVIRONMENT.md`, `handover.md`, `README.md`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（Archive 総括レビュー）
+
+## 3. 指摘事項
+
+### 指摘1〜3
+
+- **内容**: (1) `PRODUCTION_ENVIRONMENT.md` へのトラブルシューティング節追加、(2) `Copy-Item` 二重ネスト防止、`thumbnails\*` 指定、(3) 複数 WSL ディストロ選択確認導線補足。
+- **重要度**: Major (指摘1) / Minor (指摘2) / Suggestion (指摘3)
+- **対応方針**: 採用（Cycle 2 で `PRODUCTION_ENVIRONMENT.md` および `handover.md` へ反映済み）
+- **理由**: 恒久ドキュメントのみで本番障害対応と安全なデータ移行を完結できるようにするため。
+- **対応コミット**: `PRODUCTION_ENVIRONMENT.md`・`handover.md` 更新にて解消
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー（Cycle 2 へ）
+
+---
+
+# レビュー記録: deploy-data-dir-wsl-path / archive / archive-pg-review-cycle2
+
+- **日時**: 2026-11-21T00:15:49+09:00
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー Cycle 2（PG Reviewer 視点）
+- **レビュアー**: pg
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: `openspec/changes/deploy-data-dir-wsl-path/handover.md`, `PRODUCTION_ENVIRONMENT.md`
+
+## 1. 挑戦的設問への回答
+
+- **確認内容・回答**: Cycle 1 で指摘した技術的負債・将来改修時の罠（Bash 3.2 `${var,,}` 2箇所目、`python3`/`jq` 二重実装・グローバル変数契約、`common.ps1` 二重構造・`$script:SystemWslDistros`・`-TargetIsWindows` 固定、PowerShell 7+ 必須、`-DataDir ""` 挙動、`Copy-Item` 旧 `/mnt/...` 読み替え、`wslc logs --tail 50` 手順）がすべて `handover.md` セクション 3〜5 に漏れなく反映されたことを確認した。
+- **確認根拠**: `openspec/changes/deploy-data-dir-wsl-path/handover.md` L44-79, `PRODUCTION_ENVIRONMENT.md` L171-183, L232-275
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（Archive 総括レビュー）
+
+## 3. 指摘事項
+
+なし（理由: Cycle 1 の全指摘が `handover.md` および `PRODUCTION_ENVIRONMENT.md` へ適切に反映されたため）
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: Archive実行
+
+---
+
+# レビュー記録: deploy-data-dir-wsl-path / archive / archive-user-review-cycle2
+
+- **日時**: 2026-11-21
+- **フェーズ**: archive
+- **タスク**: Archive 総括レビュー Cycle 2（User Reviewer 視点）
+- **レビュアー**: user
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: `PRODUCTION_ENVIRONMENT.md`, `openspec/changes/deploy-data-dir-wsl-path/handover.md`, `openspec/changes/deploy-data-dir-wsl-path/design.md`, `README.md`
+
+## 1. 挑戦的設問への回答
+
+- **確認内容・回答**: `PRODUCTION_ENVIRONMENT.md` にセクション 5「本番トラブルシューティング手順」（起動前サマリ、`wslc logs` / `docker logs`、`wslc inspect` / `docker inspect`、`wsl --status` / `wsl -l -v` / `$WSL_DISTRO_NAME` 切り分け）、セクション 3-(5) の `thumbnails\*` 二重ネスト防止 `Copy-Item` 手順、およびセクション 3-(4) の複数 WSL ディストロ確認導線が反映され、初見エンジニアの Why 追跡可能性および本番運用手順の十分性を確認した。
+- **確認根拠**: `PRODUCTION_ENVIRONMENT.md` L113-180, L232-275、`handover.md` L12-79
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（Archive 総括レビュー）
+
+## 3. 指摘事項
+
+なし（理由: Cycle 1 の全指摘が `PRODUCTION_ENVIRONMENT.md` および `handover.md` へ反映されたため）
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: Archive実行
