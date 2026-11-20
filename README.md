@@ -211,13 +211,27 @@ TagBasedVideoManager は .NET 標準の構成思想に準拠し、設定を `app
 {
   "PORT": 5620,
   "VIDEO_DIRS": "C:\\Users\\YourUserName\\Videos;D:\\AnotherVideos",
-  "THUMBNAIL_DIR": "C:\\Users\\YourUserName\\TagBasedVideoManagerData\\thumbnails",
-  "DATABASE_PATH": "C:\\Users\\YourUserName\\TagBasedVideoManagerData\\metadata.db",
+  "THUMBNAIL_DIR": "thumbnails",
+  "DATABASE_PATH": "metadata.db",
   "DATA_DIR": "./data"
 }
 ```
 
 ※デプロイスクリプト（`scripts/deploy.ps1` / `scripts/deploy.sh`）は、実行時に `src/TagBasedVideoManager/appsettings.json` および `appsettings.Production.json` を自動的に読み込み、コンテナを構成します（CLI 引数や環境変数で上書きも可能）。
+
+##### `DATA_DIR` / `VIDEO_DIRS` のパス指定仕様
+
+| パス形式                                                                                 | `scripts/deploy.ps1` (Windows / WSL 3.0)                                                                                                                   | `scripts/deploy.sh` (Linux / Docker / Podman)                                                                  |
+| :--------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------- |
+| **相対パス**（例: `./data`）                                                             | リポジトリルート基準の絶対パスへ解決し、`D:/.../data` 形式でマウント（`DATA_DIR` 未設定・空白時も `./data` にフォールバック）                              | リポジトリルート（`${REPO_ROOT}`）基準の絶対パスへ正規化してマウント（実行時カレントディレクトリに依存しない） |
+| **Windows 絶対パス**（例: `D:\tbvm\data`, `D:\My Videos\Clips`）                         | スラッシュ区切り（`D:/tbvm/data`, `D:/My Videos/Clips`）へ変換してマウント（空白保持）                                                                     | 非対応（ビルド・停止前にエラー終了し Linux パス設定例を案内）                                                  |
+| **WSL UNC パス**（例: `\\wsl.localhost\Ubuntu-24.04\home\user\tbvm\data`, `\\wsl$\...`） | `\\wsl.localhost\<Distro>\<Path>` へ正規化し WSL 側へ事前作成・存在確認してマウント                                                                        | `WSL_DISTRO_NAME` が一致する WSL 環境内のみ `/home/user/tbvm/data` へ解決（不一致・未設定時はエラー終了）      |
+| **Linux 絶対パス**（例: `/home/user/tbvm/data`）                                         | `docker-desktop` 等を除いた既定ユーザー WSL ディストロを取得し `\\wsl.localhost\<Distro>\home\user\tbvm\data` へ解決（Windows ドライブ直下には作成しない） | そのまま正規化してマウント                                                                                     |
+
+> [!NOTE]
+>
+> - 空白文字を含むパス（例: `D:\My Data\tbvm`, `/mnt/My Videos/Clips`）も分割されず 1 つのマウント引数として保持されます。
+> - ドライブ直下/相対（`D:\`, `D:`, `D:data`, `/` 単体）、セグメント境界の `..` トラバーサル（`v1..v2` のようなフォルダ名の一部は許可）、および通常ファイルの誤指定は、コンテナイメージのビルドや既存コンテナの停止前にエラーとして拒否されます。
 
 #### AI File Renamer (デスクトップアプリ) 設定
 
@@ -264,6 +278,11 @@ Windows 11（WSL 3.0 / Docker Desktop）および Linux（Docker / Podman）向�
   ```
 
 ブラウザから `http://localhost:5620` にアクセスします。
+
+> [!TIP]
+>
+> - WSL 3.0 側にデータ（SQLite DB やサムネイル）を永続化する場合は、`appsettings.Production.json` の `DATA_DIR` に `/home/<user>/tbvm/data` または `\\wsl.localhost\<Distro>\home\<user>\tbvm\data` を設定してください。
+> - 既存コンテナの `/app/data` マウント元から別の `DATA_DIR` へ変更して再デプロイする場合、ビルド・停止前に旧パス・新パス・旧データ非削除・移行コピーコマンド（`Copy-Item` / `cp -a`）を含む警告が出力されます（詳細は [PRODUCTION_ENVIRONMENT.md](./PRODUCTION_ENVIRONMENT.md) を参照）。
 
 ### 4. AI File Renamer の構成設定 (`appsettings.json` / `appsettings.{Environment}.json`)
 
@@ -330,13 +349,13 @@ AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベ�
 
 ##### Web アプリケーション / デプロイ環境
 
-| 設定キー        | 環境変数名 (コンテナ注入/上書き) | 既定値 (appsettings.json)               | 説明                                                                                    |
-| :-------------- | :------------------------------- | :-------------------------------------- | :-------------------------------------------------------------------------------------- |
-| `PORT`          | `PORT`                           | `5620`                                  | アプリケーションがリッスンする HTTP ポート                                              |
-| `VIDEO_DIRS`    | `VIDEO_DIRS`                     | `""`                                    | 走査対象の動画ルートフォルダ群（セミコロン `;` 区切りで複数指定可能、ドライブ直下不可） |
-| `THUMBNAIL_DIR` | `THUMBNAIL_DIR`                  | `thumbnails` (`/app/data/thumbnails`)   | 生成されたサムネイル画像の保存ディレクトリ                                              |
-| `DATABASE_PATH` | `DATABASE_PATH`                  | `metadata.db` (`/app/data/metadata.db`) | メタデータ SQLite データベースファイルのパス                                            |
-| `DATA_DIR`      | `DATA_DIR`                       | `./data`                                | ホスト側永続データ保存ディレクトリ（コンテナデプロイ用）                                |
+| 設定キー        | 環境変数名 (コンテナ注入/上書き) | 既定値 (appsettings.json)               | 説明                                                                                     |
+| :-------------- | :------------------------------- | :-------------------------------------- | :--------------------------------------------------------------------------------------- |
+| `PORT`          | `PORT`                           | `5620`                                  | アプリケーションがリッスンする HTTP ポート                                               |
+| `VIDEO_DIRS`    | `VIDEO_DIRS`                     | `""`                                    | 走査対象の動画ルートフォルダ群（セミコロン `;` 区切りで複数指定可能、ドライブ直下不可）  |
+| `THUMBNAIL_DIR` | `THUMBNAIL_DIR`                  | `thumbnails` (`/app/data/thumbnails`)   | 生成されたサムネイル画像の保存ディレクトリ                                               |
+| `DATABASE_PATH` | `DATABASE_PATH`                  | `metadata.db` (`/app/data/metadata.db`) | メタデータ SQLite データベースファイルのパス                                             |
+| `DATA_DIR`      | `DATA_DIR`                       | `./data`                                | ホスト側永続データ保存ディレクトリ（相対パス・Windows絶対パス・WSL UNC / Linuxパス対応） |
 
 ##### AI File Renamer (デスクトップアプリ)
 
