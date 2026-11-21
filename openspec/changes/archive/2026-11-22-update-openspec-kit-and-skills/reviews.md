@@ -479,3 +479,236 @@ Temp E2E-03/DT-02: marker corruption exit=1 (untouched=True); 23999B warned=Fals
 - **承認者**: qa-reviewer
 - **保留指摘（申し送り）**: 指摘 1, 指摘 2, 指摘 3
 - **次のアクション**: Gate 2（`verify-gate.ps1 -Gate apply`）実行後、全タスク `[x]` 更新およびコミットへ進む
+
+---
+
+# レビュー記録: update-openspec-kit-and-skills / archive / user-reviewer
+
+- **日時**: 2026-11-22
+- **フェーズ**: archive
+- **タスク**: 対象外（Archive 総括レビュー）
+- **レビュアー**: user
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: `openspec/changes/update-openspec-kit-and-skills/{proposal.md,specs/review-framework/spec.md,design.md,test_plan.md,tasks.md,reviews.md,handover.md}`, `AGENTS.md`, `openspec/config.yaml`, `README.md`
+
+## 1. 挑戦的設問への回答
+
+### 設問1（設計の背景 Why の追跡可能性）
+
+- **確認内容・回答**: `AGENTS.md` 24KB 上限問題と管理区間内 SemVer 表の先行移設理由、`-AgentTargets auto`・`-SkipConfig`・対象限定 Prettier・`git clean -fd` 禁止・上流スクリプト非改変＋`x-level: L2` 併用の背景とトレードオフが `proposal.md`・`design.md`・`handover.md` から一貫して追跡可能。`README.md` に旧 `.agents/workflows/sdd-*.md` 参照や矛盾がないことも確認済み。
+- **確認根拠**: `handover.md`, `proposal.md`, `design.md`, `AGENTS.md`, `openspec/config.yaml`, `README.md`
+
+### 設問2（トラブルシューティング手順の十分性）
+
+- **確認内容・回答**: ロールバック・Prettier 制限・`AGENTS.md` 余白・`git clean -fd` 禁止・`run_*_review.py` ガード手順が整備済み。切り分け用診断コマンド（`openspec instructions` 警告・`context` 確認および `AGENTS.md` 実バイト数確認）の `handover.md` §5 追記を推奨。
+- **確認根拠**: `handover.md`, `reviews.md`, `.agents/skills/sdd-propose/references/antigravity-orchestration.md`, `tasks.md`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- 対象外（Archive 総括レビューのため）
+
+## 3. 指摘事項
+
+### 指摘1
+
+- **内容**: `handover.md` §5 へトラブル切り分け用診断コマンド（`openspec instructions apply` の stderr 警告ゼロ・`context` 非空確認、および `AGENTS.md` バイト数計測コマンド）の追記推奨。
+- **重要度**: Minor
+- **対応方針**: 採用（Archive コミット前に `handover.md` §5 へ追記反映済み）
+- **理由**: 初見エンジニアのトラブルシュート初動を迅速化するため。
+- **対応コミット**: 本 Archive 成果物修正にて反映済み
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: `handover.md` に全ての負債・保留指摘・運用注意事項・ロールバック手順を記録済み
+- **リリース可否**: 即時リリース可
+- **承認者**: user-reviewer
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: Gate 3 検証および Archive 実行へ進む
+
+---
+
+# レビュー記録: update-openspec-kit-and-skills / archive / se-reviewer
+
+- **日時**: 2026-11-22
+- **フェーズ**: archive
+- **タスク**: 対象外（Archive 総括レビュー）
+- **レビュアー**: se
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: `openspec/changes/update-openspec-kit-and-skills/{proposal.md,specs/review-framework/spec.md,design.md,test_plan.md,tasks.md,reviews.md,handover.md}`, `AGENTS.md`, `openspec/config.yaml`
+
+## 1. 挑戦的設問への回答
+
+### 設問1（隠された技術的負債・妥協点の自白と記録確認）
+
+- **確認内容・回答**: `.prettierignore` 不在環境での広域 Prettier グロブ残存、上流 `verify-gate.{ps1,sh}` の判定制限、上流 `run_*_review.py` の重複・運用契約ギャップ、OpenSpec CLI の不正 YAML 許容仕様について、すべて `handover.md` §3〜§5 へ漏れなく記録済み。
+- **確認根拠**: `handover.md`, `proposal.md`, `AGENTS.md`, `openspec/scripts/verify-gate.ps1`
+
+### 設問2（将来の機能追加・運用で踏み抜く罠）
+
+- **確認内容・回答**: Archive ステップ 5 での広域 Prettier 書換罠、`AGENTS.md` 残り余白 `1,556` B と管理区間内誤追記罠、4 エージェント複製スキルの片側編集ドリフト罠、`data/`/`thumbnails/` への `git clean` 罠を特定。
+- **確認根拠**: `AGENTS.md`, `handover.md`, `.{agents,github,opencode,hermes}/skills/sdd-propose/SKILL.md`
+
+### 設問3・4（ロールバック安全性と保留指摘の全件引き継ぎ確認）
+
+- **確認内容・回答**: DB・`src/`・`test/` 変更を含まず `git revert -m 1` で安全に巻き戻し可能。Propose Cycle 2 および Apply の全保留指摘（`pg` 1〜4、`qa` 1〜3、`se` 指摘 2・上流改善候補）が `handover.md` に漏れなく転記済みであることを確認。
+- **確認根拠**: `reviews.md`, `handover.md`, `design.md`, `tasks.md`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- 対象外（Archive 総括レビューかつ読み取り専用検証のため）
+
+## 3. 指摘事項
+
+### 指摘1
+
+- **内容**: 4 エージェント複製展開スキル（`skills/sdd-*`）の片側手動編集禁止・`install.ps1` 一括同期ルールの `handover.md` §5 への明記推奨。
+- **重要度**: Suggestion
+- **対応方針**: 採用（Archive コミット前に `handover.md` §5 へ追記反映済み）
+- **理由**: マルチエージェント間の手順ドリフトを防ぐため。
+- **対応コミット**: 本 Archive 成果物修正にて反映済み
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（Archive ステップ 5 の Prettier は対象ファイル限定で実施すること）
+- **引き継ぎ完了確認**: `handover.md` に全ての技術的負債および保留指摘を記録済み
+- **リリース可否**: 即時リリース可
+- **承認者**: se-reviewer
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: Archive 実行
+
+---
+
+# レビュー記録: update-openspec-kit-and-skills / archive / pg-reviewer
+
+- **日時**: 2026-11-22
+- **フェーズ**: archive
+- **タスク**: 対象外（Archive 総括レビュー）
+- **レビュアー**: pg
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: `openspec/changes/update-openspec-kit-and-skills/{proposal.md,specs/review-framework/spec.md,design.md,test_plan.md,tasks.md,reviews.md,handover.md}`, `AGENTS.md`, `openspec/config.yaml`
+
+## 1. 挑戦的設問への回答
+
+### 設問1（残した技術的負債と転記確認）
+
+- **確認内容・回答**: Non-Goals に基づく上流スクリプト類の残負債はすべて `handover.md` §3〜§5 に転記済み。`AGENTS.md` の圧縮余裕が `1,556` B にとどまる背景（固有部構成説明・旧 `.env` 記載）を確認。
+- **確認根拠**: `handover.md`, `reviews.md`, `design.md`, `AGENTS.md`
+
+### 設問2（将来の罠）
+
+- **確認内容・回答**: 広域 Prettier・`AGENTS.md` 余白・4 エージェント片側編集ドリフトに加え、既存 `AGENTS.md` L97-101 / `config.yaml` L104 に廃止済み `.env` / `VIDEO_DIR` 記述（`README.md` と乖離）が残存する点を指摘。
+- **確認根拠**: `AGENTS.md`, `openspec/config.yaml`, `README.md`, `handover.md`
+
+### 設問3（ロールバック・引き継ぎ確認）
+
+- **確認内容・回答**: Apply 保留指摘 1〜4 の全件転記および `git revert -m 1` による安全な巻き戻し可能性を確認。`handover.md` の手動ロールバック括弧書きは `git revert -m 1` 主手順へ一本化推奨。
+- **確認根拠**: `reviews.md`, `tasks.md`, `handover.md`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- 対象外（Archive 総括レビューかつ非コード変更のため）
+
+## 3. 指摘事項
+
+### 指摘1
+
+- **内容**: `AGENTS.md` / `config.yaml` の旧 `.env`・`VIDEO_DIR` 記載の将来整理候補を `handover.md` §4 へ追記推奨。
+- **重要度**: Minor
+- **対応方針**: 採用（`handover.md` §4 へ追記反映済み）
+- **理由**: 将来の機能追加時に AI が廃止済み `.env` 前提で実装する罠を防ぐため。
+- **対応コミット**: 本 Archive 成果物修正にて反映済み
+
+### 指摘2
+
+- **内容**: 4 エージェント展開スキルの片側手動編集禁止を `handover.md` §5 へ追記推奨。
+- **重要度**: Minor
+- **対応方針**: 採用（`handover.md` §5 へ追記反映済み）
+- **理由**: 4 箇所複製構成の手動編集ドリフトを防ぐため。
+- **対応コミット**: 本 Archive 成果物修正にて反映済み
+
+### 指摘3
+
+- **内容**: `handover.md` L63 のロールバック記述を `git revert -m 1` 主手順へ一本化推奨。
+- **重要度**: Suggestion
+- **対応方針**: 採用（`handover.md` §5 を整理済み）
+- **理由**: 不完全な部分復元による事故を防ぐため。
+- **対応コミット**: 本 Archive 成果物修正にて反映済み
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: `handover.md` に全ての技術的負債・保留指摘・運用注意を記録済み
+- **リリース可否**: 即時リリース可
+- **承認者**: pg-reviewer
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: Archive 実行
+
+---
+
+# レビュー記録: update-openspec-kit-and-skills / archive / qa-reviewer
+
+- **日時**: 2026-11-22
+- **フェーズ**: archive
+- **タスク**: 対象外（Archive 総括レビュー）
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_archive.md
+- **対象成果物**: `openspec/changes/update-openspec-kit-and-skills/{proposal.md,specs/review-framework/spec.md,design.md,test_plan.md,tasks.md,reviews.md,handover.md}`
+
+## 1. 挑戦的設問への回答
+
+### 設問1（ロールバック・非破壊性の最終検証）
+
+- **確認内容・回答**: コミット `cbcc0c0`（109 ファイル）に `data/`・`thumbnails/`・`test/TestResults/` 混入はなく、DB・`src/`・`test/` 変更もゼロのため `git revert -m 1` で安全にロールバック可能。`handover.md` の Prettier 整形およびロールバック記述整理を確認。
+- **確認根拠**: `handover.md`, `proposal.md`, `design.md`, `git show --stat cbcc0c0`, `git status -s`
+
+### 設問2（保留指摘の全件転記と DoD 整合性）
+
+- **確認内容・回答**: Propose Cycle 2・Apply (`pg`/`qa`) の全保留指摘が `handover.md` へ 1 件の漏れなく転記済みであることを確認。`tasks.md` 全 8 タスク `[x]` 完了、`openspec validate` valid、`verify-gate.ps1 -Gate archive` `PASSED` を実測確認。
+- **確認根拠**: `reviews.md`, `handover.md`, `tasks.md`, `test_plan.md`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- **対象関数/モジュール**: `openspec/changes/update-openspec-kit-and-skills/` 一式・`cbcc0c0`・`verify-gate.ps1 -Gate archive`・Prettier `3.10.1`
+- **破壊テストコード名**: Archive DoD 機械検証および成果物フォーマット・差分監査コマンド
+- **実行コマンド**: `git show --stat cbcc0c0`, `openspec validate "update-openspec-kit-and-skills"`, `pwsh ./openspec/scripts/verify-gate.ps1 -Gate archive -ChangeName "update-openspec-kit-and-skills"`, `prettier.cmd --check`
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+- **実行ログ要約**:
+
+```text
+git show --stat cbcc0c0 -> 109 files changed (data/, thumbnails/, test/TestResults/ 混入 0 件)
+openspec validate "update-openspec-kit-and-skills" -> valid
+verify-gate.ps1 -Gate archive -> [PASS] tasks.md 全 8 タスク完了 / [PASS] handover.md 記入確認 / [PASS] reviews.md 最新判定 LGTM = true / === Gate [archive] PASSED ===
+prettier.cmd --check -> handover.md のみ要整形（Archive コミット前に対象限定 Prettier で解消）
+```
+
+## 3. 指摘事項
+
+### 指摘1
+
+- **内容**: 新規作成した `handover.md` の Prettier 整形（および `reviews.md`・同期後 `openspec/specs/review-framework/spec.md` の対象限定整形）。
+- **重要度**: Minor
+- **対応方針**: 採用（Archive ステップ 5 コミット前に対象限定 Prettier 実行で解消）
+- **理由**: フォーマット差分 0 で Archive コミットを完了させるため。
+- **対応コミット**: Archive 完了コミットにて解消
+
+### 指摘2
+
+- **内容**: `handover.md` 63 行目の手動ロールバック括弧書きの整理。
+- **重要度**: Suggestion
+- **対応方針**: 採用（`git revert -m 1` 主手順へ一本化済み）
+- **理由**: 不完全復元リスクをなくすため。
+- **対応コミット**: 本 Archive 成果物修正にて反映済み
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: `handover.md` に全ての技術的負債・保留指摘を記録済み
+- **リリース可否**: 即時リリース可
+- **承認者**: qa-reviewer
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対象限定 Prettier・Gate 3 再確認・`openspec archive`・コミット・Push & PR 作成へ進む
