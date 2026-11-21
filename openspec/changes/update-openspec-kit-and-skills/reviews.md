@@ -310,3 +310,172 @@
 - **承認者**: se-reviewer
 - **保留指摘（申し送り）**: 指摘 2（`verify-gate.sh` 実行環境記録）、上流 `AIUtils` 向け改善候補（`verify-gate` の `x-level:` 直接読取・`AGENTS.md` 24KB 自動チェック・`run_*_review.py` のロール別進捗ログ・案内パス動的化）を `handover.md` へ転記
 - **次のアクション**: 次フェーズへ
+
+---
+
+# レビュー記録: update-openspec-kit-and-skills / apply / Task 1.1-3.2 (pg-reviewer)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: Task 1.1-3.2（`AGENTS.md` 固有要素移設・`openspec-kit` 同期・`openspec/config.yaml` 更新・`openspec update`・Prettier 整形・最終検証）
+- **レビュアー**: pg
+- **使用プロトコル**: openspec/templates/checklist_apply_impl.md
+- **対象成果物**: `AGENTS.md`, `openspec/config.yaml`, `openspec/agents/*.md`, `openspec/templates/*.md`, `openspec/scripts/verify-gate.{ps1,sh}`, `.{agents,github,opencode,hermes}/skills/sdd-*`, `.agents/workflows/opsx-*.md`, `.gemini/commands/opsx/*.toml`, `CLAUDE.md`, `GEMINI.md`
+
+## 1. 挑戦的設問への回答
+
+### 設問1: 暗黙の前提（都合の良い思い込み）の検証
+
+- **確認内容・回答**:
+  - `AGENTS.md` 管理区間外へ `## 利用可能なSkills`（`sdd-*`）および `セマンティックバージョニング (SemVer 2.0.0)` の L3/L2/L1 連動表が移設・保全され、`openspec/config.yaml` は固有設定を保持しつつ `reviews.skills` へ切替済み。`openspec/agents/*.md` 6 ロールも `model_tier`/`thinking`/`write_tools`・単一ライター契約・3.8 非採用で整合。4 エージェント展開、`CLAUDE.md`/`GEMINI.md` 無改変、`.agents/workflows/sdd-*.md`・`.bak` 不在を確認。
+  - 上流・既存規約上の暗黙の前提（保留申し送り対象）として、① `.prettierignore` 不在環境での `AGENTS.md` L61/L63 と `sdd-archive/SKILL.md` L82 の広域 Prettier グロブ、② `run_*_review.py` の `write_tools`/`thinking` 自動伝播前提と `openspec/changes/{name}` 実在確認欠如、③ `verify-gate.{ps1,sh}` の末尾 `LGTM` 唯一性と `x-level:` フォールバック依存・GNU `sed` `\L` 依存を特定。
+- **確認根拠**: `AGENTS.md`, `openspec/config.yaml`, `openspec/agents/*.md`, `design.md`, `.agents/skills/sdd-{propose,archive}/scripts/run_*_review.py`, `.agents/skills/sdd-archive/SKILL.md`, `openspec/scripts/verify-gate.{ps1,sh}`
+
+### 設問2: 例外の握りつぶし・根拠のないフォールバックの有無
+
+- **確認内容・回答**: `run_*_review.py` に空 `try...except` はなく、非 `run_workflow` 時は `exit 2`、不正入力時は `ValueError` 送出を確認。`verify-gate.{ps1,sh}` の Git ブランチ取得エラー抑止も空文字で確実に `Fail` へ倒れる。
+- **確認根拠**: `.agents/skills/sdd-{propose,archive}/scripts/run_*_review.py`, `openspec/scripts/verify-gate.{ps1,sh}`
+
+### 設問3: 30%コード削減・過剰抽象化の告発（YAGNI 原則）
+
+- **確認内容・回答**: 本変更は非コード `chore` かつ上流スクリプト独自改変禁止（`design.md` Non-Goals）のため本変更内でのコード削減適用は対象外。上流 `AIUtils` 向け改善提案として `run_propose_review.py` (65 行) と `run_archive_review.py` (67 行) の重複骨格（約 60%）を `PHASE_CONFIG` 駆動の共通ランナーへ統合する約 43% 削減案（132 行 → 約 75 行）を提示。
+- **確認根拠**: `design.md` L34, `.agents/skills/sdd-propose/scripts/run_propose_review.py`, `.agents/skills/sdd-archive/scripts/run_archive_review.py`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- **対象関数/モジュール**: 対象外（`pg-reviewer` は読み取り専用・非コード変更の静的レビューであり、動的実行・破壊テストは親エージェントおよび `qa-reviewer` が担当）
+- **破壊テストコード名**: 対象外
+- **実行コマンド**: 対象外
+- **実行判定**: 非コード変更のため対象外
+- **実行ログ要約**:
+
+```text
+対象外（qa-reviewer の Adversarial QA レビュー記録を参照）
+```
+
+## 3. 指摘事項
+
+### 指摘1
+
+- **内容**: ルート `.prettierignore` 不在環境で `AGENTS.md` L61/L63（`"**/*.md"`, `"openspec/**/*.md"`）および `sdd-archive/SKILL.md` L82 に広域 Prettier グロブが残存しており、過去アーカイブ書換の再発リスクがある。
+- **重要度**: Minor
+- **対応方針**: 保留（`handover.md` の運用上の注意事項・改善候補へ転記）
+- **理由**: `design.md` §4 に従い Task 3.1 は対象限定で回避済みであり、上流資産・固有規約変更外（Non-Goals）のため。
+- **対応コミット**: 保留（`handover.md` へ転記予定）
+
+### 指摘2
+
+- **内容**: `run_propose_review.py` と `run_archive_review.py` 間の約 60% 重複（統合で約 43% 削減可能）、`_agent()` への `write_tools`/`thinking` 引数未指定、`openspec/changes/{name}` 実在確認欠如。
+- **重要度**: Minor
+- **対応方針**: 保留（上流 `AIUtils` 向け改善候補として `handover.md` へ転記）
+- **理由**: `design.md` Non-Goals（上流スクリプト独自改修禁止）のため。
+- **対応コミット**: 保留（`handover.md` へ転記予定）
+
+### 指摘3
+
+- **内容**: `verify-gate.{ps1,sh}` のフェーズ別 `LGTM` 未分離、`x-level:` 非読取、および `verify-gate.sh` L161 GNU `sed` `\L` 依存。
+- **重要度**: Minor
+- **対応方針**: 保留（上流 `AIUtils` 向け改善候補として `handover.md` へ転記）
+- **理由**: `design.md` Non-Goals のため。
+- **対応コミット**: 保留（`handover.md` へ転記予定）
+
+### 指摘4
+
+- **内容**: `sdd-apply/SKILL.md` L70-71 と `checklist_apply_impl.md` L4 のレビュー担当表記の軽微な揺れ、ブランチ例示（`refactor/`, `chore/`）の揺れ。
+- **重要度**: Suggestion
+- **対応方針**: 保留（`handover.md` へ転記）
+- **理由**: 実動作への影響はなく上流改善候補として扱うため。
+- **対応コミット**: 保留（`handover.md` へ転記予定）
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（Task 3.2 動的実測値は `qa-reviewer` 記録と併せて確認済み、指摘 1〜4 は `handover.md` へ転記）
+- **指摘サマリ**: Critical: 0 件 / Major: 0 件 / Minor: 3 件 / Suggestion: 1 件
+- **承認者**: pg-reviewer
+- **保留指摘（申し送り）**: 指摘 1, 指摘 2, 指摘 3, 指摘 4
+- **次のアクション**: `qa-reviewer` 結果確認および Gate 2 検証へ進む
+
+---
+
+# レビュー記録: update-openspec-kit-and-skills / apply / Task 1.1-3.2 (qa-reviewer)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: Task 1.1-3.2
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_apply_impl.md, openspec/templates/checklist_apply_test.md
+- **対象成果物**: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `openspec/config.yaml`, `openspec/agents/*.md`, `openspec/templates/*.md`, `openspec/scripts/verify-gate.{ps1,sh}`, `.{agents,github,opencode,hermes}/skills/sdd-*`, `.agents/workflows/`, `.gemini/`, `openspec/changes/update-openspec-kit-and-skills/{specs/review-framework/spec.md,design.md,test_plan.md,tasks.md}`
+
+## 1. 挑戦的設問への回答
+
+### 設問1: トートロジーテスト・形式的テストの有無
+
+- **確認内容・回答**: `AGENTS.md` の生 UTF-8 バイト計測（`22,444` B = 管理区間外 `10,837` B + 管理区間内 `11,607` B、BOM なし、CRLF 0、マーカー `@6640 < @14735`）、4 エージェント全 8 `.py` 直接実行（`exit 2`）および 20 種悪意入力テスト、4 エージェント 11 ファイル SHA256 突合を具体期待値で実行しており、トートロジーは存在しない。
+- **確認根拠**: `AGENTS.md`, `.agents/skills/sdd-{propose,archive}/scripts/run_*_review.py`, `test_plan.md`
+
+### 設問2: 甘いアサーション・無意味なモックの検証
+
+- **確認内容・回答**: `UT-04`（`run_workflow` グローバル注入）と一時隔離ディレクトリ以外は実ファイル・実 CLI を使用。`openspec instructions apply` も終了コード 0 だけでなく `context` 3,109 文字・固有語句・`operationGuidance` 11 項目・警告ゼロまで検証している。
+- **確認根拠**: `openspec/config.yaml`, `test_plan.md`
+
+### 設問3: ミューテーション思考（バグすり抜け死角）
+
+- **確認内容・回答**: ① 不正 YAML 時に `openspec` CLI が警告付き exit 0 を返す死角、② `verify-gate.ps1 -Gate apply` が末尾 `LGTM` のみ参照し `24,000` B を自動検査しない死角を実測特定（`install.ps1` の 23,999 B vs 24,000 B 境界とマーカー破損 `exit 1` 停止は堅牢）。
+- **確認根拠**: `openspec/scripts/verify-gate.ps1` (133-249 行目), `AIUtils/openspec-kit/install.ps1` (317-339, 468-485 行目)
+
+### 設問4: フレーキー要因・環境依存・前提確認
+
+- **確認内容・回答**: スリープ・時刻依存のフレーキー要因なし。サンドボックス内制約（WSL/Git Bash 起動不可、`npx prettier` 通信、`APPDATA` 参照）を確認し、キャッシュ済み Prettier `3.10.1` `--check` と隔離 `APPDATA` での `openspec update --dry-run --json`（リポジトリ差分 0）で実測代替した。
+- **確認根拠**: `openspec/scripts/verify-gate.sh`, `design.md`
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- **対象関数/モジュール**: `AGENTS.md` / `openspec/config.yaml` / `openspec/agents/*.md` / 4 エージェント `skills/sdd-*` / `run_{propose,archive}_review.py` / `install.ps1` / `verify-gate.ps1` / `openspec` CLI `1.15.0`
+- **破壊テストコード名**: インライン敵対的検証コマンド群（`$env:TEMP` 一時環境は実行後削除済み）
+- **実行コマンド**: Python による `AGENTS.md`・SHA256・8 `.py` 直接実行/20種悪意入力、`prettier.cmd --check`、`openspec validate` / `instructions` / `update --dry-run`、`verify-gate.ps1`、`install.ps1` 一時境界テスト（23,999/24,000 B, マーカー破損, 不正 YAML, `.claude` 検出）
+- **実行判定**: 堅牢性確認（Green / 落とせず）
+- **実行ログ要約**:
+
+```text
+AGENTS.md: Total=22444 B (<24000, margin=1556), Outside=10837, Inside=11607, BOM=False, CRLF=0, prettier --check=All matched files use Prettier code style!
+4-agent sdd-* SHA256: 11 files identical across .agents/.github/.opencode/.hermes; .gemini sdd-*=[]; .claude exists=False; .bak=[]; opsx-* 6 files intact; 1.13.2 remaining=[]
+8 .py direct exec ([], ['--help'], ['../etc/passwd']): all rc=2, stdout_len=0, traceback=False; 20 hostile args -> all ValueError
+openspec validate: valid; instructions apply: context_len=3109, operationGuidance=11 items, stderr warnings=0
+Temp E2E-03/DT-02: marker corruption exit=1 (untouched=True); 23999B warned=False / 24000B warned=True; verify-gate negative checks all rc=1; cleanup tmpRoot exists=False
+```
+
+## 3. 指摘事項
+
+### 指摘1
+
+- **内容**: `openspec/config.yaml` 構文エラー時に CLI が stderr 警告付きで exit 0 を返すため、終了コードのみの検査では設定破損を見逃す（実物 `config.yaml` は警告なし・正常読込を確認済み）。
+- **重要度**: Minor
+- **対応方針**: 保留（`handover.md` へ転記）
+- **理由**: CLI 本体仕様のため、運用確認手順（stderr 警告ゼロ＋`context` 非空確認）を申し送る。
+- **対応コミット**: 保留（`handover.md` へ転記予定）
+
+### 指摘2
+
+- **内容**: `verify-gate.ps1 -Gate apply` のフェーズ別 `LGTM` 未分離・24KB 未検査、およびサンドボックス内での `verify-gate.sh`（Bash）起動制約（Git Bash 経由の通過は親環境側 Task 3.2 で別途確認済み、サンドボックス内は静的検査のみ）。
+- **重要度**: Minor
+- **対応方針**: 保留（`handover.md` へ転記）
+- **理由**: 上流スクリプト独自パッチは Non-Goals のため。
+- **対応コミット**: 保留（`handover.md` へ転記予定）
+
+### 指摘3
+
+- **内容**: `.agents/skills/sdd-archive/SKILL.md` L82 に `npx prettier --write "openspec/**/*.md"` の広域グロブが含まれ、Archive 実行時に過去アーカイブを書き換えるリスクがある。
+- **重要度**: Suggestion
+- **対応方針**: 保留（`handover.md` へ転記）
+- **理由**: 上流同期資産のため、Archive 手順および `handover.md` の注意事項で対象限定整形を徹底する。
+- **対応コミット**: 保留（`handover.md` へ転記予定）
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **指摘サマリ**: Critical: 0 件 / Major: 0 件 / Minor: 2 件 / Suggestion: 1 件
+- **承認者**: qa-reviewer
+- **保留指摘（申し送り）**: 指摘 1, 指摘 2, 指摘 3
+- **次のアクション**: Gate 2（`verify-gate.ps1 -Gate apply`）実行後、全タスク `[x]` 更新およびコミットへ進む
