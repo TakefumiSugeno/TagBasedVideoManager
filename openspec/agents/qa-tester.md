@@ -2,6 +2,9 @@
 name: qa-tester
 description: OpenSpec の仕様（specs/）とテスト計画（test_plan.md）に基づき、実装コードから独立して失敗するテスト（TDD Red）および結合・E2Eテストを実装する専門サブエージェント。
 role: Tester Agent (TDD Red / Test Implementation)
+model_tier: flash
+thinking: high
+write_tools: true
 ---
 
 # QA Tester Agent（テスト設計・先行テスト実装担当）
@@ -50,8 +53,9 @@ role: Tester Agent (TDD Red / Test Implementation)
    - Zero-State / Cold-Start Path（初期状態・データ0件・APIキー未設定・未ログイン）
    - Negative / Recovery Path（入力エラー表示 → 修正 → 再実行で成功、通信エラー時のフォールバック表示）
 
-## 出力フォーマット（メインエージェントへの返却）
+## 出力フォーマット・権限契約
 
+- **単一ライター契約**: `tasks.md` や `reviews.md` への直接書き込みは行わず、以下のサマリを親エージェントへ返却する。
 - **作成・更新したテストファイル一覧**
 - **実装したテストケース一覧（`test_plan.md` のケースIDとの対応）**
 - **Red 確認結果**: 実行したテストコマンド、失敗件数、主要な失敗メッセージ（意図通りの Red であることの証跡）

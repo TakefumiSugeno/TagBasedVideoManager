@@ -38,10 +38,10 @@ reviews:
       phases: [apply, archive]
 
   gate_script: "openspec/scripts/verify-gate.ps1"
-  workflows:
-    propose: ".agents/workflows/sdd-propose.md"
-    apply: ".agents/workflows/sdd-apply.md"
-    archive: ".agents/workflows/sdd-archive.md"
+  skills: # antigravity 以外のみを導入した場合は .claude/skills/, .github/skills/, .opencode/skills/, .hermes/skills/ を参照
+    propose: ".agents/skills/sdd-propose/SKILL.md"
+    apply: ".agents/skills/sdd-apply/SKILL.md"
+    archive: ".agents/skills/sdd-archive/SKILL.md"
 
   templates:
     review_record: "openspec/templates/review_record.md"
