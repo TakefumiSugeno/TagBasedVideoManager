@@ -58,7 +58,7 @@
 
 ## Phase 3: E2E 視覚エビデンス検証・ドキュメント・バージョン更新
 
-- [ ] 3.1 GUI E2E 実画面キャプチャ検証と `mockup.html` 突合
+- [x] 3.1 GUI E2E 実画面キャプチャ検証と `mockup.html` 突合
   - `E2E-01`〜`E2E-07` を実行し、`test/TestResults/` へ PNG スクリーンショット（`E2E_Settings_HappyPath.png`, `E2E_Settings_ZeroState_MissingKey.png`, `E2E_Settings_Placeholder_Error.png`, `E2E_Settings_Placeholder_Recovered.png`, `E2E_Settings_ModalSaveError.png`, `E2E_Settings_ModalSaveRecovered.png`, `E2E_Settings_LongPathBanner_800.png`, `E2E_Settings_LongPathBanner_1100.png`, `E2E_Settings_StartupWarningBanner.png`）を出力する。
   - `E2E-05` について、ビジュアルツリー上の `errorBanner`・各ボタン・環境バッジの `Bounds` がウィンドウ幅内に収まり相互重なり・はみ出しがないことをアサートで機械検証し、出力 PNG を目視確認して `mockup.html` と整合していることを確認する。
 

@@ -1674,3 +1674,42 @@
 - **条件付きLGTM**: なし（`Critical`: 0、`Major`: 0、`Minor`: 0、`Suggestion`: 0）
 - **保留指摘（申し送り）**: なし
 - **次のアクション**: 次タスクへ（Task 2.3 を完了 `[x]` に更新・コミットし、Phase 3 Task 3.1 実画面視覚検証へ進む）
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 3.1 (GUI E2E 実画面視覚検証)
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 3.1 GUI E2E 実画面キャプチャ検証と `mockup.html` 突合
+- **レビュアー**: qa (QA Reviewer Agent) ＋ 親エージェント目視突合
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md`（視覚エビデンス・UI E2E 突合検証）
+- **対象成果物**: `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs`, `openspec/changes/renamer-settings-resolution-and-serialization/mockup.html`, `test/TestResults/E2E_Settings_*.png`（9 枚）
+
+---
+
+## 1. 挑戦的設問への回答
+
+- `test/TestResults/E2E_Settings_*.png` 9 枚（`HappyPath`, `ZeroState_MissingKey`, `Placeholder_Error`, `Placeholder_Recovered`, `ModalSaveError`, `ModalSaveRecovered`, `LongPathBanner_800`, `LongPathBanner_1100`, `StartupWarningBanner`）を直接画像検査し、`mockup.html` の Fluent ダークテーマ配色・コントラスト・`ENV` バッジ＆保存先ファイル名・常設 `🔄 設定を再読込` ボタン・3 ボタン `errorBanner`・モーダル開時背面バナー非表示＆モーダル上部配置と忠実に一致していることを確認。
+- `E2E-05`（`RenameIntegrationE2ETests.fs` L1973-2090）にて `errorBanner`・アクションボタン・環境バッジ・管理/中止ボタン・`ComboBox` 群の `Bounds` が `800px` / `1100px` ウィンドウ内で重なり・はみ出しゼロであることを機械検証（450/450 Pass）。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（Task 3.1 視覚エビデンス検証フェーズ）。
+
+---
+
+## 3. 指摘事項
+
+なし（9 枚すべて最新生成・`mockup.html` 忠実再現・レイアウト破壊ゼロを確認）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（`Critical`: 0、`Major`: 0、`Minor`: 0、`Suggestion`: 0）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 次タスクへ（Task 3.1 完了 `[x]`・コミット後、Task 3.2 へ進行）
