@@ -919,3 +919,190 @@
 - **次のアクション**: 次タスクへ（Task 1.1 完了、`[x]` 更新・Gate 2 確認の上で Task 1.2 へ進行）
 - **テスト品質評価**: 堅牢（合格）
 - **承認者**: QA Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 1.2 (Cycle 1)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: 1.2 不具合再現テスト（Root Cause Reproduction）と Settings.fs 先行単体・結合テストの作成・Red 確認
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_apply_test.md
+- **対象成果物**: src/TagBasedVideoManager.Renamer/Settings.fs, test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: トートロジーテスト（実装式のコピペ）と形式的アサーションの告発（checklist §1）
+
+- **確認内容・回答**:
+  - 新規追加テスト（53 件）の期待値は原則として具体的な固定リテラルで検証されており、実装ロジックのコピペによるトートロジー計算は存在しない。
+  - `UT-ENV-01`（L2507）の `l.Contains(dotEnvPath) && l.Contains(".env")` および `UT-DIR-11`（L1919-1920）の `should equal` 直後の `Assert.False(savePath.StartsWith(appDataDir...))` は軽微な重複条件となっている。
+  - 90 件中 39 件 Pass・51 件 Red（意図通り未実装失敗）の内訳は、Task 1.1 既存 37 件＋.NET 10 標準 `System.Text.Json` 挙動による `UT-RED-02` / `UT-CONV-10` の 2 件 Pass であり、`StringOptionConverter` を明示適用する `UT-CONV-01`〜`08` 他 51 件は確実に Red となっている。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L1370-1402, L1442-1677, L1912-1923, L2484-2511
+
+### 設問2: 甘いアサーション・無意味なモックの告発（checklist §2）
+
+- **確認内容・回答**:
+  - 外部境界（`ConfigLoadContext`・一時ディレクトリ・ReadOnly 属性）のみ隔離しており、内部モックによる空洞化はない。
+  - ただし以下の甘いアサーションがある：
+    1. `UT-DIR-05`（L1834-1837）で `traceStep9 |> List.exists (fun l -> l.Contains("8") || l.Contains("上限") || l.Contains(unrelatedAppDir))` と `|| l.Contains(unrelatedAppDir)` が OR に含まれており、上限 8 階層到達の不採用トレース欠落でも Pass する。
+    2. `DT-PATCH-06`（L2196-2205）で失敗段階（`CreateDirectory` 等）および `%APPDATA%` 非フォールバック確認が不足。
+    3. `IT-CONF-01`（L2650）の移行通知確認が `appDataDir` 含有のみ。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L1359, L1829-1837, L2196-2205, L2650
+
+### 設問3: ミューテーション思考（バグのすり抜け検証）（checklist §3）
+
+- **確認内容・回答**:
+  1. `UT-DIR-05` は `unrelatedAppDir` 採用ログのみで上限到達ログ未出力のバグをすり抜ける。
+  2. `UT-ENV-03~06`（L2536-2559）が環境変数 `DOTNET_ENVIRONMENT` / `ASPNETCORE_ENVIRONMENT` を両方 `null` にして `configNameOpt` しかテストしておらず、`Settings.resolveEnvironmentName ()` への不正文字・優先順位・フォールバック破壊が検出できない。
+  3. `UT-CONV-02` に `StringOptionConverter.Read` へ `JsonTokenType.Null` を直接渡す検証がなく、`HandleNull = false` 下での未カバー分岐になる。
+  4. `normalizeApiKeyString`（L1685-1692）に `"\"   \""`, `" '  ' "` の境界ケースが未追加。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L1467-1488, L1685-1692, L1829-1837, L2536-2559
+  - `src/TagBasedVideoManager.Renamer/Settings.fs` L266-291
+
+### 設問4: フレーキー要因・環境依存・TDD原則・計画網羅性の摘出（checklist §4）
+
+- **確認内容・回答**:
+  - `[<Collection("IsolatedSettingsAndState")>]`・`withTempDir`・`try ... finally` 復元によりフレーキー要因・隔離漏れなし。
+  - `Settings.fs` の変更は型 4 種・`StringOptionConverter`・7 関数スタブのみに厳格限定され、Propose Cycle 4 保留指摘 2 も反映済み。`Skip`/`Ignore` 0 件。
+- **確認根拠**:
+  - `src/TagBasedVideoManager.Renamer/Settings.fs` L11-48, L450-485
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L14-15, L201, L1304-1325, L2659-2763
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）※Apply実装レビュー時のみ
+
+対象外（Apply テストレビューフェーズのため `checklist_apply_test.md` 観点のみ実施）。
+
+---
+
+## 3. 指摘事項
+
+### 指摘1
+
+- **内容**: `UT-DIR-05`（L1834-1837）に `|| l.Contains(unrelatedAppDir)` が含まれており、親 8 階層到達不採用トレースが欠落しても Pass する（甘いアサーション・ミューテーションすり抜け）。
+- **重要度**: Major
+- **対応方針**: 採用
+- **理由**: `test_plan.md` `UT-DIR-05` の上限到達トレース記録要件を満たすため。
+- **対応コミット**: Cycle 2 修正で対応予定
+
+### 指摘2
+
+- **内容**: `UT-ENV-03~06`（L2536-2559）で環境変数を `null` クリアして引数経由のみ検証しており、`Settings.resolveEnvironmentName ()` 直接呼び出しでの優先順位・不正文字サニタイズ・フォールバック検証が欠落。
+- **重要度**: Major
+- **対応方針**: 採用
+- **理由**: `resolveEnvironmentName` のバグすり抜けを防ぐため。
+- **対応コミット**: Cycle 2 修正で対応予定
+
+### 指摘3
+
+- **内容**: `UT-CONV-02`（L1467-1488）に `StringOptionConverter.Read` へ `JsonTokenType.Null` を直接渡すテストが欠落。
+- **重要度**: Minor
+- **対応方針**: 採用
+- **理由**: `HandleNull = false` 下での C1 分岐死角を防ぐため。
+- **対応コミット**: Cycle 2 修正で対応予定
+
+### 指摘4
+
+- **内容**: `DT-PATCH-06`（L2196-2205）で失敗段階（`CreateDirectory` 等）と `%APPDATA%` 非フォールバック（＋ `.tmp` 非残存）確認が不足、また `IT-CONF-01`（L2650）の移行通知確認が緩い。
+- **重要度**: Minor
+- **対応方針**: 採用
+- **理由**: 失敗段階診断と移行導線の厳密検証のため。
+- **対応コミット**: Cycle 2 修正で対応予定
+
+### 指摘5
+
+- **内容**: `normalizeApiKeyString` へ `"\"   \""` / `" '  ' "` 境界ケース追加提案、および `UT-DIR-11`（L1920）・`UT-ENV-01`（L2507）の冗長条件整理提案。
+- **重要度**: Suggestion
+- **対応方針**: 採用
+- **理由**: 境界漏れ防止と簡潔化のため。
+- **対応コミット**: Cycle 2 修正で対応予定
+
+---
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし（指摘 1〜5 の修正後に Cycle 2 再レビューを実施）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー（`qa-tester` で修正し Red 再確認後、`qa-reviewer` Cycle 2 を実施）
+- **テスト品質評価**: 要改善
+- **承認者**: QA Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 1.2 (Cycle 2)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: 1.2 不具合再現テスト（Root Cause Reproduction）と Settings.fs 先行単体・結合テストの作成・Red 確認（Cycle 2 再レビュー）
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_apply_test.md
+- **対象成果物**: src/TagBasedVideoManager.Renamer/Settings.fs, test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: トートロジーテスト（実装式のコピペ）と冗長アサーションの検証（checklist §1）
+
+- **確認内容・回答**:
+  - Cycle 1 指摘 5 の反映により、`UT-DIR-11`（`SettingsTests.fs` L1925-1934）は `savePath |> should equal (Path.Combine(emptyTempDir, "appsettings.Development.json"))` へ整理され、`UT-ENV-01`（L2527）の重複条件 `&& l.Contains(".env")` も `l.Contains(dotEnvPath)` へ簡潔化された。
+  - 全 53 件の新規先行テストにおいて期待値は固定リテラル値で記述されており、実装ロジックのコピペによるトートロジーは存在しない。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L1925-1934, L2504-2531
+
+### 設問2: 甘いアサーション・無意味なモックの告発および Cycle 1 指摘 1, 4 の解消確認（checklist §2）
+
+- **確認内容・回答**:
+  - **指摘 1 解消（`UT-DIR-05` L1841-1850）**: `|| l.Contains(unrelatedAppDir)` が除去され、「親 8 階層上限到達トレース」と「第 2 段階フォールバック先採用トレース」が 2 つの独立した `Assert.True` で必須検証されるようになった。
+  - **指摘 4 解消（`DT-PATCH-06` L2208-2225, `IT-CONF-01` L2689-2692）**: `DT-PATCH-06` で失敗段階名、`.tmp` 非残存、`assertSnapshotUnchanged` による `%APPDATA%` 非フォールバックを検証し、`IT-CONF-01` で `TraceLogs` の `appDataDir`・`devPath`・`"移行"` / `"廃止"` 案内を必須検証するよう強化された。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L1838-1850, L2207-2225, L2689-2692
+
+### 設問3: ミューテーション思考（バグのすり抜け検証）および Cycle 1 指摘 2, 3, 5 の解消確認（checklist §3）
+
+- **確認内容・回答**:
+  - **指摘 2 解消（`UT-ENV-03~06` L2555-2598）**: `Settings.resolveEnvironmentName ()` 直接呼び出しによる優先順位・不正値サニタイズ・`ASPNETCORE_ENVIRONMENT` フォールバック・既定環境名フォールバック・`loadConfigurationWithMetadataWithContext` の `configNameOpt` サニタイズがすべて検証された。
+  - **指摘 3 解消（`UT-CONV-02` L1478-1484）**: `Utf8JsonReader` で `JsonTokenType.Null` を直接 `StringOptionConverter.Read` へ渡して `None` 復元を検証するテストを追加した。
+  - **指摘 5 解消（`normalizeApiKeyString` L1698-1699）**: `"\"   \""` と `" '  ' "` の境界ケースを追加した。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L1467-1495, L1692-1701, L2555-2598
+
+### 設問4: フレーキー要因・環境依存・TDD原則・実行結果の最終確認（checklist §4）
+
+- **確認内容・回答**:
+  - `src/TagBasedVideoManager.Renamer/Settings.fs` は公開型 4 種・`StringOptionConverter`・7 関数（すべて `NotImplementedException` スタブ）のみ。
+  - 親エージェント再実行結果（`dotnet test test/TagBasedVideoManager.Renamer.Tests/TagBasedVideoManager.Renamer.Tests.fsproj --no-restore -- --filter-class "TagBasedVideoManager.Renamer.Tests.SettingsTests"`）にてビルドエラー 0 件、**合計: 90, 失敗: 51 (意図通り Red), 成功: 39, スキップ済み: 0** を確認済み。`Skip` / `Ignore` 0 件。
+- **確認根拠**:
+  - `git diff src/TagBasedVideoManager.Renamer/Settings.fs`（L11-48, L450-485）
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）※Apply実装レビュー時のみ
+
+対象外（Apply テストレビューフェーズのため `checklist_apply_test.md` 観点のみ実施）。
+
+---
+
+## 3. 指摘事項
+
+なし（Cycle 1 の指摘 1〜5 すべてが解消され、新たな指摘なし）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（`Critical`: 0 件、`Major`: 0 件、`Minor`: 0 件、`Suggestion`: 0 件）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 次タスクへ（Task 1.2 完了処理および Task 2.1 `Settings.fs` 実装・`State.fs` 保存先隔離前倒しへ進行）
+- **テスト品質評価**: 堅牢（合格）
+- **承認者**: QA Reviewer Agent

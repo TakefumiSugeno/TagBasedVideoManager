@@ -8,6 +8,45 @@ open System.Text.Json.Serialization
 open System.Text.Unicode
 open TagBasedVideoManager.Renamer
 
+/// <summary>APIキーの検証結果</summary>
+type ApiKeyValidationResult =
+    | ValidApiKey of cleanKey: string
+    | MissingApiKey
+    | PlaceholderApiKey of rawValue: string
+
+/// <summary>設定ロード処理へ注入する実行コンテキスト</summary>
+type ConfigLoadContext = {
+    CurrentDirectory: string
+    AppBaseDirectory: string
+    AppDataDirectory: string
+    DotEnvPath: string option
+}
+
+/// <summary>出典パスや警告情報を含む設定ロード結果メタデータ</summary>
+type LoadedConfiguration = {
+    Settings: RenamerSettings
+    EnvironmentName: string
+    SavePath: string
+    ApiKeySourcePath: string option
+    LoadedFiles: string list
+    Warnings: string list
+    TraceLogs: string list
+}
+
+/// <summary>GUI 設定変更時の部分更新パッチ</summary>
+type SettingsPatch = {
+    SelectedModel: string option
+    Rules: NamingRule list option
+}
+
+/// <summary>string option を素の JSON 文字列または null として読み書きする JSON コンバータ（Task 1.2 スタブ）</summary>
+type StringOptionConverter() =
+    inherit JsonConverter<string option>()
+    override _.Read(_reader: byref<Utf8JsonReader>, _typeToConvert: Type, _options: JsonSerializerOptions) : string option =
+        raise (NotImplementedException("Task 1.2 stub: StringOptionConverter.Read"))
+    override _.Write(_writer: Utf8JsonWriter, _value: string option, _options: JsonSerializerOptions) : unit =
+        raise (NotImplementedException("Task 1.2 stub: StringOptionConverter.Write"))
+
 module Settings =
 
     let private defaultRules = [
@@ -407,3 +446,41 @@ module Settings =
             |> List.mapi (fun idx rule -> { rule with Order = orderedRules.Length + idx })
 
         { settings with Rules = orderedRules @ remainingRules }
+
+    /// <summary>APIキー文字列の前後空白・引用符を正規化する（Task 1.2 スタブ）</summary>
+    let normalizeApiKeyString (_raw: string) : string option =
+        raise (NotImplementedException("Task 1.2 stub: normalizeApiKeyString"))
+
+    /// <summary>APIキーの有効性・未設定・プレースホルダーを判定する（Task 1.2 スタブ）</summary>
+    let validateApiKey (_apiKeyOpt: string option) : ApiKeyValidationResult =
+        raise (NotImplementedException("Task 1.2 stub: validateApiKey"))
+
+    /// <summary>起点ディレクトリを明示注入可能な純粋ディレクトリ解決関数（Task 1.2 スタブ）</summary>
+    let resolveConfigDirectoryWithOrigins (_currentDir: string) (_appBaseDir: string) (_envName: string) : string * string list =
+        raise (NotImplementedException("Task 1.2 stub: resolveConfigDirectoryWithOrigins"))
+
+    /// <summary>2段階共通ディレクトリ解決（Task 1.2 スタブ）</summary>
+    let resolveConfigDirectory (_baseDirOpt: string option) (_envName: string) : string =
+        raise (NotImplementedException("Task 1.2 stub: resolveConfigDirectory"))
+
+    /// <summary>コンテキスト注入対応のメタデータ付き設定ロード（Task 1.2 スタブ）</summary>
+    let loadConfigurationWithMetadataWithContext
+        (_ctx: ConfigLoadContext)
+        (_configNameOpt: string option)
+        (_jsonPathOpt: string option)
+        (_explicitDirOpt: string option)
+        : LoadedConfiguration =
+        raise (NotImplementedException("Task 1.2 stub: loadConfigurationWithMetadataWithContext"))
+
+    /// <summary>メタデータ付き設定ロード（Task 1.2 スタブ）</summary>
+    let loadConfigurationWithMetadata
+        (_configNameOpt: string option)
+        (_jsonPathOpt: string option)
+        (_envPathOpt: string option)
+        : LoadedConfiguration =
+        raise (NotImplementedException("Task 1.2 stub: loadConfigurationWithMetadata"))
+
+    /// <summary>既存設定ファイルを保護しつつ指定キーのみを部分更新保存する（Task 1.2 スタブ）</summary>
+    let savePatch (_filePath: string) (_patch: SettingsPatch) : Result<unit, RenamerError> =
+        raise (NotImplementedException("Task 1.2 stub: savePatch"))
+

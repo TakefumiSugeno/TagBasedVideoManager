@@ -13,7 +13,7 @@
   - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` の `%APPDATA%` 前提テスト（`UT-04`, `IT-02`, `%APPDATA%` 最優先上書き回帰テスト）および実ファイル `appsettings.Development.json` 固定値依存テスト（L279, L396）を、一時ディレクトリフィクスチャによるテストへ切り替える。
   - 隔離後、`dotnet test test/TagBasedVideoManager.Renamer.Tests/TagBasedVideoManager.Renamer.Tests.fsproj` が全件 Pass し、かつリポジトリ内の実 `appsettings.Development.json` に一切変更が走らないことを確認する。
 
-- [ ] 1.2 不具合再現テスト（Root Cause Reproduction）と `Settings.fs` 先行単体・結合テストの作成・Red 確認（`qa-tester`）
+- [x] 1.2 不具合再現テスト（Root Cause Reproduction）と `Settings.fs` 先行単体・結合テストの作成・Red 確認（`qa-tester`）
   - **コンパイル通過＋実行時 Red 手順**: 先行テストが参照する公開型・関数シグネチャ（`ApiKeyValidationResult`, `ConfigLoadContext`, `LoadedConfiguration`, `SettingsPatch`, `validateApiKey`, `resolveConfigDirectoryWithOrigins`, `loadConfigurationWithMetadataWithContext`, `loadConfigurationWithMetadata`, `savePatch`）は、`src/TagBasedVideoManager.Renamer/Settings.fs` へ最小限の `raise (NotImplementedException())` スタブのみを配置してビルドを通した上で、`dotnet test --filter "FullyQualifiedName~SettingsTests"` で意図通り実行時 Red（失敗）となることを確認・記録する（本実装ロジックは書かず、この段階では `StateTests` は未変更のまま）。
   - **Root Cause 再現（`UT-RED-01`〜`03`）**:
     - `UT-RED-01`: `loadConfigurationWithMetadataWithContext` に一時 `AppDataDirectory`（`"apiKey": "xxx"`）と一時リポジトリ（有効 `apiKey`）を注入し、`%APPDATA%` が無視され（移行案内ログのみ）有効キーと出典パスが返る失敗テスト。
