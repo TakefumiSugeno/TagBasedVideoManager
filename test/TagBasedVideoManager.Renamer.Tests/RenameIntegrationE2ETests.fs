@@ -2158,8 +2158,8 @@ module RenameIntegrationE2ETests =
                     match c with
                     | :? Avalonia.Controls.TextBlock as tb -> $"TextBlock('{tb.Text}')"
                     | :? Avalonia.Controls.TextBox as tb -> $"TextBox('{tb.Text}')"
-                    | :? Avalonia.Controls.Button as b -> $"Button('{b.Content}')"
                     | :? Avalonia.Controls.CheckBox as cb -> $"CheckBox('{cb.Content}')"
+                    | :? Avalonia.Controls.Button as b -> $"Button('{b.Content}')"
                     | :? Avalonia.Controls.ComboBox -> $"ComboBox(w={c.Bounds.Width})"
                     | :? Avalonia.Controls.Border -> "Border"
                     | _ -> c.GetType().Name
@@ -2318,3 +2318,252 @@ module RenameIntegrationE2ETests =
             finally
                 try File.SetAttributes(devPath, FileAttributes.Normal) with _ -> ()
         )
+
+    // =========================================================================
+    // Task 4.1: Diff C1 >= 85% & Adversarial QA UI 回帰テスト (E2E-08 ~ E2E-10)
+    // =========================================================================
+
+    /// <summary>E2E-08: 実 HostWindow 上で ReloadSettings・MoveRuleOrder 再描画時に RuleSelected が誤発火せず、同名ルール選択 (SelectedIndex <- 2) 時のみ RuleSelected が発火することを検証する</summary>
+    [<Fact>]
+    let ``E2E-08: ルール ComboBox は ReloadSettings や MoveRuleOrder 再描画で誤発火せず、同名ルール手動選択時は RuleSelected を発火する`` () =
+        withIsolatedE2ERepoContext "Development" (fun _ _ renamerDir ctx ->
+            ensureAppInitialized ()
+            let devPath = Path.Combine(renamerDir, "appsettings.Development.json")
+            File.WriteAllText(
+                devPath,
+                """{
+  "apiKey": "sk-or-v1-rule-combo-e2e",
+  "rules": [
+    { "id": "r1", "name": "共通ルール名", "pattern": "{Code}.mp4", "promptInstruction": "指示1", "order": 0, "enableWebSearch": true },
+    { "id": "r2", "name": "中間ルール", "pattern": "{Title}.mp4", "promptInstruction": "指示2", "order": 1, "enableWebSearch": false },
+    { "id": "r3", "name": "共通ルール名", "pattern": "{Actor}.mp4", "promptInstruction": "指示3", "order": 2, "enableWebSearch": false }
+  ]
+}"""
+            )
+
+            let initModel, _ = State.initWithContext (Some ctx)
+            initModel.SelectedRuleId |> should equal "r1"
+
+            let recordedMsgs = System.Collections.Generic.List<Msg>()
+            let mutable latestModel = initModel
+            let mutable capturedDispatch: (Msg -> unit) = ignore
+            let spyUpdate msg m =
+                recordedMsgs.Add(msg)
+                let nextModel, cmd = State.updateWithContext (Some ctx) msg m
+                latestModel <- nextModel
+                nextModel, cmd
+            let spyView m d =
+                capturedDispatch <- d
+                Views.view m d
+
+            let w = new Avalonia.FuncUI.Hosts.HostWindow()
+            w.Width <- 1100.0
+            w.Height <- 720.0
+            try
+                Elmish.Program.mkProgram (fun () -> initModel, Elmish.Cmd.none) spyUpdate spyView
+                |> Avalonia.FuncUI.Elmish.Program.withHost w
+                |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+
+                w.Show()
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs()
+                w.UpdateLayout()
+
+                // 1. ReloadSettings でファイル上のルール順序を変更して再描画しても RuleSelected が誤発火しないこと
+                File.WriteAllText(
+                    devPath,
+                    """{
+  "apiKey": "sk-or-v1-rule-combo-e2e",
+  "rules": [
+    { "id": "r2", "name": "中間ルール", "pattern": "{Title}.mp4", "promptInstruction": "指示2", "order": 0, "enableWebSearch": false },
+    { "id": "r1", "name": "共通ルール名", "pattern": "{Code}.mp4", "promptInstruction": "指示1", "order": 1, "enableWebSearch": true },
+    { "id": "r3", "name": "共通ルール名", "pattern": "{Actor}.mp4", "promptInstruction": "指示3", "order": 2, "enableWebSearch": false }
+  ]
+}"""
+                )
+                recordedMsgs.Clear()
+                capturedDispatch ReloadSettings
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs()
+                w.UpdateLayout()
+
+                latestModel.Settings.Rules |> List.map (fun r -> r.Id) |> should equal [ "r2"; "r1"; "r3" ]
+                latestModel.SelectedRuleId |> should equal "r1"
+                Assert.False(
+                    recordedMsgs |> Seq.exists (function RuleSelected _ -> true | _ -> false),
+                    "ReloadSettings によるルール順序変更再描画時に意図しない RuleSelected が発火しました。"
+                )
+
+                // 2. MoveRuleOrder でルール順序を変更・再描画しても RuleSelected が誤発火しないこと
+                recordedMsgs.Clear()
+                capturedDispatch (MoveRuleOrder ("r2", 1))
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs()
+                w.UpdateLayout()
+
+                latestModel.Settings.Rules |> List.map (fun r -> r.Id) |> should equal [ "r1"; "r2"; "r3" ]
+                latestModel.SelectedRuleId |> should equal "r1"
+                Assert.False(
+                    recordedMsgs |> Seq.exists (function RuleSelected _ -> true | _ -> false),
+                    "MoveRuleOrder 再描画時に意図しない RuleSelected が発火しました。"
+                )
+
+                // 3. 実ルール ComboBox で同名ルール (index 2: r3) を選択した場合は RuleSelected "r3" が発火すること
+                let findRuleComboBox () =
+                    collectVisibleFromSubtree w
+                    |> List.choose (function :? Avalonia.Controls.ComboBox as cb -> Some cb | _ -> None)
+                    |> List.tryFind (fun cb ->
+                        cb.MaxWidth = 160.0
+                        && not (isNull cb.ItemsSource)
+                        && (cb.ItemsSource |> Seq.cast<obj> |> Seq.exists (fun item -> (string item).Contains("共通ルール名")))
+                    )
+
+                let ruleCbOpt = findRuleComboBox ()
+                ruleCbOpt.IsSome |> should equal true
+                let ruleCb = ruleCbOpt.Value
+                ruleCb.SelectedIndex |> should equal 0
+
+                recordedMsgs.Clear()
+                ruleCb.SelectedIndex <- 2
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs()
+                w.UpdateLayout()
+
+                recordedMsgs |> Seq.exists (function RuleSelected "r3" -> true | _ -> false) |> should equal true
+                latestModel.SelectedRuleId |> should equal "r3"
+            finally
+                w.Close()
+        )
+
+    /// <summary>E2E-09: Rules = [] で SelectedIndex = -1 かつ ErrorMessage = Some null で Views.view が NullReferenceException なく描画されることを検証する</summary>
+    [<Fact>]
+    let ``E2E-09: Rules が空かつ ErrorMessage が Some null のモデルでも HostWindow で例外なく描画されルール SelectedIndex が -1 になる`` () =
+        withIsolatedE2ERepoContext "Development" (fun _ _ _ ctx ->
+            ensureAppInitialized ()
+            let initModel, _ = State.initWithContext (Some ctx)
+            let edgeModel = {
+                initModel with
+                    Settings = { initModel.Settings with Rules = [] }
+                    SelectedRuleId = ""
+                    ErrorMessage = Some null
+            }
+
+            let mutable latestModel = edgeModel
+            let spyUpdate msg m =
+                let nextModel, cmd = State.updateWithContext (Some ctx) msg m
+                latestModel <- nextModel
+                nextModel, cmd
+
+            let w = new Avalonia.FuncUI.Hosts.HostWindow()
+            w.Width <- 1100.0
+            w.Height <- 720.0
+            try
+                Elmish.Program.mkProgram (fun () -> edgeModel, Elmish.Cmd.none) spyUpdate Views.view
+                |> Avalonia.FuncUI.Elmish.Program.withHost w
+                |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+
+                w.Show()
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs()
+                w.UpdateLayout()
+
+                let emptyRuleCbOpt =
+                    collectVisibleFromSubtree w
+                    |> List.choose (function :? Avalonia.Controls.ComboBox as cb -> Some cb | _ -> None)
+                    |> List.tryFind (fun cb -> cb.MaxWidth = 160.0)
+
+                emptyRuleCbOpt.IsSome |> should equal true
+                emptyRuleCbOpt.Value.SelectedIndex |> should equal -1
+                isNull emptyRuleCbOpt.Value.SelectedItem |> should equal true
+                match latestModel.ErrorMessage with
+                | Some msg when isNull msg -> ()
+                | other -> failwith $"Expected Some null, got: {other}"
+            finally
+                w.Close()
+        )
+
+    /// <summary>E2E-10: フィルタ ComboBox の IsRenaming 無効化・同値インデックス誤発火防止・別インデックス選択での SetConstraintFilter 発火を検証する</summary>
+    [<Fact>]
+    let ``E2E-10: フィルタ ComboBox は IsRenaming 中に非活性となり活性時は同値で誤発火せず別選択で SetConstraintFilter を発火する`` () =
+        withIsolatedE2ERepoContext "Development" (fun _ _ _ ctx ->
+            ensureAppInitialized ()
+            let initModel, _ = State.initWithContext (Some ctx)
+
+            let findFilterComboBox (rootWin: Avalonia.Controls.Control) =
+                collectVisibleFromSubtree rootWin
+                |> List.choose (function :? Avalonia.Controls.ComboBox as cb -> Some cb | _ -> None)
+                |> List.tryFind (fun cb ->
+                    not (isNull cb.ItemsSource)
+                    && (cb.ItemsSource |> Seq.cast<obj> |> Seq.exists (fun item -> (string item).StartsWith("すべて (")))
+                )
+
+            // 1. IsRenaming = true 時はフィルタ ComboBox が IsEnabled = false となること
+            let renamingModel = { initModel with IsRenaming = true }
+            let wDisabled = new Avalonia.FuncUI.Hosts.HostWindow()
+            wDisabled.Width <- 1100.0
+            wDisabled.Height <- 720.0
+            try
+                Elmish.Program.mkProgram (fun () -> renamingModel, Elmish.Cmd.none) (fun m s -> State.updateWithContext (Some ctx) m s) Views.view
+                |> Avalonia.FuncUI.Elmish.Program.withHost wDisabled
+                |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+
+                wDisabled.Show()
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs()
+                wDisabled.UpdateLayout()
+
+                let disabledFilterCb = findFilterComboBox wDisabled
+                disabledFilterCb.IsSome |> should equal true
+                disabledFilterCb.Value.IsEnabled |> should equal false
+            finally
+                wDisabled.Close()
+
+            // 2. 活性時の同値インデックス無発火・別インデックス選択での SetConstraintFilter 発火検証
+            let recordedMsgs = System.Collections.Generic.List<Msg>()
+            let mutable latestModel = { initModel with FilterConstraint = FilterAll }
+            let mutable capturedDispatch: (Msg -> unit) = ignore
+            let spyUpdate msg m =
+                recordedMsgs.Add(msg)
+                let nextModel, cmd = State.updateWithContext (Some ctx) msg m
+                latestModel <- nextModel
+                nextModel, cmd
+            let spyView m d =
+                capturedDispatch <- d
+                Views.view m d
+
+            let wEnabled = new Avalonia.FuncUI.Hosts.HostWindow()
+            wEnabled.Width <- 1100.0
+            wEnabled.Height <- 720.0
+            try
+                Elmish.Program.mkProgram (fun () -> latestModel, Elmish.Cmd.none) spyUpdate spyView
+                |> Avalonia.FuncUI.Elmish.Program.withHost wEnabled
+                |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+
+                wEnabled.Show()
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs()
+                wEnabled.UpdateLayout()
+
+                let filterCbOpt = findFilterComboBox wEnabled
+                filterCbOpt.IsSome |> should equal true
+                let filterCb = filterCbOpt.Value
+                filterCb.IsEnabled |> should equal true
+                filterCb.SelectedIndex |> should equal 0
+
+                // 同値インデックス設定および再描画で SetConstraintFilter が発火しないこと
+                recordedMsgs.Clear()
+                filterCb.SelectedIndex <- 0
+                capturedDispatch ReloadSettings
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs()
+                wEnabled.UpdateLayout()
+                Assert.False(
+                    recordedMsgs |> Seq.exists (function SetConstraintFilter _ -> true | _ -> false),
+                    "同値インデックス選択または再描画で意図しない SetConstraintFilter が発火しました。"
+                )
+
+                // 別インデックス (1: FilterLinuxOnly) 選択で SetConstraintFilter FilterLinuxOnly が発火すること
+                let activeFilterCb = (findFilterComboBox wEnabled).Value
+                recordedMsgs.Clear()
+                activeFilterCb.SelectedIndex <- 1
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs()
+                wEnabled.UpdateLayout()
+
+                recordedMsgs |> Seq.exists (function SetConstraintFilter FilterLinuxOnly -> true | _ -> false) |> should equal true
+                latestModel.FilterConstraint |> should equal FilterLinuxOnly
+            finally
+                wEnabled.Close()
+        )
+

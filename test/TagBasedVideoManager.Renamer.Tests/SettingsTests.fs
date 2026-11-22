@@ -2835,3 +2835,264 @@ module SettingsTests =
             )
         )
 
+    // =========================================================================
+    // Task 4.1: Diff C1 >= 85% & Adversarial QA 回帰テスト
+    // =========================================================================
+
+    /// <summary>QA-SET-01: parsePartial の FileShare.None 排他ロック時にクラッシュせず下位設定/既定値へフォールバックし Warnings へ詳細を記録することを検証する</summary>
+    [<Fact>]
+    let ``QA-SET-01: parsePartial は FileShare.None でロックされた設定ファイルに対しても安全起動し Warnings を記録する`` () =
+        withTempDir "QaSetLock01" (fun tempDir ->
+            let basePath = Path.Combine(tempDir, "appsettings.json")
+            let devPath = Path.Combine(tempDir, "appsettings.Development.json")
+            File.WriteAllText(basePath, """{ "selectedModel": "surviving/base-model", "pathLengthThreshold": 212 }""")
+            File.WriteAllText(devPath, """{ "selectedModel": "locked/dev-model", "pathLengthThreshold": 180 }""")
+
+            // 1. ディレクトリ層読込経路: 上位ファイルが FileShare.None で排他ロックされている場合
+            use lockStream = new FileStream(devPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None)
+            let ctx = makeContext tempDir tempDir (Path.Combine(tempDir, "noappdata")) None
+            let loadedLayer = Settings.loadConfigurationWithMetadataWithContext ctx (Some "Development") None (Some tempDir)
+
+            loadedLayer.Settings.SelectedModel |> should equal "surviving/base-model"
+            loadedLayer.Settings.PathLengthThreshold |> should equal 212
+            loadedLayer.LoadedFiles |> should equal [ basePath ]
+            Assert.True(
+                loadedLayer.Warnings |> List.exists (fun w -> w.Contains(devPath)),
+                $"ロックされたファイルパスが Warnings に含まれていません: {loadedLayer.Warnings}"
+            )
+
+            // 2. 明示 jsonPathOpt 経路: 指定ファイルが FileShare.None で排他ロックされている場合は既定値へ安全フォールバック
+            let loadedExplicit = Settings.loadConfigurationWithMetadataWithContext ctx (Some "Development") (Some devPath) None
+            let defaults = Settings.defaultSettings ()
+            loadedExplicit.Settings |> should equal defaults
+            loadedExplicit.LoadedFiles |> should be Empty
+            Assert.True(
+                loadedExplicit.Warnings |> List.exists (fun w -> w.Contains(devPath)),
+                $"明示パスのロック警告が Warnings に含まれていません: {loadedExplicit.Warnings}"
+            )
+        )
+
+    /// <summary>QA-SET-02: Settings.save と Settings.savePatch が空・null・空白・不正文字パスに対して例外を投げず Error IoError を返すことを検証する</summary>
+    [<Fact>]
+    let ``QA-SET-02: save と savePatch は null・空文字・空白・不正文字パスに対して例外を投げず Error IoError を返す`` () =
+        withTempDir "QaSetInvalidPath02" (fun tempDir ->
+            let settings = Settings.defaultSettings ()
+            let patch = { SelectedModel = Some "safe/model"; Rules = None }
+            let invalidPaths: string list = [
+                ""
+                "   "
+                null
+                Path.Combine(tempDir, "bad\u0000name.json")
+                Path.Combine(tempDir, "bad?*:<>|name.json")
+            ]
+
+            for badPath in invalidPaths do
+                match Settings.save badPath settings with
+                | Error (IoError (msg, _)) ->
+                    Assert.False(String.IsNullOrWhiteSpace(msg))
+                | other ->
+                    failwith $"Settings.save で IoError 以外が返りました (path='{badPath}'): {other}"
+
+                match Settings.savePatch badPath patch with
+                | Error (IoError (msg, _)) ->
+                    Assert.False(String.IsNullOrWhiteSpace(msg))
+                | other ->
+                    failwith $"Settings.savePatch で IoError 以外が返りました (path='{badPath}'): {other}"
+
+            // 空パッチ時は I/O を行わず Ok () で早期終了すること
+            match Settings.savePatch null { SelectedModel = None; Rules = None } with
+            | Ok () -> ()
+            | other -> failwith $"空パッチ時に Ok () 以外が返りました: {other}"
+        )
+
+    /// <summary>QA-SET-03: savePatch が重複キーと jsonElementToNode 全型（配列・null・整数/小数・bool・絵文字）を ArgumentException なしで後勝ち往復することを検証する</summary>
+    [<Fact>]
+    let ``QA-SET-03: savePatch はトップレベル重複キーとネスト重複・配列・null・数値・真偽値・絵文字を例外なく後勝ち保持する`` () =
+        withTempDir "QaSetDupAndTypes03" (fun tempDir ->
+            let devPath = Path.Combine(tempDir, "appsettings.Development.json")
+            let rawJson =
+                """{
+  "selectedModel": "first/model",
+  "selectedModel": "second/model",
+  "SelectedModel": "pascal/model",
+  "apiKey": "sk-or-v1-first-key",
+  "apiKey": "sk-or-v1-last-winner-key",
+  "Rules": [],
+  "nestedObj": {
+    "dup": "old-value",
+    "dup": "new-winner-value",
+    "boolTrue": true,
+    "boolFalse": false,
+    "nullVal": null,
+    "intVal": 42,
+    "floatVal": 3.14,
+    "emojiText": "🎬🚀日本語テスト"
+  },
+  "mixedArray": [1, 2.5, true, false, null, "🎥配列文字", { "innerDup": "v1", "innerDup": "v2" }]
+}"""
+            File.WriteAllText(devPath, rawJson, Encoding.UTF8)
+
+            let patchedRule = {
+                Id = "qa-rule-dup"
+                Name = "重複テストルール"
+                Pattern = "{Code}_{Title}.mp4"
+                PromptInstruction = "簡潔に命名"
+                Order = 0
+                EnableWebSearch = true
+            }
+            Settings.savePatch devPath { SelectedModel = Some "patched/final-model"; Rules = Some [ patchedRule ] } |> assertOk
+
+            let savedText = File.ReadAllText(devPath, Encoding.UTF8)
+            use doc = JsonDocument.Parse(savedText)
+            let root = doc.RootElement
+
+            root.GetProperty("selectedModel").GetString() |> should equal "patched/final-model"
+            let mutable pascalModel = Unchecked.defaultof<JsonElement>
+            root.TryGetProperty("SelectedModel", &pascalModel) |> should equal false
+            let mutable pascalRules = Unchecked.defaultof<JsonElement>
+            root.TryGetProperty("Rules", &pascalRules) |> should equal false
+
+            root.GetProperty("apiKey").GetString() |> should equal "sk-or-v1-last-winner-key"
+            root.GetProperty("rules").GetArrayLength() |> should equal 1
+            root.GetProperty("rules").[0].GetProperty("id").GetString() |> should equal "qa-rule-dup"
+
+            let nested = root.GetProperty("nestedObj")
+            nested.GetProperty("dup").GetString() |> should equal "new-winner-value"
+            nested.GetProperty("boolTrue").GetBoolean() |> should equal true
+            nested.GetProperty("boolFalse").GetBoolean() |> should equal false
+            nested.GetProperty("nullVal").ValueKind |> should equal JsonValueKind.Null
+            nested.GetProperty("intVal").GetInt32() |> should equal 42
+            nested.GetProperty("floatVal").GetDouble() |> should equal 3.14
+            nested.GetProperty("emojiText").GetString() |> should equal "🎬🚀日本語テスト"
+
+            let arr = root.GetProperty("mixedArray")
+            arr.GetArrayLength() |> should equal 7
+            arr.[0].GetInt32() |> should equal 1
+            arr.[1].GetDouble() |> should equal 2.5
+            arr.[2].GetBoolean() |> should equal true
+            arr.[3].GetBoolean() |> should equal false
+            arr.[4].ValueKind |> should equal JsonValueKind.Null
+            arr.[5].GetString() |> should equal "🎥配列文字"
+            arr.[6].GetProperty("innerDup").GetString() |> should equal "v2"
+        )
+
+    /// <summary>QA-SET-04: parsePartial の rules 厳密検証（[null]・必須フィールド個別欠落/null・正常不正混在・型不正）で安全フォールバックと Warnings 記録を検証する</summary>
+    [<Fact>]
+    let ``QA-SET-04: parsePartial は不正 rules（null要素・必須文字列欠損/null・混在・型不正）を無視して下位ルールを維持し Warnings に記録する`` () =
+        withTempDir "QaSetRulesStrict04" (fun tempDir ->
+            let basePath = Path.Combine(tempDir, "appsettings.json")
+            let devPath = Path.Combine(tempDir, "appsettings.Development.json")
+            File.WriteAllText(
+                basePath,
+                """{
+  "rules": [
+    { "id": "base-safe", "name": "安全なベースルール", "pattern": "{Title}.mp4", "promptInstruction": "指示", "order": 0, "enableWebSearch": false }
+  ]
+}"""
+            )
+
+            let validItemJson =
+                """{ "id": "ok-1", "name": "正常項目", "pattern": "{Code}.mp4", "promptInstruction": "正常指示", "order": 0, "enableWebSearch": true }"""
+
+            let invalidRulesPayloads: string * string list =
+                "non-object-null",
+                [
+                    """{ "rules": [ null ] }"""
+                    $$"""{ "rules": [ {{validItemJson}}, null ] }"""
+                ]
+
+            let missingFieldPayloads: string list = [
+                """{ "rules": [ { "name": "no-id", "pattern": "{Title}.mp4", "promptInstruction": "x", "order": 0 } ] }"""
+                """{ "rules": [ { "id": null, "name": "null-id", "pattern": "{Title}.mp4", "promptInstruction": "x", "order": 0 } ] }"""
+                """{ "rules": [ { "id": "no-name", "pattern": "{Title}.mp4", "promptInstruction": "x", "order": 0 } ] }"""
+                """{ "rules": [ { "id": "null-name", "name": null, "pattern": "{Title}.mp4", "promptInstruction": "x", "order": 0 } ] }"""
+                """{ "rules": [ { "id": "no-pattern", "name": "n", "promptInstruction": "x", "order": 0 } ] }"""
+                """{ "rules": [ { "id": "null-pattern", "name": "n", "pattern": null, "promptInstruction": "x", "order": 0 } ] }"""
+                """{ "rules": [ { "id": "no-prompt", "name": "n", "pattern": "{Title}.mp4", "order": 0 } ] }"""
+                """{ "rules": [ { "id": "null-prompt", "name": "n", "pattern": "{Title}.mp4", "promptInstruction": null, "order": 0 } ] }"""
+                $$"""{ "rules": [ {{validItemJson}}, { "id": "mixed-bad", "name": "欠落", "pattern": "{Title}.mp4", "order": 1 } ] }"""
+                """{ "rules": [ { "id": "bad-order", "name": "型不正", "pattern": "{Title}.mp4", "promptInstruction": "x", "order": "not-an-int" } ] }"""
+            ]
+
+            let allPayloads = (snd invalidRulesPayloads) @ missingFieldPayloads
+            let ctx = makeContext tempDir tempDir (Path.Combine(tempDir, "noappdata")) None
+
+            for payload in allPayloads do
+                File.WriteAllText(devPath, payload)
+                let loaded = Settings.loadConfigurationWithMetadataWithContext ctx (Some "Development") None (Some tempDir)
+                loaded.Settings.Rules.Length |> should equal 1
+                loaded.Settings.Rules.Head.Id |> should equal "base-safe"
+                Assert.True(
+                    loaded.Warnings |> List.exists (fun w -> w.Contains(devPath) && w.Contains("rules")),
+                    $"rules 検証警告が記録されていません (payload={payload}): {loaded.Warnings}"
+                )
+        )
+
+    /// <summary>QA-SET-05: resolveConfigDirectoryWithOrigins と loadConfigurationWithMetadataWithContext の null/空/不正envName/相対jsonPath 境界防御を検証する</summary>
+    [<Fact>]
+    let ``QA-SET-05: resolveConfigDirectoryWithOrigins と loadConfigurationWithMetadataWithContext は null・空・不正env・相対jsonPath で例外なく安全解決する`` () =
+        withTempDir "QaSetOriginsBoundary05" (fun tempDir ->
+            let origDotnet = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+            let origAspnet = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            let origCwd = Directory.GetCurrentDirectory()
+            try
+                Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", "StagingSafe")
+                Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", null)
+
+                // 1. currentDir / appBaseDir が null・空白、envName が "../evil"
+                let dirNull, tracesNull = Settings.resolveConfigDirectoryWithOrigins null null "../evil"
+                dirNull |> should equal ""
+                Assert.True(tracesNull |> List.exists (fun t -> t.Contains("スキップ")))
+
+                let dirEmpty, tracesEmpty = Settings.resolveConfigDirectoryWithOrigins "" "   " "../evil"
+                dirEmpty |> should equal ""
+                Assert.True(tracesEmpty |> List.exists (fun t -> t.Contains("第2段階フォールバック")))
+
+                // 2. src/TagBasedVideoManager.Renamer が存在するが JSON が 0 件のケース + 8 階層超え打ち切り
+                let emptyRenamerParent = Path.Combine(tempDir, "empty_renamer")
+                Directory.CreateDirectory(Path.Combine(emptyRenamerParent, "src", "TagBasedVideoManager.Renamer")) |> ignore
+                let deepDir = Path.Combine(emptyRenamerParent, "a", "b", "c", "d", "e", "f", "g", "h", "i")
+                Directory.CreateDirectory(deepDir) |> ignore
+                let fallbackBase = Path.Combine(tempDir, "fallback_base")
+                Directory.CreateDirectory(fallbackBase) |> ignore
+
+                let dirEmptyRenamer, tracesEmptyRenamer = Settings.resolveConfigDirectoryWithOrigins emptyRenamerParent fallbackBase "StagingSafe"
+                dirEmptyRenamer |> should equal fallbackBase
+                Assert.True(tracesEmptyRenamer |> List.exists (fun t -> t.Contains("設定ファイルが 0 件のため不採用")))
+
+                let dirDeep, tracesDeep = Settings.resolveConfigDirectoryWithOrigins deepDir fallbackBase "StagingSafe"
+                dirDeep |> should equal fallbackBase
+                Assert.True(tracesDeep |> List.exists (fun t -> t.Contains("親探索上限")))
+
+                // 3. ConfigLoadContext の全ディレクトリが null + 不正 configNameOpt = Some "../evil"
+                let nullCtx: ConfigLoadContext = {
+                    CurrentDirectory = null
+                    AppBaseDirectory = null
+                    AppDataDirectory = null
+                    DotEnvPath = Some "   "
+                }
+                let loadedNull = Settings.loadConfigurationWithMetadataWithContext nullCtx (Some "../evil") None None
+                loadedNull.EnvironmentName |> should equal "StagingSafe"
+                loadedNull.SavePath |> should equal "appsettings.StagingSafe.json"
+                loadedNull.Settings |> should equal (Settings.defaultSettings ())
+
+                // 4. 相対 jsonPathOpt = Some "appsettings.json" の安全解決と環境別 SavePath
+                let relDir = Path.Combine(tempDir, "rel_json")
+                Directory.CreateDirectory(relDir) |> ignore
+                File.WriteAllText(Path.Combine(relDir, "appsettings.json"), """{ "selectedModel": "rel/model", "apiKey": "sk-or-v1-rel-valid-key" }""")
+                File.WriteAllText(Path.Combine(relDir, ".env"), "VIDEO_DIR=ignored")
+                Directory.SetCurrentDirectory(relDir)
+
+                let relCtx = makeContext relDir relDir (Path.Combine(tempDir, "noappdata")) None
+                let loadedRel = Settings.loadConfigurationWithMetadataWithContext relCtx (Some "Development") (Some "appsettings.json") None
+                loadedRel.Settings.SelectedModel |> should equal "rel/model"
+                loadedRel.SavePath |> should equal (Path.Combine(relDir, "appsettings.Development.json"))
+                loadedRel.ApiKeySourcePath |> should equal (Some (Path.Combine(relDir, "appsettings.json")))
+                Assert.True(loadedRel.TraceLogs |> List.exists (fun l -> l.Contains(".env")))
+            finally
+                Directory.SetCurrentDirectory(origCwd)
+                Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", origDotnet)
+                Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", origAspnet)
+        )
+
+

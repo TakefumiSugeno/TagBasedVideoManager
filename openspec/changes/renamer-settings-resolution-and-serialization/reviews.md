@@ -1931,3 +1931,146 @@
 - **保留指摘（申し送り）**: 指摘 1（L341 記述例）、指摘 2（L55 バッジ表記例）、指摘 3（L320-323 JSONC コメント非保持補足）
 - **次のアクション**: 次タスクへ（Task 3.2 `[x]` 更新・コミット後、Phase 4 Task 4.1 最終フォーマット・TRX/カバレッジ検証・Web 回帰確認・総括レビューへ進む）
 - **承認者**: PG Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 4.1 (PG Reviewer 最終批判的レビュー)
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 4.1 全体品質検証・カバレッジ計測・最終批判的レビュー
+- **レビュアー**: pg (PG Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**:
+  - `src/TagBasedVideoManager.Renamer/Settings.fs`
+  - `src/TagBasedVideoManager.Renamer/State.fs`
+  - `src/TagBasedVideoManager.Renamer/Views.fs`
+  - `src/TagBasedVideoManager.Renamer/OpenRouterClient.fs`
+  - `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj`
+  - `README.md`
+  - `test/TagBasedVideoManager.Renamer.Tests/{SettingsTests.fs,StateTests.fs,RenameIntegrationE2ETests.fs}`
+  - `test/TestResults/TestRun_2026-11-23_02_45_00/CoverageReport/Summary.txt`
+
+## 1. 挑戦的設問への回答
+
+### 設問1: 暗黙の仮定・レース条件・リソースリーク・テスト透過性の検証
+
+- **確認内容・回答**:
+  - `Settings.fs` (`ApiKeyNormalizer.normalize`, `StringOptionConverter`, `parsePartial`, `savePatch`): `null`/空白/引用符・旧 `{ "value": ... }` 形式・0 バイト空ファイル・排他ロック (`FileShare.None`)・重複キー後勝ち正規化・パス単位ロック・`.tmp` クリーンアップが適切に機能。
+  - `State.fs` (CTS ライフサイクル・`AiPipelineRunId` レース防止・ロールバック): `issueNewAiPipeline` / `resetAiPipelineState` / `disposeAndClearCts` により先行 CTS は必ず `Cancel()` → `Dispose()` され、全非 AI 分岐での状態リセットおよび `model.AiPipelineRunId <> Some runId` ガードによりゾンビスピナー・CTS リークを構造的に防止。`applySettingsPatch` により保存失敗時の `Settings`/`SelectedRuleId` ロールバック、`EditingRule` 保持、`ConfirmDialog = None` 閉鎖も確認済み。
+  - `Views.fs` / `OpenRouterClient.fs` / `TagBasedVideoManager.Renamer.fsproj` / Task 4.1 追加テスト (`QA-SET-01..05`, `QA-ST-01..04`, `E2E-08..10`): 問題なし。本体側にテスト通過目的の分岐・アンチパターンなし。
+  - カバレッジ実測 (`Summary.txt` 突合): 全体 C0 = `89.4% (4523/5055)`（>=80% 達成）、全体 C1 = `72% (1111/1542)`（未変更レガシーモジュール起因）、変更差分 **DiffC0 = `95.97% (1144/1192)`**・**DiffC1 = `88.41% (351/397)`**。
+
+### 設問2: 例外の握りつぶし・サイレントエラー・機密漏洩の撲滅
+
+- **確認内容・回答**: 新規・変更コード全域で空 `catch` による握りつぶしは 0 件。`savePatch` のエラーは段階名・試行回数・行/列位置・フルパスを保持して通知し、API キー平文のログ/UI 漏洩もなし。
+
+### 設問3: コード削減・過剰抽象化の告発（YAGNI 検証）
+
+- **確認内容・回答**: `Settings.fs` L640-715 `loadConfigurationWithMetadataWithContext` の 3 重出力構築分岐（約 37% 削減可能）、および `State.fs` 単一箇所ラッパー (`saveSettingsPatchWithFeedback`) / 旧互換メッセージ (`SettingsLoaded`, `AiProposeCompleted`) を将来の整理候補として指摘。
+
+## 2. Adversarial QA
+
+対象外（PG Reviewer は読み取り専用契約。QA Reviewer にて 19 ケース破壊テスト + 462/462 Pass 確認済み）。
+
+## 3. 指摘事項
+
+> ※既に `handover.md` 送りとして保留済みの既知事項（`design.md` §2.6.1 注記、`Views.fs` Row 1 余白・閾値 TextBox、`README.md` L55/L320/L341）に加え、以下 3 件を保留・申し送り候補として記録。
+
+### 指摘1
+
+- **内容**: `Settings.fs` L640-715 `loadConfigurationWithMetadataWithContext` 3 分岐の重複簡素化案（約 37% 削減可）、および `State.fs` 単一箇所ラッパー・旧互換メッセージの整理余地。
+- **重要度**: Suggestion
+- **対応方針**: 保留（Archive 時 `handover.md` 転記）
+- **理由**: 機能要件・安全性・462/462 Pass 状態に影響はなく、将来リファクタとして引き継ぐ方が安全なため。
+
+### 指摘2
+
+- **内容**: `Views.fs` L205 `ruleComboSyncAttr` の `comparer` `ValueNone` 明示化余地、および `Settings.fs` L546 `resolveConfigDirectoryWithOrigins` への不正パス文字（`\0` 等）直接注入時ガード。
+- **重要度**: Minor
+- **対応方針**: 保留（Archive 時 `handover.md` 転記）
+- **理由**: FuncUI 既定等値比較が機能し、本番呼出元も有効パスであるため実害はない。
+
+### 指摘3
+
+- **内容**: アセンブリ全体 Branch (C1) カバレッジが `72% (1111/1542)`（変更差分 C1 は `88.41%` 達成、未達成要因は変更対象外の既存レガシーコード群）。
+- **重要度**: Minor
+- **対応方針**: 保留（Archive 時 `handover.md` へ技術的負債として明記）
+- **理由**: 変更差分基準は達成済みであり、レガシー領域の C1 底上げを申し送りとして明記するのが正確なため。
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（Critical: 0 件、Major: 0 件、Minor: 2 件［保留］、Suggestion: 1 件［保留］）
+- **保留指摘**: 上記指摘 1〜3 および既保留 3 領域を `handover.md` へ転記
+- **次のアクション**: QA Reviewer 判定と併せて Gate 2 検証・Task 4.1 完了コミットへ進行
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 4.1 (QA Reviewer / Adversarial QA)
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 4.1 全体品質検証・カバレッジ計測・Adversarial QA 最終レビュー
+- **レビュアー**: qa (QA Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md` / `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**:
+  - `src/TagBasedVideoManager.Renamer/{Settings.fs,State.fs,Views.fs,OpenRouterClient.fs}`
+  - `test/TagBasedVideoManager.Renamer.Tests/{SettingsTests.fs,StateTests.fs,RenameIntegrationE2ETests.fs}`
+  - `test/TestResults/TestRun_2026-11-23_02_45_00/`
+
+## 1. 挑戦的設問への回答
+
+### 設問1: `test_plan.md` §4 C2 デシジョンテーブル 30 行・§2 全 11 シナリオの 1:1 突合とトートロジー検証
+
+- **確認内容・回答**:
+  - `DT-MERGE-01..11`（11 行）、`DT-KEY-01..07`（7 行）、`DT-DIR-01..06`（6 行）、`DT-PATCH-01..06`（6 行）の全 30 行および §2 全 11 シナリオが `SettingsTests.fs` / `StateTests.fs` / `RenameIntegrationE2ETests.fs` の具体アサーション（トートロジーなし）として 1:1 で存在し、`TestRun_2026-11-23_02_45_00_net10.0.trx` にて **合計 462 件 / 実行 462 件 / 成功 462 件 / 失敗 0 件 / スキップ 0 件** であることを直接照合済み。
+
+### 設問2: Task 4.1 追加テスト (`QA-SET-01..05`, `QA-ST-01..04`, `E2E-08..10`) の品質検証
+
+- **確認内容・回答**:
+  - `QA-SET-01..05`（実 `FileShare.None` ロック・不正パス `IoError`・重複キー/極端型正規化・不正 `rules` 12 パターン・境界/9 階層打切り）、`QA-ST-01..04`（ReadOnly 下での同値/空白ガード・他候補 `IsAiProcessing` リセットと CTS 破棄・`DeleteRule`/`SaveRule` ガード・矛盾データ補正）、`E2E-08..10`（実 `HostWindow` 上でのルール切替、`Rules=[]`＋`ErrorMessage=Some null` の `isNull msg` 検証、フィルタ `ComboBox`）いずれも意味のある境界検証であり、`Skip`/`Ignore` は 0 件。
+
+### 設問3: カバレッジ数値・衛生チェック・作業ツリー隔離の実態検証
+
+- **確認内容・回答**:
+  - 独立再計算による差分カバレッジ: `Settings.fs` DiffC0 `98.27% (455/463)` / DiffC1 `89.41% (228/255)`、`State.fs` DiffC0 `95.08% (309/325)` / DiffC1 `87.27% (96/110)`、`Views.fs` DiffC0 `93.98% (375/399)` / DiffC1 `83.33% (25/30)`、`OpenRouterClient.fs` DiffC0 `100% (5/5)` / DiffC1 `100% (2/2)`、**Aggregate DiffC0 = `95.97% (1144/1192)`**・**DiffC1 = `88.41% (351/397)`**。
+  - アセンブリ全体 C0 = `89.4% (4523/5055)`、全体 C1 = `72% (1111/1542)`（未変更レガシー群起因）。変更 7 `.fs` ファイルのタブ文字 0 件、行末空白 0 件、`appsettings*.json` 無変更。
+  - なお作業ツリーに本変更無関係な `M scripts/common.ps1` 差分が存在するため、コミット時非混入に注意が必要。
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- **対象関数/モジュール**: `Settings`, `OpenRouterClient`, `State`, `Views`
+- **破壊テストコード名**: `adversarial_qa_task41.fsx`（スクラッチ配置・ワークツリー無汚染）
+- **実行コマンド**: `dotnet fsi "...\scratch\adversarial_qa_task41.fsx"`
+- **実行判定**: **堅牢性確認（19/19 Pass、Failed: 0）**（UTF-8 BOM のみ / BOM+JSONC、30 桁整数・`1e308`・`-0.0`、配列/プリミティブ ルート JSON、`FileShare.None` 排他ロック時の保護、`"sk-or-v1-"` 等境界値、401 文言、無効値 UI 描画）
+
+## 3. 指摘事項
+
+### 指摘1
+
+- **内容**: アセンブリ全体 Branch (C1) カバレッジ `72.0% (1111/1542)`（本変更対象外レガシーコード起因、変更差分 C1 は `88.41%` で基準達成）。
+- **重要度**: Minor
+- **対応方針**: 保留（Archive 時 `handover.md` 転記）
+- **理由**: スコープ外レガシー領域の分岐拡充は別変更で継続改善するのが妥当なため。
+
+### 指摘2
+
+- **内容**: 作業ツリーに残存している本変更無関係な未コミット変更 `M scripts/common.ps1` のコミット混入防止。
+- **重要度**: Minor
+- **対応方針**: 採用（Task 4.1 コミット時にステージング対象外として隔離）
+- **理由**: `git add` 対象を本変更関連ファイルのみに限定し混入を防ぐため。
+
+### 指摘3
+
+- **内容**: `E2E-09`（`ErrorMessage = Some null`）でのバナー非描画（`📋 コピー` ボタン非表示等）までの追加アサート余地。
+- **重要度**: Suggestion
+- **対応方針**: 保留
+- **理由**: 実 `HostWindow` 描画で NRE 不発は確実検証済みであり必須修正ではないため。
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（Critical: 0 件、Major: 0 件、Minor: 2 件、Suggestion: 1 件）
+- **保留指摘**: 指摘 1・指摘 3（Archive 時 `handover.md` 申し送り候補）
+- **次のアクション**: Gate 2 (`verify-gate.ps1 -Gate apply`) 通過・`scripts/common.ps1` 非混入確認の上、Task 4.1 完了コミットへ進行

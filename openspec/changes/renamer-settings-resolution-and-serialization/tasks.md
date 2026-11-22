@@ -70,7 +70,7 @@
 
 ## Phase 4: 全テスト・カバレッジ・フォーマット・レビュー・Gate 2 最終検証
 
-- [ ] 4.1 全体品質検証・カバレッジ計測・レビュー・Gate 2 通過
+- [x] 4.1 全体品質検証・カバレッジ計測・レビュー・Gate 2 通過
   - 自動フォーマット実行（`dotnet format whitespace`, `npx prettier --write "README.md" "openspec/**/*.md"`）。
   - `pwsh ./test/TagBasedVideoManager.Renamer.Tests/run_tests_with_coverage.ps1` を実行して `TagBasedVideoManager.Renamer.Tests` 全件 Pass・Skip 0 件、および C0（全体80%+/差分90%+）・C1（全体80%+/差分85%+）達成を確認し、`test_plan.md` §4 の C2 デシジョンテーブル全行が対応単体テストで実行・Pass していることを突合証跡化する。また Web アプリ側の非破壊確認として `dotnet test test/TagBasedVideoManager.Tests/TagBasedVideoManager.Tests.fsproj --filter "Category!=E2E"`（Docker/Playwright 非依存テスト、環境利用可能時は全件）を実行する。
   - `pg-reviewer` / `qa-reviewer`（Adversarial QA 破壊テスト実行含む）による独立批判的レビューを実施し、`reviews.md` に記録して `LGTM: true` を取得する。

@@ -2445,3 +2445,260 @@ module StateTests =
             afterSaveRuleFail.ErrorMessage.Value |> should contain "ParseJson"
             File.ReadAllText(tempSavePath) |> should equal brokenJsonRaw
         )
+
+    // =========================================================================
+    // Task 4.1: Diff C1 >= 85% & Adversarial QA 回帰テスト
+    // =========================================================================
+
+    /// <summary>QA-ST-01: ModelSelected ガード（null・空白・同値モデル指定時に ReadOnly 保存先でも savePatch が発火せず状態不変）を検証する</summary>
+    [<Fact>]
+    let ``QA-ST-01: ModelSelected は null・空白・現在と同値モデル指定時に保存を発火せず ErrorMessage も設定しない`` () =
+        withIsolatedStateTest (fun tempSavePath ->
+            File.WriteAllText(tempSavePath, """{ "apiKey": "sk-or-v1-guard-ro", "selectedModel": "current/model" }""")
+            File.SetAttributes(tempSavePath, FileAttributes.ReadOnly)
+            try
+                let initialModel = initIsolatedModel tempSavePath
+                let model = {
+                    initialModel with
+                        Settings = { initialModel.Settings with SelectedModel = "current/model" }
+                        ErrorMessage = None
+                }
+
+                for invalidOrSame in [ null; ""; "   "; "current/model" ] do
+                    let updated, cmd = State.updateWithContext None (ModelSelected invalidOrSame) model
+                    updated |> should equal model
+                    updated.ErrorMessage |> should equal None
+                    cmd.IsEmpty |> should equal true
+            finally
+                try File.SetAttributes(tempSavePath, FileAttributes.Normal) with _ -> ()
+        )
+
+    /// <summary>QA-ST-02: RetryCandidateAiProposal のスキャン/リネーム中排他と、他候補 IsAiProcessing リセット・先行 CTS 破棄を検証する</summary>
+    [<Fact>]
+    let ``QA-ST-02: RetryCandidateAiProposal はビジー中無視され、実行時はキー失敗で全候補false・有効キーで他候補falseかつ先行CTS破棄する`` () =
+        withIsolatedStateTest (fun tempSavePath ->
+            let initialModel = initIsolatedModel tempSavePath
+            let targetCand = mkProposal "C:\\Videos\\retry_target.mp4" (Some "前回エラー")
+            let otherBusyCand = { mkProposal "C:\\Videos\\other_busy.mp4" None with IsAiProcessing = true }
+
+            // 1. IsScanning = true および IsRenaming = true 中の排他無視
+            for busyModel in [
+                { initialModel with IsScanning = true; IsRequestingAi = false; Candidates = [ targetCand ] }
+                { initialModel with IsRenaming = true; IsRequestingAi = false; Candidates = [ targetCand ] }
+            ] do
+                let ignored, cmd = State.updateWithContext None (RetryCandidateAiProposal targetCand.OriginalFullPath) busyModel
+                ignored |> should equal busyModel
+                ignored.IsRequestingAi |> should equal false
+                cmd.IsEmpty |> should equal true
+
+            // 2. 先行他候補が IsAiProcessing = true かつキー検証失敗時 -> 全候補 IsAiProcessing = false + resetAiPipelineState
+            let failOldCts = new System.Threading.CancellationTokenSource()
+            let failOldRunId = Guid.NewGuid()
+            try
+                let failModel = {
+                    initialModel with
+                        Settings = { initialModel.Settings with ApiKey = None }
+                        ApiKeySourcePath = None
+                        IsRequestingAi = true
+                        AiPipelineRunId = Some failOldRunId
+                        AiCancellationCts = Some failOldCts
+                        Candidates = [ targetCand; otherBusyCand ]
+                }
+                let afterFail, failCmd = State.updateWithContext None (RetryCandidateAiProposal targetCand.OriginalFullPath) failModel
+                failOldCts.IsCancellationRequested |> should equal true
+                Assert.Throws<ObjectDisposedException>(fun () -> ignore failOldCts.Token) |> ignore
+                afterFail.IsRequestingAi |> should equal false
+                afterFail.AiPipelineRunId |> should equal None
+                afterFail.AiCancellationCts |> should equal None
+                afterFail.Candidates |> List.forall (fun c -> not c.IsAiProcessing) |> should equal true
+                afterFail.ErrorMessage |> should not' (equal None)
+                failCmd.IsEmpty |> should equal true
+            finally
+                try failOldCts.Dispose() with _ -> ()
+
+            // 3. 先行他候補が IsAiProcessing = true かつ有効キー時 -> 対象候補のみ true・他候補 false・先行 CTS キャンセル破棄
+            let okOldCts = new System.Threading.CancellationTokenSource()
+            let okOldRunId = Guid.NewGuid()
+            let mutable newCtsOpt: System.Threading.CancellationTokenSource option = None
+            try
+                let okModel = {
+                    initialModel with
+                        Settings = { initialModel.Settings with ApiKey = Some "sk-or-v1-valid-retry-key" }
+                        IsRequestingAi = true
+                        AiPipelineRunId = Some okOldRunId
+                        AiCancellationCts = Some okOldCts
+                        Candidates = [ targetCand; otherBusyCand ]
+                }
+                let afterOk, _ = State.updateWithContext None (RetryCandidateAiProposal targetCand.OriginalFullPath) okModel
+                newCtsOpt <- afterOk.AiCancellationCts
+
+                okOldCts.IsCancellationRequested |> should equal true
+                Assert.Throws<ObjectDisposedException>(fun () -> ignore okOldCts.Token) |> ignore
+                afterOk.IsRequestingAi |> should equal true
+                afterOk.AiPipelineRunId.IsSome |> should equal true
+                afterOk.AiPipelineRunId.Value |> should not' (equal okOldRunId)
+                afterOk.AiCancellationCts.IsSome |> should equal true
+
+                let updatedTarget = afterOk.Candidates |> List.find (fun c -> c.OriginalFullPath = targetCand.OriginalFullPath)
+                let updatedOther = afterOk.Candidates |> List.find (fun c -> c.OriginalFullPath = otherBusyCand.OriginalFullPath)
+                updatedTarget.IsAiProcessing |> should equal true
+                updatedTarget.AiError |> should equal None
+                updatedOther.IsAiProcessing |> should equal false
+            finally
+                try okOldCts.Dispose() with _ -> ()
+                newCtsOpt |> Option.iter (fun c -> try c.Dispose() with _ -> ())
+        )
+
+    /// <summary>QA-ST-03: ルール CRUD の境界バリデーション（DeleteRule 残り1件拒否・SaveEditingRule 欠損・SaveRule 4項目欠損）を検証する</summary>
+    [<Fact>]
+    let ``QA-ST-03: DeleteRule・SaveEditingRule・SaveRule の各境界バリデーションでエラー設定されファイル保存されない`` () =
+        withIsolatedStateTest (fun tempSavePath ->
+            let initialModel = initIsolatedModel tempSavePath
+            let singleRule = mkTestRule "only-rule" "唯一ルール" 0
+            let dummyDialog: DialogConfig = {
+                Title = "削除確認"
+                Message = "削除しますか？"
+                ConfirmText = "削除する"
+                CancelText = "キャンセル"
+                OnConfirm = DeleteRule singleRule.Id
+            }
+
+            // 1. DeleteRule 直接呼び出し（Rules.Length <= 1）
+            let singleModel = {
+                initialModel with
+                    Settings = { initialModel.Settings with Rules = [ singleRule ] }
+                    ConfirmDialog = Some dummyDialog
+            }
+            let afterDirectDelete, delCmd = State.updateWithContext None (DeleteRule singleRule.Id) singleModel
+            afterDirectDelete.ErrorMessage |> should equal (Some "最後の1件の命名規則は削除できません。")
+            afterDirectDelete.ConfirmDialog |> should equal None
+            afterDirectDelete.Settings.Rules |> should equal [ singleRule ]
+            delCmd.IsEmpty |> should equal true
+
+            // 2. SaveEditingRule: EditingRule = None および Id = null / "   "
+            let mEditNone, cmdNone = State.updateWithContext None SaveEditingRule { initialModel with EditingRule = None }
+            mEditNone.ErrorMessage |> should equal (Some "編集中の命名規則がありません。")
+            cmdNone.IsEmpty |> should equal true
+
+            for badId in [ null; "   " ] do
+                let badIdRule = { singleRule with Id = badId }
+                let mBadId, cmdBadId = State.updateWithContext None SaveEditingRule { initialModel with EditingRule = Some badIdRule }
+                mBadId.ErrorMessage |> should equal (Some "ルールIDが不正です。")
+                cmdBadId.IsEmpty |> should equal true
+
+            // 3. SaveRule: Id・Name・Pattern・PromptInstruction のそれぞれが null / 空白の全パターン
+            let invalidSaveRules: NamingRule list = [
+                { singleRule with Id = null }
+                { singleRule with Id = "   " }
+                { singleRule with Name = null }
+                { singleRule with Name = "   " }
+                { singleRule with Pattern = null }
+                { singleRule with Pattern = "   " }
+                { singleRule with PromptInstruction = null }
+                { singleRule with PromptInstruction = "   " }
+            ]
+            for invalidRule in invalidSaveRules do
+                let mBadSave, cmdBadSave = State.updateWithContext None (SaveRule invalidRule) singleModel
+                mBadSave.ErrorMessage |> should equal (Some "命名規則の必須項目（ID・ルール名・パターン・プロンプト指示）を入力してください。")
+                mBadSave.Settings.Rules |> should equal [ singleRule ]
+                cmdBadSave.IsEmpty |> should equal true
+
+            File.Exists(tempSavePath) |> should equal false
+        )
+
+    /// <summary>QA-ST-04: CandidateAiProposed 整合・既破棄 CTS への CancelAiProposal 保護・SettingsSavePath="" フォールバック経路を検証する</summary>
+    [<Fact>]
+    let ``QA-ST-04: CandidateAiProposed の失敗整合・既破棄 CTS 保護・SettingsSavePath 空時フォールバックが安全動作する`` () =
+        withIsolatedStateTest (fun tempSavePath ->
+            let initialModel = initIsolatedModel tempSavePath
+
+            // 1. CandidateAiProposed: IsAiProposed = false & AiError = Some "失敗" で IsAiProposed が true に化けないこと
+            let activeRunId = Guid.NewGuid()
+            let baseCand = { mkProposal "C:\\Videos\\proposed_check.mp4" None with IsAiProcessing = true; IsAiProposed = false }
+            let modelWithRun = {
+                initialModel with
+                    AiPipelineRunId = Some activeRunId
+                    Candidates = [ baseCand ]
+            }
+            let failedProposal = {
+                baseCand with
+                    IsAiProposed = false
+                    IsAiProcessing = true
+                    AiError = Some "失敗"
+            }
+            let afterFailedProp, _ = State.updateWithContext None (CandidateAiProposed (activeRunId, failedProposal)) modelWithRun
+            afterFailedProp.Candidates.Head.IsAiProcessing |> should equal false
+            afterFailedProp.Candidates.Head.IsAiProposed |> should equal false
+            afterFailedProp.Candidates.Head.AiError |> should equal (Some "失敗")
+
+            // AiError = Some なのに IsAiProposed = true で来た矛盾データも false に補正されること
+            let inconsistentProposal = { failedProposal with IsAiProposed = true; AiError = Some "矛盾エラー" }
+            let afterInconsistent, _ = State.updateWithContext None (CandidateAiProposed (activeRunId, inconsistentProposal)) modelWithRun
+            afterInconsistent.Candidates.Head.IsAiProposed |> should equal false
+
+            // 2. 既に Dispose() 済みの CTS を持つモデルへの CancelAiProposal で例外が発生せず状態リセットされること
+            let disposedCts = new System.Threading.CancellationTokenSource()
+            disposedCts.Dispose()
+            let modelWithDisposedCts = {
+                initialModel with
+                    IsRequestingAi = true
+                    AiPipelineRunId = Some activeRunId
+                    AiCancellationCts = Some disposedCts
+                    Candidates = [ baseCand ]
+            }
+            let afterCancel, _ = State.updateWithContext None CancelAiProposal modelWithDisposedCts
+            afterCancel.IsRequestingAi |> should equal false
+            afterCancel.AiPipelineRunId |> should equal None
+            afterCancel.AiCancellationCts |> should equal None
+            afterCancel.Candidates.Head.IsAiProcessing |> should equal false
+            afterCancel.Candidates.Head.AiComment |> should equal (Some "（AI提案が中止されました）")
+
+            // 3. SettingsSavePath = "" 状態での validateApiKeyForAi と saveSettingsPatchWithFeedback フォールバック経路
+            let tempRoot = Path.Combine(Path.GetTempPath(), "RenamerFallbackSavePath_" + Guid.NewGuid().ToString("N"))
+            let repoDir = Path.Combine(tempRoot, "repo")
+            let renamerDir = Path.Combine(repoDir, "src", "TagBasedVideoManager.Renamer")
+            Directory.CreateDirectory(renamerDir) |> ignore
+            File.WriteAllText(Path.Combine(renamerDir, "appsettings.json"), """{ "apiKey": null }""")
+
+            let origCwd = Directory.GetCurrentDirectory()
+            let origDotnet = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+            let origAspnet = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            let fallbackEnv = "IsolatedFallback_" + Guid.NewGuid().ToString("N")
+            let expectedEnvPath = Path.Combine(renamerDir, $"appsettings.{fallbackEnv}.json")
+            try
+                Directory.SetCurrentDirectory(repoDir)
+                Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", fallbackEnv)
+                Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", null)
+
+                // 3a. validateApiKeyForAi フォールバック経路（ScanCompleted）
+                let scanCand = mkScanCand "C:\\Videos\\fallback_path_target.mp4"
+                let missingPathModel = {
+                    initialModel with
+                        Settings = { initialModel.Settings with ApiKey = None }
+                        ApiKeySourcePath = None
+                        SettingsSavePath = ""
+                        IsScanning = true
+                }
+                let afterScanFallback, _ = State.updateWithContext None (ScanCompleted (Ok [ scanCand ])) missingPathModel
+                afterScanFallback.IsRequestingAi |> should equal false
+                afterScanFallback.ErrorMessage |> should not' (equal None)
+                afterScanFallback.ErrorMessage.Value |> should contain expectedEnvPath
+
+                // 3b. saveSettingsPatchWithFeedback フォールバック経路（ModelSelected）
+                let patchModel = {
+                    initialModel with
+                        Settings = { initialModel.Settings with SelectedModel = "old/model" }
+                        SettingsSavePath = ""
+                }
+                let afterModelFallback, _ = State.updateWithContext None (ModelSelected "fallback/patched-model") patchModel
+                afterModelFallback.ErrorMessage |> should equal None
+                afterModelFallback.Settings.SelectedModel |> should equal "fallback/patched-model"
+                afterModelFallback.SettingsSavePath |> should equal expectedEnvPath
+                File.Exists(expectedEnvPath) |> should equal true
+            finally
+                Directory.SetCurrentDirectory(origCwd)
+                Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", origDotnet)
+                Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", origAspnet)
+                if Directory.Exists(tempRoot) then Directory.Delete(tempRoot, true)
+        )
+
