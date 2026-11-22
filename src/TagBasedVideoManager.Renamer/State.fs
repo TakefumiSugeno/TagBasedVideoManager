@@ -261,8 +261,8 @@ module State =
         model, Cmd.batch [ loadSettingsCmd; checkDockerCmd ]
 
     /// 設定の保存を実行し、保存先パスとエラーメッセージ（発生時のみ Some）を返す共通ヘルパー
-    let private saveSettingsWithFeedback (newSettings: RenamerSettings) : string * string option =
-        let savePath = Settings.resolveSavePath None
+    let private saveSettingsWithFeedback (preferredSavePath: string) (newSettings: RenamerSettings) : string * string option =
+        let savePath = if String.IsNullOrWhiteSpace(preferredSavePath) then Settings.resolveSavePath None else preferredSavePath
         let err =
             match Settings.save savePath newSettings with
             | Ok () -> None
@@ -311,7 +311,7 @@ module State =
 
         | ModelSelected newModel ->
             let updatedSettings = { model.Settings with SelectedModel = newModel }
-            let savePath, err = saveSettingsWithFeedback updatedSettings
+            let savePath, err = saveSettingsWithFeedback model.SettingsSavePath updatedSettings
             { model with Settings = updatedSettings; ErrorMessage = err; SettingsSavePath = savePath }, Cmd.none
 
         // ワンアクション走査 & AI提案
@@ -819,7 +819,7 @@ module State =
                         model.Settings.Rules @ [ newRule ]
 
                 let newSettings = { model.Settings with Rules = updatedRules }
-                let savePath, err = saveSettingsWithFeedback newSettings
+                let savePath, err = saveSettingsWithFeedback model.SettingsSavePath newSettings
                 let nextTemplate = {
                     Id = Guid.NewGuid().ToString("N")
                     Name = ""
@@ -847,7 +847,7 @@ module State =
                 | None ->
                     model.Settings.Rules @ [ { rule with Order = model.Settings.Rules.Length } ]
             let newSettings = { model.Settings with Rules = updatedRules }
-            let savePath, err = saveSettingsWithFeedback newSettings
+            let savePath, err = saveSettingsWithFeedback model.SettingsSavePath newSettings
             { model with Settings = newSettings; ErrorMessage = err; SettingsSavePath = savePath }, Cmd.none
 
         | RequestDeleteRule ruleId ->
@@ -873,7 +873,7 @@ module State =
                 |> List.filter (fun r -> r.Id <> ruleId)
                 |> List.mapi (fun idx r -> { r with Order = idx })
             let newSettings = { model.Settings with Rules = filteredRules }
-            let savePath, err = saveSettingsWithFeedback newSettings
+            let savePath, err = saveSettingsWithFeedback model.SettingsSavePath newSettings
             let updatedEditing =
                 match model.EditingRule with
                 | Some r when r.Id = ruleId ->
@@ -900,7 +900,7 @@ module State =
                 arr.[targetIdx] <- temp
                 let reordered = arr |> Array.mapi (fun i r -> { r with Order = i }) |> Array.toList
                 let newSettings = { model.Settings with Rules = reordered }
-                let savePath, err = saveSettingsWithFeedback newSettings
+                let savePath, err = saveSettingsWithFeedback model.SettingsSavePath newSettings
                 { model with Settings = newSettings; ErrorMessage = err; SettingsSavePath = savePath }, Cmd.none
             | _ ->
                 model, Cmd.none

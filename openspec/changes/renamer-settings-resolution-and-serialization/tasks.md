@@ -30,7 +30,7 @@
 
 ## Phase 2: Settings.fs 実装と State.fs / Views.fs TDD サイクル (QA Tester → PG Implementer)
 
-- [ ] 2.1 `Settings.fs` の実装および `State.fs` 保存先隔離の前倒し適用（`pg-implementer` — Green & Refactor）
+- [x] 2.1 `Settings.fs` の実装および `State.fs` 保存先隔離の前倒し適用（`pg-implementer` — Green & Refactor）
   - `StringOptionConverter`、JSONC コメント/末尾カンマ許容、`Settings.load` の `parsePartial` + 既定値補完（0 バイト空ファイル保護含む）を実装する。
   - `ApiKeyValidationResult`、`isPlaceholderApiKey`、`validateApiKey` を実装する。
   - `resolveConfigDirectoryWithOrigins`（起点 `0`〜親 `8` 階層＝計 9 ステップ探索＋トレース出力）、`resolveConfigDirectory`、`resolveSavePath` を実装し、`%APPDATA%` 参照・フォールバック保存および `CurrentDirectory` 単独探索を完全削除する。

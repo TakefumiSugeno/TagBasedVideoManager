@@ -1106,3 +1106,229 @@
 - **次のアクション**: 次タスクへ（Task 1.2 完了処理および Task 2.1 `Settings.fs` 実装・`State.fs` 保存先隔離前倒しへ進行）
 - **テスト品質評価**: 堅牢（合格）
 - **承認者**: QA Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 2.1 (Cycle 1 - PG Reviewer)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: 2.1 Settings.fs の実装および State.fs 保存先隔離の前倒し適用
+- **レビュアー**: pg
+- **使用プロトコル**: openspec/templates/checklist_apply_impl.md
+- **対象成果物**: src/TagBasedVideoManager.Renamer/Settings.fs, src/TagBasedVideoManager.Renamer/State.fs
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: 暗黙の前提（都合の良い思い込み）の告発（checklist §2.1）
+
+- **確認内容・回答**:
+  1. `parsePartial`（`Settings.fs` L250）の `File.ReadAllText(filePath, Encoding.UTF8)` が `try ... with` ブロックの外にあり、ファイルロック・権限不足・競合削除時に起動/再読込処理が未捕捉例外でクラッシュする。
+  2. `savePatch`（L745-830）全体および `Path.GetFullPath(filePath)`（L749）が `try ... with` 外にあり、`null`/空文字/空白/不正文字/長パス等で未捕捉例外クラッシュする。
+  3. `parsePartial`（L310-320）の `rules` 配列が `[ null ]` や必須項目欠落レコード（`{ "id": "r1" }`）を無警告通過させ、`NamingRule` 参照時に `NullReferenceException` を誘発する。
+  4. `resolveConfigDirectoryWithOrigins` / `resolveConfigDirectory` の `envName` サニタイズおよび `appBaseDir`/`ctx.CurrentDirectory` の `null`/空文字ガードが不足している。
+- **確認根拠**:
+  - `src/TagBasedVideoManager.Renamer/Settings.fs` L213-223, L246-333, L514-569, L624-695, L745-830
+  - `src/TagBasedVideoManager.Renamer/Domain.fs` L6-13
+
+### 設問2: 例外の握りつぶし・根拠のないフォールバック・API キー漏洩・設計整合（checklist §2.2）
+
+- **確認内容・回答**:
+  - `tryDeleteTempFile`（L193-196）が `with _ -> ()` でログ出力なしに例外を握りつぶしている（本体エラーを隠さない範囲で `eprintfn "[WARN] ..."` 出力が必要）。
+  - API キー平文のログ/警告出力漏洩はなく、エラー段階コンテキストおよび日本語 XML コメント規約は良好。
+- **確認根拠**:
+  - `src/TagBasedVideoManager.Renamer/Settings.fs` L192-196, L691-694, L759-827
+
+### 設問3: 30%コード削減・過剰抽象化の告発（YAGNI検証）および AI アンチパターン検証（checklist §3）
+
+- **確認内容・回答**:
+  - `moveFileWithRetry` / `readAllTextWithRetry` を `retryIo` に、`Settings.save` / `savePatch` の一時保存＋移動を `writeAtomicWithRetry` に、`savePatch` の二重シリアライズを `JsonSerializer.SerializeToNode` に、`mergePartialsChain` の `pickValue`/`pickRules` を `List.tryPick` へ統合し、到達不能 `MissingApiKey` 分岐整理・`getStringProp` 抽出・`loadDirectoryLayers` の `List.fold` 化を行うことで、対象重複ブロック約 30%（130〜160 行規模）の削減と安全性強化を両立できる。
+- **確認根拠**:
+  - `src/TagBasedVideoManager.Renamer/Settings.fs` L199-223, L270-292, L341-418, L448-465, L581-605, L796-828
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（PG Reviewer はコード品質/暗黙仮定担当、Adversarial QA は下記 QA Reviewer 記録を参照）。
+
+---
+
+## 3. 指摘事項
+
+- **指摘1 (Major)**: `parsePartial`（L250）の `File.ReadAllText` を `retryIo` ＋ `try ... with` 保護へ移すこと。
+- **指摘2 (Major)**: `savePatch`（L745-830）全体を `try ... with` で保護し `Path.GetFullPath` 等への不正入力で `Error` を返すこと。
+- **指摘3 (Major)**: `parsePartial`（L310-320）の `rules` 配列要素に対して `null`・必須文字列フィールド欠損/`null` 検証と `ParseWarnings` 記録を追加すること。
+- **指摘4 (Minor)**: `resolveConfigDirectoryWithOrigins`/`resolveConfigDirectory` の `envName` サニタイズと `appBaseDir`/`ctx.CurrentDirectory` の `null`/空文字ガードを追加すること。
+- **指摘5 (Minor)**: `tryDeleteTempFile` で削除失敗時に `eprintfn "[WARN] ..."` を出力すること。
+- **指摘6 (Suggestion)**: 設問 3 の `retryIo` / `writeAtomicWithRetry` / `SerializeToNode` / `List.tryPick` / `getStringProp` / `loadDirectoryLayers` 簡素化リファクタを実施すること。
+
+---
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし（`Critical`: 0、`Major`: 3、`Minor`: 2、`Suggestion`: 1）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー（`pg-implementer` 修正後に Cycle 2 再レビュー）
+- **承認者**: PG Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 2.1 (Cycle 1 - QA Reviewer / Adversarial QA)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: 2.1 Settings.fs の実装および State.fs 保存先隔離の前倒し適用
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_apply_impl.md
+- **対象成果物**: src/TagBasedVideoManager.Renamer/Settings.fs, src/TagBasedVideoManager.Renamer/State.fs
+
+---
+
+## 1. 挑戦的設問への回答
+
+### 設問1: 暗黙の前提とその破綻時の挙動
+
+- `parsePartial` の `File.ReadAllText` が `try` 外にありロック中/権限拒否でクラッシュ（`ADV-01`）。
+- `savePatch` が既存 JSON の重複キーで `ArgumentException` クラッシュ（`ADV-03a/b`）。
+- `parsePartial` の `rules` 配列が `[ null ]` や必須項目欠落・PascalCase 要素を無警告通過させ `NullReferenceException` 源を返す（`ADV-04a/b/c`）。
+- `savePatch` L749 が空/空白/`null` パスで `ArgumentException`/`ArgumentNullException` クラッシュ（`ADV-02_*`）。
+- `ctx.CurrentDirectory = null` で `ArgumentNullException`（`ADV-06a`）、相対 `jsonPathOpt = Some "appsettings.json"` で `SavePath` 不整合（`ADV-06b`）。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- **破壊テストコード**: 一時スクラッチ `adversarial_qa_task2_1.fsx` / `adversarial_qa_task2_1_extra.fsx`（実行後削除済み）
+- **実行コマンド**: `dotnet fsi ...\adversarial_qa_task2_1.fsx`
+- **実行判定**: **バグ検出（Red / 14 観点中 11 件失敗）**
+  - `ADV-01` 排他ロック読込: `IOException` 未処理クラッシュ
+  - `ADV-02_{empty,whitespace,null}`: `ArgumentException` / `ArgumentNullException` 未処理クラッシュ
+  - `ADV-03a/b` 重複キー既存 JSON の `savePatch`: `ArgumentException: An item with the same key has already been added.`
+  - `ADV-04a/b/c` `rules: [null]`, `[{id:"partial-only"}]`, PascalCase 要素: `Warnings=[]` かつ `null` 混入
+  - `ADV-06a/b` `CurrentDirectory = null` / 相対 `jsonPathOpt`: `ArgumentNullException` / `SavePath="appsettings.json"`
+  - `ADV-05a/b`, `ADV-07a`, `ADV-08`, `ADV-09〜14`: 通過（堅牢）
+
+---
+
+## 3. 指摘事項
+
+- **指摘1 (Critical)**: `parsePartial` のファイル読込に `try ... with` + リトライ保護を追加し、`Error ex.Message` 経由で `Warnings` に記録し安全起動すること。
+- **指摘2 (Critical)**: `savePatch` で重複キー既存 JSON に対して `ArgumentException` クラッシュしないよう `JsonDocument` 正規化や例外ハンドラを含め `SettingsError (ParseJson)` または安全な後勝ち上書きで保護すること。
+- **指摘3 (Critical)**: `parsePartial` の `rules` 配列要素で `[ null ]`・必須文字列フィールド（`Id`/`Name`/`Pattern`/`PromptInstruction`）欠損/`null`（および不正 PascalCase 不備要素）を検出し `ParseWarnings` に記録して安全フォールバックすること。
+- **指摘4 (Major)**: `savePatch` L749 の `String.IsNullOrWhiteSpace(filePath)` ガードと `Path.GetFullPath` の `try ... with` 保護を追加し `Error (IoError ...)` を返すこと。
+- **指摘5 (Minor)**: `ctx.CurrentDirectory` の `null`/空白ガードと、`jsonPathOpt` 相対パス時の `Path.GetFullPath` ベース `SavePath` 解決を行うこと。
+- **指摘6 (Suggestion)**: `moveFileWithRetry` / `readAllTextWithRetry`・`getStringProp`・`pickRules` の共通化（なお `State.fs` L114 未使用 `defaultSettingsPath` は Task 2.3 で整理）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし（Critical 3・Major 1・Minor 1・Suggestion 1）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー（`pg-implementer` で修正後、全テスト＋Adversarial QA 再実行）
+- **承認者**: QA Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 2.1 (Cycle 2 - PG Reviewer)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: 2.1 Settings.fs の実装および State.fs 保存先隔離の前倒し適用（Cycle 2 再レビュー）
+- **レビュアー**: pg
+- **使用プロトコル**: openspec/templates/checklist_apply_impl.md
+- **対象成果物**: src/TagBasedVideoManager.Renamer/Settings.fs, src/TagBasedVideoManager.Renamer/State.fs
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: 暗黙の前提（都合の良い思い込み）の告発と Cycle 1 指摘 1〜4 の解消確認（checklist §2.1）
+
+- **確認内容・回答**:
+  - 指摘 1 解消（`parsePartial` 読込保護）：`try ... with ex -> Error ex.Message` と `retryIo 3 10` を適用。
+  - 指摘 2 解消（`savePatch` 例外保護と重複キー対応）：空パスガード＋外側 `try ... with`、`JsonDocument.Parse`＋`jsonElementToNode` 後勝ち正規化。
+  - 指摘 3 解消（`rules` 検証）：`EnumerateArray()` と `NamingRule` 必須文字列 4 項目の `isNull` 検証で `NullReferenceException` を遮断。
+  - 指摘 4 解消（境界ガード）：`sanitizeEnvironmentName`・`safeAppBaseDir`・`safeCurrentDir`・`Path.GetFullPath` ガードを徹底。
+- **確認根拠**:
+  - `src/TagBasedVideoManager.Renamer/Settings.fs` L200-211, L272-365, L510-574, L606-714, L750-835
+
+### 設問2: 例外の握りつぶし・設計整合（checklist §2.2）
+
+- **確認内容・回答**: `tryDeleteTempFile` で `eprintfn "[WARN] ..."` を出力し、API キー平文漏洩なし・`design.md` 整合・日本語 XML コメント準拠。
+- **確認根拠**: `src/TagBasedVideoManager.Renamer/Settings.fs` L193-197、`State.fs` L264-270
+
+### 設問3: 30%コード削減・DRY リファクタリング確認（checklist §3）
+
+- **確認内容・回答**: `retryIo`, `writeAtomicWithRetry`, `SerializeToNode`, `List.tryPick`, `getStringProp`, `List.fold` が適切に適用されている。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（QA Reviewer 記録を参照）。
+
+---
+
+## 3. 指摘事項
+
+なし（Cycle 1 の指摘 1〜6 全解消確認、非 Deploy テスト全 419 件 Pass）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（`Critical`: 0、`Major`: 0、`Minor`: 0、`Suggestion`: 0）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: QA Reviewer Cycle 2 記録へ続く
+- **承認者**: PG Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 2.1 (Cycle 2 - QA Reviewer / Adversarial QA)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: 2.1 Settings.fs の実装および State.fs 保存先隔離の前倒し適用（Cycle 2 再レビュー）
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_apply_impl.md
+- **対象成果物**: src/TagBasedVideoManager.Renamer/Settings.fs, src/TagBasedVideoManager.Renamer/State.fs
+
+---
+
+## 1. 挑戦的設問への回答
+
+### 設問1: 暗黙の前提解消確認
+
+- `parsePartial` I/O 保護、`savePatch` 重複キー `jsonElementToNode` 正規化、`rules` 要素 `null`/必須項目検証、`savePatch`/`save` の空/`null` パスガード、`ConfigLoadContext`/`jsonPathOpt` 相対パス解決すべて解消を確認（`State.fs` L114 未使用 `defaultSettingsPath` は Task 2.3 で整理予定）。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- **破壊テストコード**: 一時スクラッチ `adversarial_qa_task2_1_cycle2.fsx` / `adversarial_qa_task2_1_c2_edge.fsx`（実行後削除済み）
+- **実行コマンド**: `dotnet fsi ...\adversarial_qa_task2_1_cycle2.fsx` および `...\adversarial_qa_task2_1_c2_edge.fsx`
+- **実行判定**: **堅牢性確認（Green / TOTAL FAILURES: 0）**
+  - `ADV-01`（排他ロック読込）、`ADV-02`（空/空白/`null`/不正パス）、`ADV-03a/b/c`（重複キー・`jsonElementToNode` 巨大数値・絵文字・ネスト重複）、`ADV-04a~e`（`[null]`・欠損・PascalCase・混在・型違い）、`ADV-05a/b/c`（深ネスト70・コメントのみ JSONC・`Some null`）、`ADV-06a/b/c`（`CurrentDirectory = null`・相対 `jsonPathOpt`・ロック中 `savePatch`）、`ADV-07〜13`、`ADV-EDGE`（63階層境界・`enableWebSearch` 省略互換）の全件で未処理例外なく仕様通り動作を確認。
+
+---
+
+## 3. 指摘事項
+
+なし（419/419 Pass + Adversarial QA 全ケース堅牢確認）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（`Critical`: 0、`Major`: 0、`Minor`: 0、`Suggestion`: 0）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 次タスクへ（Task 2.1 を完了 `[x]` に更新・コミットし、Task 2.2 へ進む）
+- **承認者**: QA Reviewer Agent
