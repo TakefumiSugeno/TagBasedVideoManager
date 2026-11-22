@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="ja" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI File Renamer - Settings &amp; Recovery UX Mockup (#41)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <style>
+      body {
+        background-color: #111111;
+        color: #f4f4f5;
+        font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+      }
+      .mono {
+        font-family: "Cascadia Mono", Consolas, "Meiryo UI", monospace;
+      }
+    </style>
+  </head>
+  <body
+    class="min-h-screen p-4"
+    x-data="{
+      state: 'placeholder_error',
+      showTooltip: false,
+      ruleNameInput: '作品番号_タイトル_演者',
+      rules: [
+        { id: 'r1', name: '品番_要約_出演者(推奨)', pattern: '{Code}_{Summary}_{Actor}.mp4', web: true },
+        { id: 'r2', name: '短縮', pattern: '{ShortTitle}.mp4', web: false }
+      ],
+      selectedModel: 'google/gemini-2.0-flash-exp:free',
+      get isModalOpen() { return this.state === 'modal_save_error' || this.state === 'modal_recovered'; },
+      get banner() {
+        if (this.state === 'zero_missing') {
+          return {
+            type: 'error',
+            text: '⚠️ OpenRouter APIキーが未設定のため、AI提案はスキップされました（手動編集・リネームは可能です）。設定ファイル (C:\\Users\\demo\\repos\\TagBasedVideoManager\\src\\TagBasedVideoManager.Renamer\\appsettings.Production.json) に { \"apiKey\": \"sk-or-v1-...\" } の形式で設定後、「🔄 設定を再読込」をクリックしてください。'
+          };
+        }
+        if (this.state === 'placeholder_error') {
+          return {
+            type: 'error',
+            text: '⚠️ OpenRouter APIキーがプレースホルダー値 (\'xxx\') のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。設定ファイル (C:\\Users\\demo\\repos\\TagBasedVideoManager\\src\\TagBasedVideoManager.Renamer\\appsettings.Development.json) の apiKey に有効なキーを設定後、「🔄 設定を再読込」をクリックしてください。'
+          };
+        }
+        if (this.state === 'startup_syntax_warn') {
+          return {
+            type: 'error',
+            text: '⚠️ 設定ファイル (appsettings.Development.json) のJSON構文または apiKey 形式 ({ \"value\": ... }) が不正なため、下位設定または既定値で起動しました。文字列形式 \"apiKey\": \"sk-or-v1-...\" へ修正後、「🔄 設定を再読込」をクリックしてください。'
+          };
+        }
+        if (this.state === 'reloaded_ok' || this.state === 'modal_recovered') {
+          return {
+            type: 'info',
+            text: '💡 設定ファイルを再読込／保存しました (appsettings.Development.json)。他の設定キー（apiKey, targetDirectory 等）および画面で選択中のフォルダはそのまま保持されています。'
+          };
+        }
+        if (this.state === 'modal_save_error') {
+          return {
+            type: 'error',
+            text: '❌ 設定の保存に失敗しました（保存先: C:\\Users\\demo\\repos\\TagBasedVideoManager\\src\\TagBasedVideoManager.Renamer\\appsettings.Development.json / 段階: AtomicMove / 試行: 5回）: アクセスが拒否されました（読み取り専用）。メモリ上の変更はロールバックされ、編集中の入力内容は保持されています。'
+          };
+        }
+        return null;
+      },
+      reloadSettings() {
+        if (this.isModalOpen) {
+          this.state = 'modal_recovered';
+        } else {
+          this.state = 'reloaded_ok';
+        }
+      },
+      dismissBanner() {
+        if (!this.isModalOpen) {
+          this.state = 'normal';
+        } else {
+          this.state = 'modal_recovered';
+        }
+      },
+      simulateModalRecoverySave() {
+        this.rules = [
+          ...this.rules,
+          { id: 'r3', name: this.ruleNameInput, pattern: '{Code}_{Title}.mp4', web: true }
+        ];
+        this.state = 'modal_recovered';
+      }
+    }"
+  >
+    <!-- モック状態切替コントロールバー (プレビュー・シミュレーション専用、アプリUI外) -->
+    <div
+      class="mx-auto mb-4 max-w-[1100px] rounded-lg border border-zinc-700 bg-zinc-900/90 p-3"
+    >
+      <div class="mb-2 flex items-center justify-between">
+        <span class="text-xs font-bold tracking-wide text-blue-400">
+          🎨 Single Source of Design Mockup — Issue #41 設定解決・エラー視認・回復導線
+        </span>
+        <span class="text-[11px] text-zinc-400">
+          アプリ枠外の状態切替コントローラで各シナリオをシミュレーションできます
+        </span>
+      </div>
+      <div class="flex flex-wrap gap-2 text-xs">
+        <button
+          @click="state = 'normal'"
+          :class="state === 'normal' ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'"
+          class="rounded px-2.5 py-1 font-medium transition"
+        >
+          1. 正常・初期状態
+        </button>
+        <button
+          @click="state = 'zero_missing'"
+          :class="state === 'zero_missing' ? 'bg-red-700 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'"
+          class="rounded px-2.5 py-1 font-medium transition"
+        >
+          2. Zero-State (APIキー未設定)
+        </button>
+        <button
+          @click="state = 'placeholder_error'"
+          :class="state === 'placeholder_error' ? 'bg-red-700 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'"
+          class="rounded px-2.5 py-1 font-medium transition"
+        >
+          3. プレースホルダー検出 (出典パス明示)
+        </button>
+        <button
+          @click="state = 'startup_syntax_warn'"
+          :class="state === 'startup_syntax_warn' ? 'bg-amber-700 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'"
+          class="rounded px-2.5 py-1 font-medium transition"
+        >
+          4. 起動時JSON構文/旧形式警告
+        </button>
+        <button
+          @click="state = 'modal_save_error'"
+          :class="state === 'modal_save_error' ? 'bg-red-700 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'"
+          class="rounded px-2.5 py-1 font-medium transition"
+        >
+          5a. モーダル内保存エラー＆ロールバック
+        </button>
+        <button
+          @click="simulateModalRecoverySave()"
+          :class="state === 'modal_recovered' ? 'bg-emerald-700 text-white' : 'bg-zinc-800 text-emerald-300 hover:bg-zinc-700'"
+          class="rounded border border-emerald-700/60 px-2.5 py-1 font-medium transition"
+        >
+          5b. (Sim) 権限回復後の再保存成功
+        </button>
+      </div>
+    </div>
+
+    <!-- アプリケーションウィンドウ枠 (1100x720 Fluent Dark 再現) -->
+    <div
+      class="relative mx-auto flex h-[680px] max-w-[1100px] flex-col overflow-hidden rounded-lg border border-zinc-700 bg-[#1a1a1a] p-3 shadow-2xl"
+    >
+      <!-- メイン画面上部 Error / Info Banner (モーダル非表示時のみ描画：二重バナー抑止) -->
+      <template x-if="banner && !isModalOpen">
+        <div
+          class="mb-2 flex items-center justify-between gap-3 rounded-md border px-3 py-1.5 text-xs"
+          :class="banner.type === 'info'
+            ? 'border-blue-500 bg-[#1e3a8a] text-[#93c5fd]'
+            : 'border-red-500/70 bg-[#3b1518] text-red-200'"
+        >
+          <p class="select-text break-all leading-relaxed" x-text="banner.text"></p>
+          <div class="flex shrink-0 items-center gap-1.5">
+            <button
+              @click="reloadSettings()"
+              class="rounded border px-2 py-0.5 text-[11px] font-medium transition hover:brightness-125"
+              :class="banner.type === 'info' ? 'border-blue-400 bg-white/10' : 'border-red-400/70 bg-white/10'"
+            >
+              🔄 設定を再読込
+            </button>
+            <button
+              class="rounded border px-2 py-0.5 text-[11px] font-medium transition hover:brightness-125"
+              :class="banner.type === 'info' ? 'border-blue-400 bg-white/10' : 'border-red-400/70 bg-white/10'"
+            >
+              📋 コピー
+            </button>
+            <button
+              @click="dismissBanner()"
+              class="px-1.5 py-0.5 text-xs opacity-80 hover:opacity-100"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      </template>
+
+      <!-- Docker ステータス & 環境・保存先バッジバー -->
+      <div
+        class="mb-2 flex items-center justify-between rounded-md border border-zinc-700/80 bg-[#242424] px-3 py-2"
+      >
+        <div class="flex items-center gap-2">
+          <span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+          <span class="text-xs font-semibold text-zinc-100">コンテナ稼働中</span>
+          <span class="mono text-[11px] text-zinc-400">tag-based-video-manager</span>
+
+          <!-- Active Environment & Save Target Badge -->
+          <div
+            class="relative ml-2 flex cursor-help items-center gap-1.5"
+            @mouseenter="showTooltip = true"
+            @mouseleave="showTooltip = false"
+          >
+            <span
+              class="rounded border border-[#1d4ed8] bg-[#172554] px-1.5 py-0.5 text-[10px] font-bold text-[#93c5fd]"
+              x-text="state === 'zero_missing' ? 'ENV: Production' : 'ENV: Development'"
+            ></span>
+            <span
+              class="mono text-[11px] text-zinc-400"
+              x-text="state === 'zero_missing' ? '💾 appsettings.Production.json' : '💾 appsettings.Development.json'"
+            ></span>
+            <div
+              x-show="showTooltip"
+              class="absolute left-0 top-7 z-20 whitespace-nowrap rounded border border-zinc-600 bg-zinc-900 px-2.5 py-1 text-[11px] text-zinc-200 shadow-lg"
+            >
+              保存先: C:\Users\demo\repos\TagBasedVideoManager\src\TagBasedVideoManager.Renamer\appsettings.Development.json
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+          <span class="rounded bg-zinc-800 px-2.5 py-1 text-zinc-300">↻ 再起動</span>
+          <span class="rounded bg-zinc-800 px-2.5 py-1 text-zinc-300">■ 停止</span>
+        </div>
+      </div>
+
+      <!-- コントロールパネル (常設「🔄 設定を再読込」ボタン配置) -->
+      <div
+        class="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-700/80 bg-[#242424] px-3 py-2 text-xs"
+      >
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-zinc-400">AIモデル:</span>
+          <select
+            x-model="selectedModel"
+            class="mono rounded border border-zinc-600 bg-[#1a1a1a] px-2 py-1 text-xs text-zinc-100"
+          >
+            <option value="google/gemini-2.0-flash-exp:free">
+              google/gemini-2.0-flash-exp:free
+            </option>
+          </select>
+          <span class="text-zinc-400">命名規則:</span>
+          <span class="rounded border border-zinc-600 bg-[#1a1a1a] px-2 py-1 text-zinc-200" x-text="rules[0].name"></span>
+          <button
+            @click="state = 'modal_save_error'"
+            class="rounded border border-zinc-600 bg-zinc-800 px-2.5 py-1 text-zinc-200 hover:bg-zinc-700"
+          >
+            ⚙ 管理...
+          </button>
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            @click="reloadSettings()"
+            class="rounded border border-zinc-600 bg-zinc-800 px-2.5 py-1 text-zinc-200 hover:bg-zinc-700"
+          >
+            🔄 設定を再読込
+          </button>
+          <button
+            class="rounded bg-blue-600 px-3 py-1 font-semibold text-white hover:bg-blue-500"
+          >
+            ⚡ 抽出 ＆ AI提案を実行
+          </button>
+        </div>
+      </div>
+
+      <!-- 候補一覧エリア (ダミーサンプルカード) -->
+      <div class="flex-1 overflow-y-auto rounded-md border border-zinc-800 bg-[#141414] p-3">
+        <div class="rounded-md border border-blue-600/80 bg-[#1e1e1e] p-3 text-xs">
+          <div class="mb-2 flex items-center justify-between">
+            <span class="mono text-zinc-300">
+              ☑ D:\Videos\very_long_sample_video_file_name_exceeding_240_characters.mp4
+            </span>
+            <div class="flex items-center gap-2">
+              <span
+                class="rounded px-2 py-0.5 text-[11px] font-bold"
+                :class="state === 'reloaded_ok' || state === 'normal'
+                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
+                  : 'bg-red-950 text-red-300 border border-red-700'"
+                x-text="state === 'reloaded_ok' || state === 'normal' ? '✓ 準備完了' : '⚠️ APIキー要確認'"
+              ></span>
+              <button
+                @click="state === 'reloaded_ok' ? state = 'normal' : null"
+                class="rounded border border-zinc-600 bg-zinc-800 px-2 py-0.5 text-[11px] hover:bg-zinc-700"
+              >
+                ↻ この項目を再試行
+              </button>
+            </div>
+          </div>
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-2 rounded bg-[#2a181a] px-2 py-1">
+              <span class="w-40 shrink-0 font-bold text-red-300">BEFORE (256字)</span>
+              <span class="mono truncate text-zinc-200">
+                very_long_sample_video_file_name_exceeding_240_characters.mp4
+              </span>
+            </div>
+            <div class="flex items-center gap-2 rounded bg-[#142920] px-2 py-1">
+              <span class="w-40 shrink-0 font-bold text-emerald-300">AFTER (256字 [危険])</span>
+              <span class="mono truncate text-zinc-200">
+                very_long_sample_video_file_name_exceeding_240_characters.mp4
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ルール管理モーダル (960x680 / 上部に共通 errorBanner を配置) -->
+      <template x-if="isModalOpen">
+        <div
+          class="absolute inset-0 z-30 flex items-center justify-center bg-black/70 p-4"
+        >
+          <div
+            class="flex h-[580px] w-[880px] flex-col rounded-lg border border-zinc-600 bg-[#242424] shadow-2xl"
+          >
+            <!-- モーダルヘッダー -->
+            <div
+              class="flex items-center justify-between border-b border-zinc-700 px-4 py-3"
+            >
+              <div>
+                <h2 class="text-sm font-bold text-white">⚙ 命名規則マネージャー</h2>
+                <p class="text-[11px] text-zinc-400">
+                  保存先: appsettings.Development.json（rules キーのみ Patch Save）
+                </p>
+              </div>
+              <button
+                @click="state = 'normal'"
+                class="rounded px-2 py-1 text-zinc-400 hover:bg-zinc-700 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <!-- モーダル内 Error / Info Banner (実装の errorBanner と同一の 3 ボタン構成) -->
+            <template x-if="banner">
+              <div
+                class="mx-4 mt-3 flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs"
+                :class="banner.type === 'info'
+                  ? 'border-blue-500 bg-[#1e3a8a] text-[#93c5fd]'
+                  : 'border-red-500/80 bg-[#3b1518] text-red-200'"
+              >
+                <p class="select-text break-all leading-relaxed" x-text="banner.text"></p>
+                <div class="flex shrink-0 items-center gap-1.5">
+                  <button
+                    @click="reloadSettings()"
+                    class="rounded border px-2 py-0.5 text-[11px] font-medium transition hover:brightness-125"
+                    :class="banner.type === 'info' ? 'border-blue-400 bg-white/10' : 'border-red-400/70 bg-white/10'"
+                  >
+                    🔄 設定を再読込
+                  </button>
+                  <button
+                    class="rounded border px-2 py-0.5 text-[11px] font-medium transition hover:brightness-125"
+                    :class="banner.type === 'info' ? 'border-blue-400 bg-white/10' : 'border-red-400/70 bg-white/10'"
+                  >
+                    📋 コピー
+                  </button>
+                  <button
+                    @click="state = 'normal'"
+                    class="px-1.5 py-0.5 text-xs opacity-80 hover:opacity-100"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <!-- 2ペイン本体 -->
+            <div class="grid flex-1 grid-cols-12 gap-4 overflow-hidden p-4 text-xs">
+              <!-- 左ペイン: ルール一覧 (ロールバックで元の2件を維持) -->
+              <div class="col-span-5 flex flex-col rounded border border-zinc-700 bg-[#1a1a1a] p-3">
+                <div class="mb-2 flex items-center justify-between">
+                  <span class="font-semibold text-zinc-200" x-text="`登録済みルール (${rules.length}件)`"></span>
+                  <span class="text-[11px] text-zinc-400">先頭が起動時既定</span>
+                </div>
+                <div class="space-y-2 overflow-y-auto">
+                  <template x-for="(rule, i) in rules" :key="rule.id">
+                    <div class="rounded border border-zinc-700 bg-[#242424] p-2">
+                      <div class="flex items-center justify-between font-semibold text-zinc-100">
+                        <span x-text="`${i === 0 ? '★ ' : ''}${rule.name}`"></span>
+                        <span class="text-[10px] text-zinc-400">▲ ▼ ✏️ 🗑</span>
+                      </div>
+                      <div class="mono mt-1 text-[11px] text-zinc-400" x-text="rule.pattern"></div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+
+              <!-- 右ペイン: 編集フォーム (失敗時も入力を保持) -->
+              <div class="col-span-7 flex flex-col rounded border border-zinc-700 bg-[#1a1a1a] p-3">
+                <div class="mb-2 font-semibold text-blue-300">➕ ルール追加 / 編集</div>
+                <label class="mb-1 text-zinc-400">ルール名</label>
+                <input
+                  type="text"
+                  x-model="ruleNameInput"
+                  class="mb-3 rounded border border-zinc-600 bg-[#242424] px-2.5 py-1.5 text-zinc-100"
+                />
+                <label class="mb-1 text-zinc-400">命名パターン (テンプレート):</label>
+                <input
+                  type="text"
+                  value="{Code}_{Title}"
+                  class="mono mb-3 rounded border border-zinc-600 bg-[#242424] px-2.5 py-1.5 text-zinc-100"
+                />
+                <label class="mb-1 text-zinc-400">プロンプト指示文</label>
+                <textarea
+                  rows="4"
+                  class="mb-3 flex-1 rounded border border-zinc-600 bg-[#242424] p-2 text-zinc-100"
+                >ファイル名から品番とタイトルを抽出し200文字以内に短縮してください。</textarea>
+                <div class="flex justify-end gap-2">
+                  <button
+                    @click="state = 'normal'"
+                    class="rounded border border-zinc-600 px-3 py-1.5 text-zinc-300 hover:bg-zinc-700"
+                  >
+                    閉じる
+                  </button>
+                  <button
+                    @click="state === 'modal_save_error' ? simulateModalRecoverySave() : state = 'modal_save_error'"
+                    class="rounded bg-blue-600 px-3 py-1.5 font-semibold text-white hover:bg-blue-500"
+                  >
+                    💾 この内容で保存
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </body>
+</html>
