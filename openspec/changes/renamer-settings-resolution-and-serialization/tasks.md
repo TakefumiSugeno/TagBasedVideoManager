@@ -39,7 +39,7 @@
   - **実ファイル保護のための安全前倒し**: `State.fs` の `saveSettingsWithFeedback` が空でない `model.SettingsSavePath` を優先使用する 2 行の保護修正を同時に適用し、以降の全テスト実行で開発者の実 `appsettings.Development.json` が絶対に書き換わらない状態にする。
   - `dotnet test --filter "FullyQualifiedName~SettingsTests"` が全件 Green になることを確認する。
 
-- [ ] 2.2 `State.fs` / `Views.fs` 向け先行失敗テストの作成・Red 確認（`qa-tester` — `StateTests.fs`, `RenameIntegrationE2ETests.fs`）
+- [x] 2.2 `State.fs` / `Views.fs` 向け先行失敗テストの作成・Red 確認（`qa-tester` — `StateTests.fs`, `RenameIntegrationE2ETests.fs`）
   - **コンパイル整合手順**: `State.fs` / `Views.fs` へ最小シグネチャスタブ（`ApiKeySourcePath`, `AiPipelineRunId`, `ReloadSettings`, `SettingsLoadedWithMeta`, `CandidateAiProcessing of Guid * string`, `CandidateAiProposed of Guid * RenameProposal`, `AllAiProposalsCompleted of Guid`, `State.initWithContext`, `State.updateWithContext`, `Views.shouldDispatchModelSelection`）を配置し、既存の `StateTests.fs` における `CandidateAiProcessing` / `CandidateAiProposed` / `AllAiProposalsCompleted` 呼出箇所を `runId` 対応に更新してビルドを通した上で Red を確認する。
   - `UT-RED-04`（`RetryCandidateAiProposal` のプレースホルダー検証欠落再現）。
   - `ST-INIT-01`〜`02`（`initWithContext` 経由での起動時二重ロード廃止、`Warnings` の `ErrorMessage` 画面バナー反映）。

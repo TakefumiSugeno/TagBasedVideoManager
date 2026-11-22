@@ -1332,3 +1332,143 @@
 - **保留指摘（申し送り）**: なし
 - **次のアクション**: 次タスクへ（Task 2.1 を完了 `[x]` に更新・コミットし、Task 2.2 へ進む）
 - **承認者**: QA Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 2.2 (Cycle 1)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: 2.2 `State.fs` / `Views.fs` 向け先行失敗テストの作成・Red 確認（`StateTests.fs`, `RenameIntegrationE2ETests.fs`）
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_apply_test.md
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/State.fs`, `src/TagBasedVideoManager.Renamer/Views.fs`, `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs`, `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: トートロジーテスト（実装式のコピペ）と形式的アサーションの告発（checklist §1）
+
+- **確認内容・回答**:
+  - 期待値は具体的固定リテラル・フィクスチャ値で記述され実装計算式のコピペはない。
+  - ただし `RenameIntegrationE2ETests.fs` L2117-2146（`E2E-07`）で `capturedDispatch ReloadSettings` 後に `ReloadSettings` 処理完了・`SelectedModel = "model-B"` 更新・UI スレッド再描画完了をアサートしておらず、空振りでも Pass してしまう。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs` L1534-2345
+  - `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs` L1727-2147
+
+### 設問2: 甘いアサーション・無意味なモックの告発（checklist §2）
+
+- **確認内容・回答**:
+  - 既存テスト追従 `StateTests.fs` L1062-1091 で `ApiKey = None` のまま `ScanCompleted` を呼び `Option.defaultValue Guid.Empty` で `CandidateAiProposed` を検証しており、Task 2.3 の `runId` ガード導入と衝突する。
+  - `E2E-05` の `Bounds` 重なり検査にコントロールパネル他要素（管理/中止ボタン・`ComboBox` 等）が含まれていない。
+  - `ST-INIT-02`（L1605）で構文エラー内容文言、`ST-RETRY-01` / `ST-SCAN-01` で `oldCts.Dispose()` 済み検証が不足。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs` L1062-1126, L1602-1645, L1848-1864
+  - `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs` L2004-2068, L2117-2146
+
+### 設問3: ミューテーション思考（バグのすり抜け検証）（checklist §3）
+
+- **確認内容・回答**:
+  1. `ST-SCAN-04` / `ST-SCAN-05` で `IsRequestingAi = true` 中から直接 `ScanCompleted`（`Ok []`, `Error _`, `PlaceholderApiKey`, `MissingApiKey`）を呼ぶ検証および `MissingApiKey` 割り込み検証が不足し、`ScanCompleted` 側非 AI 分岐のリセット削除がすり抜ける。
+  2. `ST-RELOAD-01`〜`03` で `Warnings` 非空時の警告維持分岐（`💡` で上書きしないこと）や `SelectedModel`/`CurrentThreshold` 更新検証が不足。
+  3. `ST-RULE-05`（L2282, L2312-2320）で削除対象と同一 ID 編集中の `EditingRule` 保持と破損 JSON 内容不変が未検証。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs` L1648-1828, L2025-2094, L2276-2345
+  - `openspec/changes/renamer-settings-resolution-and-serialization/design.md` L166-179
+
+### 設問4: フレーキー要因・TDD原則・スタブ最小性の確認（checklist §4）
+
+- **確認内容・回答**:
+  - `State.fs` / `Views.fs` は最小スタブ・コンパイル整合のみ、`SettingsLoadedWithMeta` 省略、9 PNG ファイル名一致、`Skip`/`Ignore` 0 件、タブ/行末空白 0 件、`appsettings*.json` 無変更。
+  - 親エージェント側で `StateTests` + `RenameIntegrationE2ETests` 合計 95 件（既存 64 Pass、新規 31 全件 Red、Skip 0）を確認済み。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（Apply テストレビューフェーズのため `checklist_apply_test.md` 観点のみ実施）。
+
+---
+
+## 3. 指摘事項
+
+- **指摘1 (Major)**: `StateTests.fs` L1062-1091 の既存回帰テスト追従で `ApiKey = None` のまま `CandidateAiProposed (Guid.Empty, ...)` を発行しており、有効 `ApiKey` と有効 `Some runId` 発行＋`CTS` 破棄保護へ修正すること。
+- **指摘2 (Major)**: `ST-SCAN-04` / `ST-SCAN-05` に `IsRequestingAi = true` 状態から直接 `ScanCompleted` 全非 AI 分岐（`Ok []`, `Error _`, `PlaceholderApiKey`, `MissingApiKey`）を呼ぶ検証および `MissingApiKey` 割り込み再スキャン検証を追加すること。
+- **指摘3 (Major)**: `E2E-07`（L2117-2146）で UI スレッドジョブ消化後に `ReloadSettings` 処理記録・`SelectedModel = "model-B"` 更新・`ComboBox` 更新を必須アサートすること。
+- **指摘4 (Major)**: `ST-RELOAD-01`〜`03` に `Warnings` 非空時の警告表示維持分岐と `SelectedModel` / `CurrentThreshold` 更新検証を追加すること。
+- **指摘5 (Minor)**: ① `E2E-05` の重なり検査へコントロールパネル隣接ボタン・`ComboBox` を追加、② `ST-RETRY-01` / `ST-SCAN-01` で `oldCts.Dispose()` 済み確認、③ `ST-INIT-02` で構文エラー内容確認、④ `ST-RULE-05` で削除対象と同一 ID 編集中の `EditingRule` 保持と破損 JSON 内容不変を確認すること。
+
+---
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし（Major 1〜4・Minor 5 修正後に Cycle 2 再レビューを実施）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー（`qa-tester` で修正し Red 再確認後、`qa-reviewer` Cycle 2 を実施）
+- **テスト品質評価**: 要改善
+- **承認者**: QA Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 2.2 (Cycle 2)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: 2.2 `State.fs` / `Views.fs` 向け先行失敗テストの作成・Red 確認（Cycle 2 再レビュー）
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_apply_test.md
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/State.fs`, `src/TagBasedVideoManager.Renamer/Views.fs`, `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs`, `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs`
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: トートロジーテスト・形式的アサーションの解消確認（checklist §1）
+
+- **確認内容・回答**:
+  - 指摘 3 解消（`E2E-07` L2134-2184）：`Dispatcher.UIThread.RunJobs()` と `w.UpdateLayout()` を挟んで、`ReloadSettings` 処理記録・`SelectedModel = "model-B"` 更新・可視 `ComboBox` 追従・`ModelSelected` 非誤発火を必須アサートするよう修正された。
+  - 全 31 件の新規テストとも固定リテラル・フィクスチャ期待値で検証されトートロジーなし。
+
+### 設問2: 甘いアサーション・無意味なモックの解消確認（checklist §2）
+
+- **確認内容・回答**:
+  - 指摘 1 解消（`StateTests.fs` L1062-1133）：回帰テストへ有効 API キーと CTS `Dispose()` 保護を追加し Task 2.3 の `runId` ガードと完全整合。
+  - 指摘 5-(1)(3) 解消：`E2E-05` 重なり検査に `⚙ 管理...`, `⏹ 中止`, `ComboBox` 群を追加し、`ST-INIT-02` に構文解析エラー文言検証を追加した。
+
+### 設問3: ミューテーション思考（バグのすり抜け検証）の解消確認（checklist §3）
+
+- **確認内容・回答**:
+  - 指摘 2 解消（`ST-SCAN-04` L1736-1763, `ST-SCAN-05` L1846-1870）：`ScanCompleted` 全非 AI 分岐（`Ok []`, `Error _`, `PlaceholderApiKey`, `MissingApiKey`）直接リセット検証と `MissingApiKey` 割り込み再スキャン検証を追加。
+  - 指摘 4 解消（`ST-RELOAD-01` L2118-2148）：`SelectedModel`/`PathLengthThreshold`/`CurrentThreshold` 更新と構文エラー・旧形式 `Warnings` 非上書き維持を検証。
+  - 指摘 5-(2)(4) 解消：`ST-SCAN-01` / `ST-RETRY-01` に `oldCts.Dispose()` 検証、`ST-RULE-05` に同一 ID `"r2"` 編集中 `EditingRule` 保持と破損 JSON 不変検証を追加。
+
+### 設問4: フレーキー要因・環境依存・TDD原則・実行結果の最終確認（checklist §4）
+
+- **確認内容・回答**:
+  - 隔離安全性維持、`Skip`/`Ignore` 0 件、行末空白・タブ 0 件、`appsettings*.json` 無変更。
+  - 親エージェント再実行結果（`dotnet test ... --filter-class StateTests --filter-class RenameIntegrationE2ETests`）：ビルドエラー 0 件、**合計: 95, 失敗: 31 (新規 31 全件 Red), 成功: 64, スキップ済み: 0** を確認済み。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（Apply テストレビューフェーズのため `checklist_apply_test.md` 観点のみ実施）。
+
+---
+
+## 3. 指摘事項
+
+なし（Cycle 1 の指摘 1〜5 すべてが解消され、新たな指摘なし）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（`Critical`: 0 件、`Major`: 0 件、`Minor`: 0 件、`Suggestion`: 0 件）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 次タスクへ（Task 2.2 完了処理後、Task 2.3 `State.fs`・`Views.fs`・`OpenRouterClient.fs` の本実装へ進行）
+- **テスト品質評価**: 堅牢（合格）
+- **承認者**: QA Reviewer Agent

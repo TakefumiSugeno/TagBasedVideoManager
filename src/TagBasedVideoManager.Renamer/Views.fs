@@ -103,6 +103,10 @@ type SpinnerControl () as this =
 
 module Views =
 
+    /// <summary>モデル選択 ComboBox の変更イベントで ModelSelected を発火すべきかを判定する同値ガード（Task 2.2 先行スタブ）</summary>
+    let shouldDispatchModelSelection (_currentModel: string) (_selectedItemOpt: string option) : string option =
+        raise (NotImplementedException("Task 2.2 stub: Views.shouldDispatchModelSelection is not implemented yet."))
+
     let private spinnerView (size: float) (color: Color) (thickness: float) =
         ViewBuilder.Create<SpinnerControl>([
             AttrBuilder<SpinnerControl>.CreateProperty(SpinnerControl.SpinnerSizeProperty, size, ValueNone)

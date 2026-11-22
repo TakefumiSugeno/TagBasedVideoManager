@@ -328,6 +328,8 @@ module RenameIntegrationE2ETests =
             EditingRule = None
             ConfirmDialog = None
             AiCancellationCts = None
+            ApiKeySourcePath = None
+            AiPipelineRunId = None
         }
 
         let renderAndCaptureWithCustomSize (m: Model) (fileName: string) (width: float) (height: float) =
@@ -993,6 +995,8 @@ module RenameIntegrationE2ETests =
             EditingRule = None
             ConfirmDialog = None
             AiCancellationCts = None
+            ApiKeySourcePath = None
+            AiPipelineRunId = None
         }
 
         let w = new Avalonia.FuncUI.Hosts.HostWindow()
@@ -1582,3 +1586,601 @@ module RenameIntegrationE2ETests =
         spinner.Measure(Avalonia.Size(100.0, 100.0))
         spinner.DesiredSize.Width |> should equal 24.0
         spinner.DesiredSize.Height |> should equal 24.0
+
+    // =========================================================================
+    // Phase 2.2 先行失敗テスト (TDD Red: E2E-01 〜 E2E-07)
+    // =========================================================================
+
+    /// <summary>E2E 用の擬似リポジトリ ConfigLoadContext を構築し、実行後に環境変数と一時フォルダを復元・削除する</summary>
+    let private withIsolatedE2ERepoContext (envName: string) (action: string -> string -> string -> ConfigLoadContext -> unit) : unit =
+        SettingsIsolationHarness.withIsolatedSettingsEnvironment (fun _ ->
+            let tempRoot = Path.Combine(Path.GetTempPath(), "RenamerE2ECtx_" + Guid.NewGuid().ToString("N"))
+            let repoDir = Path.Combine(tempRoot, "repo")
+            let renamerDir = Path.Combine(repoDir, "src", "TagBasedVideoManager.Renamer")
+            let appBaseDir = Path.Combine(tempRoot, "bin")
+            let appDataDir = Path.Combine(tempRoot, "appdata")
+            Directory.CreateDirectory(renamerDir) |> ignore
+            Directory.CreateDirectory(appBaseDir) |> ignore
+            Directory.CreateDirectory(appDataDir) |> ignore
+
+            let origDotnet = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+            let origAspnet = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            try
+                Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", envName)
+                Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", null)
+                let ctx: ConfigLoadContext = {
+                    CurrentDirectory = repoDir
+                    AppBaseDirectory = appBaseDir
+                    AppDataDirectory = appDataDir
+                    DotEnvPath = None
+                }
+                action tempRoot repoDir renamerDir ctx
+            finally
+                Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", origDotnet)
+                Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", origAspnet)
+                if Directory.Exists(tempRoot) then
+                    for file in Directory.GetFiles(tempRoot, "*", SearchOption.AllDirectories) do
+                        try
+                            let attrs = File.GetAttributes(file)
+                            if (attrs &&& FileAttributes.ReadOnly) <> enum 0 then
+                                File.SetAttributes(file, FileAttributes.Normal)
+                        with _ -> ()
+                    try Directory.Delete(tempRoot, true) with _ -> ()
+        )
+
+    /// <summary>test/TestResults 配下へ実画面 PNG を保存し、可視コントロールとウィンドウ座標 Bounds を収集する</summary>
+    let private renderModelAndInspect
+        (model: Model)
+        (fileName: string)
+        (width: float)
+        (height: float)
+        : string * (Avalonia.Controls.Control * Avalonia.Rect) list * string list =
+
+        ensureAppInitialized ()
+        let w = new Avalonia.FuncUI.Hosts.HostWindow()
+        w.Width <- width
+        w.Height <- height
+        w.Background <- Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#1a1a1a"))
+
+        Elmish.Program.mkProgram (fun () -> model, Elmish.Cmd.none) State.update Views.view
+        |> Avalonia.FuncUI.Elmish.Program.withHost w
+        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+
+        w.Show()
+        w.UpdateLayout()
+
+        let rec collectVisible (control: Avalonia.Controls.Control) : Avalonia.Controls.Control list =
+            if isNull control || not control.IsVisible then
+                []
+            else
+                let children =
+                    match control with
+                    | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectVisible |> Seq.toList
+                    | :? Avalonia.Controls.ContentControl as cc ->
+                        match cc.Content with
+                        | :? Avalonia.Controls.Control as c -> collectVisible c
+                        | _ -> []
+                    | :? Avalonia.Controls.Decorator as d when not (isNull d.Child) ->
+                        collectVisible d.Child
+                    | _ -> []
+                control :: children
+
+        let visibleControls = collectVisible w
+        let controlRects =
+            visibleControls
+            |> List.choose (fun c ->
+                let ptOpt = c.TranslatePoint(Avalonia.Point(0.0, 0.0), w)
+                if ptOpt.HasValue then
+                    let pt = ptOpt.Value
+                    Some (c, Avalonia.Rect(pt.X, pt.Y, c.Bounds.Width, c.Bounds.Height))
+                else
+                    None
+            )
+
+        let visibleTexts =
+            visibleControls
+            |> List.choose (fun c ->
+                match c with
+                | :? Avalonia.Controls.TextBlock as tb when not (isNull tb.Text) -> Some tb.Text
+                | :? Avalonia.Controls.TextBox as tb when not (isNull tb.Text) -> Some tb.Text
+                | :? Avalonia.Controls.Button as btn when not (isNull btn.Content) && (btn.Content :? string) ->
+                    Some (btn.Content :?> string)
+                | _ -> None
+            )
+
+        let pixelSize = Avalonia.PixelSize(int width, int height)
+        let dpi = Avalonia.Vector(96.0, 96.0)
+        let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
+        rtb.Render(w)
+
+        let repoRoot =
+            SettingsIsolationHarness.tryFindRepoRoot ()
+            |> Option.defaultValue AppContext.BaseDirectory
+        let outputDir = Path.Combine(repoRoot, "test", "TestResults")
+        if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
+        let outputPath = Path.Combine(outputDir, fileName)
+        rtb.Save(outputPath)
+        w.Close()
+
+        File.Exists(outputPath) |> should equal true
+        FileInfo(outputPath).Length |> should be (greaterThan 1000L)
+        outputPath, controlRects, visibleTexts
+
+    /// <summary>サブツリー配下の可視コントロールのみを収集するヘルパー</summary>
+    let rec private collectVisibleFromSubtree (control: Avalonia.Controls.Control) : Avalonia.Controls.Control list =
+        if isNull control || not control.IsVisible then
+            []
+        else
+            let children =
+                match control with
+                | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectVisibleFromSubtree |> Seq.toList
+                | :? Avalonia.Controls.ContentControl as cc ->
+                    match cc.Content with
+                    | :? Avalonia.Controls.Control as c -> collectVisibleFromSubtree c
+                    | _ -> []
+                | :? Avalonia.Controls.Decorator as d when not (isNull d.Child) ->
+                    collectVisibleFromSubtree d.Child
+                | _ -> []
+            control :: children
+
+    /// <summary>E2E-01: 設定解決・Patch Save・環境バッジ・常設再読込ボタン・再起動後反映の Happy Path を検証する</summary>
+    [<Fact>]
+    let ``E2E-01: 設定解決・Patch Save・環境バッジ・常設設定再読込ボタン・再起動後反映が連動し PNG 出力される`` () =
+        withIsolatedE2ERepoContext "Development" (fun _ _ renamerDir ctx ->
+            let basePath = Path.Combine(renamerDir, "appsettings.json")
+            let devPath = Path.Combine(renamerDir, "appsettings.Development.json")
+            File.WriteAllText(
+                basePath,
+                """{
+                  "targetDirectory": "D:\\E2EVideos",
+                  "pathLengthThreshold": 240,
+                  "selectedModel": "meta-llama/llama-3.3-70b-instruct:free",
+                  "apiKey": "sk-or-v1-e2e-happy-secret",
+                  "customUnknownKey": "preserve-base"
+                }"""
+            )
+            File.WriteAllText(
+                devPath,
+                """{
+                  "selectedModel": "model/initial",
+                  "customDevUnknown": "preserve-dev",
+                  "rules": [
+                    { "id": "r1", "name": "ルール1", "pattern": "{Code}.mp4", "promptInstruction": "指示1", "order": 0, "enableWebSearch": true },
+                    { "id": "r2", "name": "ルール2", "pattern": "{Title}.mp4", "promptInstruction": "指示2", "order": 1, "enableWebSearch": false }
+                  ]
+                }"""
+            )
+            let baseBefore = File.ReadAllText(basePath)
+
+            let initModel, _ = State.initWithContext (Some ctx)
+            let mAfterModel, _ = State.updateWithContext (Some ctx) (ModelSelected "google/gemini-2.0-flash-exp:free") initModel
+            let mAfterMove, _ = State.updateWithContext (Some ctx) (MoveRuleOrder ("r2", -1)) mAfterModel
+            mAfterMove.ErrorMessage |> should equal None
+
+            // ベースファイルは改変されず、dev ファイルの他キー・未知キー・apiKey が保持されること
+            File.ReadAllText(basePath) |> should equal baseBefore
+            use devDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(devPath))
+            devDoc.RootElement.GetProperty("selectedModel").GetString() |> should equal "google/gemini-2.0-flash-exp:free"
+            devDoc.RootElement.GetProperty("customDevUnknown").GetString() |> should equal "preserve-dev"
+
+            // 再起動相当モデルをロードして実画面描画
+            let rebootedModel, _ = State.initWithContext (Some ctx)
+            rebootedModel.Settings.SelectedModel |> should equal "google/gemini-2.0-flash-exp:free"
+            rebootedModel.Settings.ApiKey |> should equal (Some "sk-or-v1-e2e-happy-secret")
+            rebootedModel.ApiKeySourcePath |> should equal (Some basePath)
+            rebootedModel.Settings.Rules.Head.Id |> should equal "r2"
+            rebootedModel.SelectedRuleId |> should equal "r2"
+
+            let _, _, texts = renderModelAndInspect rebootedModel "E2E_Settings_HappyPath.png" 1100.0 720.0
+            texts |> List.exists (fun t -> t.Contains("ENV: Development")) |> should equal true
+            texts |> List.exists (fun t -> t.Contains("appsettings.Development.json")) |> should equal true
+            texts |> List.exists (fun t -> t.Contains("🔄 設定を再読込")) |> should equal true
+        )
+
+    /// <summary>E2E-02: 空ディレクトリおよび実リポジトリ構成（ベース appsettings.json の apiKey=null）での Zero-State 案内を検証する</summary>
+    [<Fact>]
+    let ``E2E-02: 実リポジトリ構成の apiKey null 未設定時は環境別設定ファイルパスと最小 JSON 例をバナー表示する`` () =
+        withIsolatedE2ERepoContext "Production" (fun tempRoot _ renamerDir repoLikeCtx ->
+            // ① 完全空ディレクトリ
+            let emptyAppBase = Path.Combine(tempRoot, "empty_bin")
+            Directory.CreateDirectory(emptyAppBase) |> ignore
+            let emptyCtx: ConfigLoadContext = {
+                CurrentDirectory = Path.Combine(tempRoot, "empty_cur")
+                AppBaseDirectory = emptyAppBase
+                AppDataDirectory = Path.Combine(tempRoot, "empty_appdata")
+                DotEnvPath = None
+            }
+            Directory.CreateDirectory(emptyCtx.CurrentDirectory) |> ignore
+            let emptyInit, _ = State.initWithContext (Some emptyCtx)
+            let dummyCand: ScanCandidate = {
+                FullPath = "D:\\Videos\\zero_state_long_name_sample.mp4"
+                FileName = "zero_state_long_name_sample.mp4"
+                DirectoryPath = "D:\\Videos"
+                PathLength = 250
+                FileNameBytes = 31
+                Violation = WindowsPathOnly
+                FileSizeBytes = 1024L
+                LastWriteTime = DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            }
+            let emptyAfterScan, _ = State.updateWithContext (Some emptyCtx) (ScanCompleted (Ok [ dummyCand ])) { emptyInit with IsScanning = true }
+            emptyAfterScan.Settings.ApiKey |> should equal None
+            emptyAfterScan.ApiKeySourcePath |> should equal None
+            emptyAfterScan.ErrorMessage |> should not' (equal None)
+            emptyAfterScan.ErrorMessage.Value |> should contain (Path.Combine(emptyAppBase, "appsettings.Production.json"))
+            emptyAfterScan.ErrorMessage.Value |> should contain "\"apiKey\": \"sk-or-v1-...\""
+
+            // ② 実リポジトリ構成（ベース appsettings.json に "apiKey": null、appsettings.Production.json 未存在）
+            let basePath = Path.Combine(renamerDir, "appsettings.json")
+            let prodPath = Path.Combine(renamerDir, "appsettings.Production.json")
+            File.WriteAllText(basePath, """{ "targetDirectory": "", "pathLengthThreshold": 240, "apiKey": null }""")
+
+            let repoInit, _ = State.initWithContext (Some repoLikeCtx)
+            repoInit.ApiKeySourcePath |> should equal None
+            repoInit.SettingsSavePath |> should equal prodPath
+
+            let repoAfterScan, _ = State.updateWithContext (Some repoLikeCtx) (ScanCompleted (Ok [ dummyCand ])) { repoInit with IsScanning = true }
+            repoAfterScan.IsRequestingAi |> should equal false
+            repoAfterScan.AiPipelineRunId |> should equal None
+            repoAfterScan.ErrorMessage |> should not' (equal None)
+            repoAfterScan.ErrorMessage.Value |> should contain "OpenRouter APIキーが未設定"
+            repoAfterScan.ErrorMessage.Value |> should contain prodPath
+            Assert.False(
+                repoAfterScan.ErrorMessage.Value.Contains(basePath),
+                "案内先はベース appsettings.json ではなく環境別 appsettings.Production.json である必要があります。"
+            )
+            repoAfterScan.ErrorMessage.Value |> should contain "\"apiKey\": \"sk-or-v1-...\""
+
+            let _, _, texts = renderModelAndInspect repoAfterScan "E2E_Settings_ZeroState_MissingKey.png" 1100.0 720.0
+            texts |> List.exists (fun t -> t.Contains("OpenRouter APIキーが未設定") && t.Contains("appsettings.Production.json")) |> should equal true
+            texts |> List.exists (fun t -> t.Contains("\"apiKey\": \"sk-or-v1-...\"")) |> should equal true
+            texts |> List.exists (fun t -> t.Contains("🔄 設定を再読込")) |> should equal true
+        )
+
+    /// <summary>E2E-03: プレースホルダー検出からファイル修正・設定再読込による選択フォルダ保持＆再試行復帰を検証する</summary>
+    [<Fact>]
+    let ``E2E-03: プレースホルダー警告から設定修正と ReloadSettings で選択フォルダを維持したまま再試行へ回復する`` () =
+        withIsolatedE2ERepoContext "Development" (fun _ _ renamerDir ctx ->
+            let basePath = Path.Combine(renamerDir, "appsettings.json")
+            let devPath = Path.Combine(renamerDir, "appsettings.Development.json")
+            File.WriteAllText(basePath, """{ "apiKey": null }""")
+            File.WriteAllText(devPath, """{ "apiKey": "xxx" }""")
+
+            let initModel, _ = State.initWithContext (Some ctx)
+            let pickedModel, _ = State.updateWithContext (Some ctx) (TargetDirectoryChanged "D:\\PickedVideos") initModel
+            let scanCand: ScanCandidate = {
+                FullPath = "D:\\PickedVideos\\placeholder_recovery_target.mp4"
+                FileName = "placeholder_recovery_target.mp4"
+                DirectoryPath = "D:\\PickedVideos"
+                PathLength = 250
+                FileNameBytes = 35
+                Violation = WindowsPathOnly
+                FileSizeBytes = 1024L
+                LastWriteTime = DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            }
+            let errorModel, _ = State.updateWithContext (Some ctx) (ScanCompleted (Ok [ scanCand ])) { pickedModel with IsScanning = true }
+
+            errorModel.ErrorMessage |> should not' (equal None)
+            errorModel.ErrorMessage.Value |> should contain "'xxx'"
+            errorModel.ErrorMessage.Value |> should contain devPath
+
+            let _, _, errTexts = renderModelAndInspect errorModel "E2E_Settings_Placeholder_Error.png" 1100.0 720.0
+            errTexts |> List.exists (fun t -> t.Contains("'xxx'") && t.Contains(devPath)) |> should equal true
+            errTexts |> List.exists (fun t -> t.Contains("🔄 設定を再読込")) |> should equal true
+
+            // 実ファイルを最小 JSON へ修正し、ReloadSettings（画面の🔄ボタン相当）で回復
+            File.WriteAllText(devPath, """{ "apiKey": "sk-or-v1-valid0000" }""")
+            let reloadedModel, _ = State.updateWithContext (Some ctx) ReloadSettings errorModel
+            reloadedModel.Settings.TargetDirectory |> should equal "D:\\PickedVideos"
+            reloadedModel.Settings.ApiKey |> should equal (Some "sk-or-v1-valid0000")
+            reloadedModel.ErrorMessage |> should not' (equal None)
+            reloadedModel.ErrorMessage.Value |> should startWith "💡"
+
+            let recoveredModel, _ =
+                State.updateWithContext (Some ctx) (RetryCandidateAiProposal scanCand.FullPath) reloadedModel
+            try
+                recoveredModel.IsRequestingAi |> should equal true
+                recoveredModel.Candidates.Head.IsAiProcessing |> should equal true
+                let _, _, recTexts = renderModelAndInspect reloadedModel "E2E_Settings_Placeholder_Recovered.png" 1100.0 720.0
+                recTexts |> List.exists (fun t -> t.StartsWith("💡") && t.Contains("appsettings.Development.json")) |> should equal true
+            finally
+                recoveredModel.AiCancellationCts |> Option.iter (fun c -> try c.Dispose() with _ -> ())
+        )
+
+    /// <summary>E2E-04: モーダル内保存失敗時の背面バナー非重複・モーダル内バナー3ボタン・ロールバック・回復を検証する</summary>
+    [<Fact>]
+    let ``E2E-04: ルール管理モーダル保存失敗時は背面バナーを隠してモーダル内バナーのみ表示しロールバック後に回復する`` () =
+        withIsolatedE2ERepoContext "Development" (fun _ _ renamerDir ctx ->
+            ensureAppInitialized ()
+            let devPath = Path.Combine(renamerDir, "appsettings.Development.json")
+            File.WriteAllText(
+                devPath,
+                """{
+                  "apiKey": "sk-or-v1-modal-test",
+                  "rules": [
+                    { "id": "r1", "name": "ルール1", "pattern": "{Code}.mp4", "promptInstruction": "指示1", "order": 0, "enableWebSearch": true },
+                    { "id": "r2", "name": "ルール2", "pattern": "{Title}.mp4", "promptInstruction": "指示2", "order": 1, "enableWebSearch": false }
+                  ]
+                }"""
+            )
+
+            let initModel, _ = State.initWithContext (Some ctx)
+            let mOpen, _ = State.updateWithContext (Some ctx) OpenRuleManager initModel
+            let mTyped, _ = State.updateWithContext (Some ctx) (UpdateEditingRuleName "新規ルール入力保持") mOpen
+            let mConfirm, _ = State.updateWithContext (Some ctx) (RequestDeleteRule "r2") mTyped
+
+            File.SetAttributes(devPath, FileAttributes.ReadOnly)
+            let mFailed =
+                try
+                    let failed, _ = State.updateWithContext (Some ctx) (DeleteRule "r2") mConfirm
+                    failed
+                finally
+                    try File.SetAttributes(devPath, FileAttributes.Normal) with _ -> ()
+
+            mFailed.IsRuleManagerOpen |> should equal true
+            mFailed.Settings.Rules.Length |> should equal 2
+            mFailed.ConfirmDialog |> should equal None
+            mFailed.EditingRule.Value.Name |> should equal "新規ルール入力保持"
+            mFailed.ErrorMessage |> should not' (equal None)
+            mFailed.ErrorMessage.Value |> should contain devPath
+
+            // 実ウィンドウでメイン側背面バナー非表示 ＆ モーダル内バナー 3 ボタンのみ表示を検証
+            let w = new Avalonia.FuncUI.Hosts.HostWindow()
+            w.Width <- 1100.0
+            w.Height <- 750.0
+            w.Background <- Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#1a1a1a"))
+            Elmish.Program.mkProgram (fun () -> mFailed, Elmish.Cmd.none) State.update Views.view
+            |> Avalonia.FuncUI.Elmish.Program.withHost w
+            |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+            w.Show()
+            w.UpdateLayout()
+
+            let rootGrid = w.Content :?> Avalonia.Controls.Grid
+            rootGrid.Children.Count |> should be (greaterThanOrEqualTo 2)
+            let mainAreaControls = collectVisibleFromSubtree rootGrid.Children.[0]
+            let modalAreaControls = collectVisibleFromSubtree rootGrid.Children.[1]
+
+            let getButtonTexts (controls: Avalonia.Controls.Control list) =
+                controls
+                |> List.choose (function
+                    | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) -> Some (b.Content :?> string)
+                    | _ -> None
+                )
+
+            // 背面メイン領域にバナー用の 📋 コピー ボタンが存在しないこと
+            let mainButtons = getButtonTexts mainAreaControls
+            mainButtons |> List.exists (fun t -> t = "📋 コピー") |> should equal false
+
+            // モーダル領域にバナーの 3 ボタン（🔄 設定を再読込, 📋 コピー, ✕）が存在すること
+            let modalButtons = getButtonTexts modalAreaControls
+            modalButtons |> List.exists (fun t -> t = "🔄 設定を再読込") |> should equal true
+            modalButtons |> List.exists (fun t -> t = "📋 コピー") |> should equal true
+            modalButtons |> List.exists (fun t -> t = "✕") |> should equal true
+            w.Close()
+
+            let _, _, failedTexts = renderModelAndInspect mFailed "E2E_Settings_ModalSaveError.png" 1100.0 750.0
+            failedTexts |> List.exists (fun t -> t.Contains(devPath)) |> should equal true
+
+            // DismissError 後もモーダルが開いたまま継続すること
+            let mDismissed, _ = State.updateWithContext (Some ctx) DismissError mFailed
+            mDismissed.ErrorMessage |> should equal None
+            mDismissed.IsRuleManagerOpen |> should equal true
+
+            // ReadOnly 解除済み状態で再保存回復
+            let mRecovered, _ = State.updateWithContext (Some ctx) SaveEditingRule mFailed
+            mRecovered.ErrorMessage |> should equal None
+            mRecovered.Settings.Rules.Length |> should equal 3
+            let _, _, recTexts = renderModelAndInspect mRecovered "E2E_Settings_ModalSaveRecovered.png" 1100.0 750.0
+            recTexts |> List.exists (fun t -> t.Contains("登録済みルール (3件)")) |> should equal true
+            recTexts |> List.exists (fun t -> t.Contains("新規ルール入力保持")) |> should equal true
+        )
+
+    /// <summary>E2E-05: 長出典パス付きエラーバナー・常設再読込ボタン・環境バッジの Bounds 非重複・非はみ出しを検証する</summary>
+    [<Fact>]
+    let ``E2E-05: 120文字超の出典パス付きエラーバナーと常設ボタン・環境バッジが 800px と 1100px で重なりやはみ出しなく描画される`` () =
+        SettingsIsolationHarness.withIsolatedSettingsEnvironment (fun _ ->
+            let secretKey = "sk-or-v1-secret-value-should-never-appear-in-ui"
+            let longSourcePath =
+                "C:\\very_long_repository_workspace_root_path\\nested_sub_folder_level_1\\nested_sub_folder_level_2\\nested_sub_folder_level_3\\src\\TagBasedVideoManager.Renamer\\appsettings.Production.json"
+            (longSourcePath.Length > 120) |> should equal true
+
+            let baseModel = SettingsIsolationHarness.initIsolatedModel longSourcePath
+            let longErrorBanner =
+                $"⚠️ OpenRouter APIキーがプレースホルダー値 ('xxx') のため、AI提案は実行されませんでした（手動編集・リネームは可能です）。設定ファイル ({longSourcePath}) の apiKey に {{ \"apiKey\": \"sk-or-v1-...\" }} の形式で設定後、「🔄 設定を再読込」をクリックしてください。"
+            let testModel = {
+                baseModel with
+                    Settings = { baseModel.Settings with ApiKey = Some secretKey }
+                    ActiveEnvironment = "Production"
+                    SettingsSavePath = longSourcePath
+                    ApiKeySourcePath = Some longSourcePath
+                    ErrorMessage = Some longErrorBanner
+            }
+
+            let verifyWidth (wWidth: float) (wHeight: float) (pngName: string) =
+                let _, controlRects, visibleTexts = renderModelAndInspect testModel pngName wWidth wHeight
+
+                // 実 API キー値が画面テキストに出力されないこと
+                visibleTexts |> List.exists (fun t -> t.Contains(secretKey)) |> should equal false
+
+                let findControlRects (predicate: Avalonia.Controls.Control -> bool) =
+                    controlRects
+                    |> List.filter (fun (c, _) -> predicate c)
+
+                let reloadButtons =
+                    findControlRects (function
+                        | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
+                            (b.Content :?> string) = "🔄 設定を再読込"
+                        | _ -> false)
+                let copyButtons =
+                    findControlRects (function
+                        | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
+                            (b.Content :?> string) = "📋 コピー"
+                        | _ -> false)
+                let dismissButtons =
+                    findControlRects (function
+                        | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
+                            (b.Content :?> string) = "✕"
+                        | _ -> false)
+                let runButtons =
+                    findControlRects (function
+                        | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
+                            (b.Content :?> string).Contains("抽出 ＆ AI提案")
+                        | _ -> false)
+                let manageButtons =
+                    findControlRects (function
+                        | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
+                            (b.Content :?> string) = "⚙ 管理..."
+                        | _ -> false)
+                let stopButtons =
+                    findControlRects (function
+                        | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
+                            (b.Content :?> string) = "⏹ 中止"
+                        | _ -> false)
+                let comboBoxes =
+                    findControlRects (function
+                        | :? Avalonia.Controls.ComboBox -> true
+                        | _ -> false)
+                let envBadgeTexts =
+                    findControlRects (function
+                        | :? Avalonia.Controls.TextBlock as tb when tb.Text = "ENV: Production" -> true
+                        | _ -> false)
+                let saveFileTexts =
+                    findControlRects (function
+                        | :? Avalonia.Controls.TextBlock as tb when tb.Text = "💾 appsettings.Production.json" -> true
+                        | _ -> false)
+                let bannerTexts =
+                    findControlRects (function
+                        | :? Avalonia.Controls.TextBlock as tb when not (isNull tb.Text) && tb.Text.Contains(longSourcePath) -> true
+                        | _ -> false)
+
+                // バナー内 + コントロールパネル常設で「🔄 設定を再読込」は2個以上表示されること
+                reloadButtons.Length |> should be (greaterThanOrEqualTo 2)
+                copyButtons.Length |> should equal 1
+                dismissButtons.Length |> should equal 1
+                runButtons.Length |> should equal 1
+                manageButtons.Length |> should equal 1
+                stopButtons.Length |> should equal 1
+                comboBoxes.Length |> should be (greaterThanOrEqualTo 2)
+                envBadgeTexts.Length |> should equal 1
+                saveFileTexts.Length |> should equal 1
+                bannerTexts.Length |> should equal 1
+
+                let allTargets =
+                    reloadButtons @ copyButtons @ dismissButtons @ runButtons @ manageButtons @ stopButtons @ comboBoxes @ envBadgeTexts @ saveFileTexts @ bannerTexts
+
+                for (_, rect) in allTargets do
+                    rect.Width |> should be (greaterThan 0.0)
+                    rect.Height |> should be (greaterThan 0.0)
+                    rect.X |> should be (greaterThanOrEqualTo 0.0)
+                    rect.Y |> should be (greaterThanOrEqualTo 0.0)
+                    rect.Right |> should be (lessThanOrEqualTo wWidth)
+                    rect.Bottom |> should be (lessThanOrEqualTo wHeight)
+
+                // 対象リーフ要素間で相互重なり（交差面積あり）が存在しないこと
+                let rectsArr = allTargets |> List.map snd |> List.toArray
+                for i in 0 .. rectsArr.Length - 1 do
+                    for j in i + 1 .. rectsArr.Length - 1 do
+                        let inter = rectsArr.[i].Intersect(rectsArr.[j])
+                        let overlaps = inter.Width > 0.5 && inter.Height > 0.5
+                        Assert.False(overlaps, $"UI 要素間に重なりが検出されました (width={wWidth}): {rectsArr.[i]} vs {rectsArr.[j]}")
+
+            verifyWidth 800.0 650.0 "E2E_Settings_LongPathBanner_800.png"
+            verifyWidth 1100.0 720.0 "E2E_Settings_LongPathBanner_1100.png"
+        )
+
+    /// <summary>E2E-06: 起動時の旧 { "value": ... } 形式・JSON 構文エラー警告が起動直後からバナー表示されることを検証する</summary>
+    [<Fact>]
+    let ``E2E-06: 起動時の旧 value オブジェクト形式警告が起動直後から画面バナーへ表示され安全起動する`` () =
+        withIsolatedE2ERepoContext "Development" (fun _ _ renamerDir ctx ->
+            let basePath = Path.Combine(renamerDir, "appsettings.json")
+            let devPath = Path.Combine(renamerDir, "appsettings.Development.json")
+            File.WriteAllText(basePath, """{ "apiKey": null }""")
+            File.WriteAllText(devPath, """{ "apiKey": { "value": "sk-or-v1-broken-legacy" } }""")
+
+            let startupModel, _ = State.initWithContext (Some ctx)
+            startupModel.Settings.ApiKey |> should equal None
+            startupModel.Settings.Rules.IsEmpty |> should equal false
+            startupModel.ErrorMessage |> should not' (equal None)
+            startupModel.ErrorMessage.Value |> should contain devPath
+            startupModel.ErrorMessage.Value |> should contain "文字列形式"
+
+            let _, _, texts = renderModelAndInspect startupModel "E2E_Settings_StartupWarningBanner.png" 1100.0 720.0
+            texts |> List.exists (fun t -> t.Contains(devPath) && t.Contains("文字列形式")) |> should equal true
+        )
+
+    /// <summary>E2E-07: ComboBox の同値ガード shouldDispatchModelSelection とモデル切替再描画時の誤発火防止を検証する</summary>
+    [<Fact>]
+    let ``E2E-07: Views.shouldDispatchModelSelection は同値と None を抑止し実 ComboBox 再描画でも ModelSelected を誤発火しない`` () =
+        // 1. 純粋関数の境界検証
+        Views.shouldDispatchModelSelection "model-A" None |> should equal None
+        Views.shouldDispatchModelSelection "model-A" (Some "") |> should equal None
+        Views.shouldDispatchModelSelection "model-A" (Some "   ") |> should equal None
+        Views.shouldDispatchModelSelection "model-A" (Some "model-A") |> should equal None
+        Views.shouldDispatchModelSelection "model-A" (Some "model-B") |> should equal (Some "model-B")
+
+        // 2. 実 HostWindow 描画 ＋ ReloadSettings 相当モデル更新再描画での ModelSelected 誤発火ゼロ検証
+        withIsolatedE2ERepoContext "Development" (fun _ _ renamerDir ctx ->
+            ensureAppInitialized ()
+            let devPath = Path.Combine(renamerDir, "appsettings.Development.json")
+            File.WriteAllText(devPath, """{ "apiKey": "sk-or-v1-guard-07", "selectedModel": "model-A" }""")
+
+            let initModel, _ = State.initWithContext (Some ctx)
+            initModel.Settings.SelectedModel |> should equal "model-A"
+
+            // 保存先を ReadOnly にしておき、万一誤って ModelSelected が発火したら即座に ErrorMessage が出る罠を張る
+            File.WriteAllText(devPath, """{ "apiKey": "sk-or-v1-guard-07", "selectedModel": "model-B" }""")
+            File.SetAttributes(devPath, FileAttributes.ReadOnly)
+
+            try
+                let recordedMsgs = System.Collections.Generic.List<Msg>()
+                let mutable latestModel = initModel
+                let mutable capturedDispatch: (Msg -> unit) = ignore
+                let spyUpdate msg m =
+                    recordedMsgs.Add(msg)
+                    let nextModel, cmd = State.updateWithContext (Some ctx) msg m
+                    latestModel <- nextModel
+                    nextModel, cmd
+                let spyView m d =
+                    capturedDispatch <- d
+                    Views.view m d
+
+                let w = new Avalonia.FuncUI.Hosts.HostWindow()
+                w.Width <- 1100.0
+                w.Height <- 720.0
+                Elmish.Program.mkProgram (fun () -> initModel, Elmish.Cmd.none) spyUpdate spyView
+                |> Avalonia.FuncUI.Elmish.Program.withHost w
+                |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+
+                w.Show()
+                w.UpdateLayout()
+
+                // 再読込で SelectedModel が model-A -> model-B へ変化しても ComboBox 再描画時に ModelSelected が発火しないこと
+                capturedDispatch ReloadSettings
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs()
+                w.UpdateLayout()
+
+                let modelComboBoxOpt =
+                    collectVisibleFromSubtree w
+                    |> List.choose (function :? Avalonia.Controls.ComboBox as cb -> Some cb | _ -> None)
+                    |> List.tryFind (fun cb ->
+                        not (isNull cb.ItemsSource)
+                        && (cb.ItemsSource |> Seq.cast<obj> |> Seq.exists (fun item -> string item = "model-B"))
+                    )
+                w.Close()
+
+                // 1. ReloadSettings が実際に処理され最新モデルの SelectedModel が model-B に更新されていること
+                recordedMsgs |> Seq.exists (function ReloadSettings -> true | _ -> false) |> should equal true
+                latestModel.Settings.SelectedModel |> should equal "model-B"
+
+                // 2. UI のモデル選択 ComboBox が model-B に追従していること
+                modelComboBoxOpt.IsSome |> should equal true
+                modelComboBoxOpt.Value.SelectedIndex |> should equal 0
+                string modelComboBoxOpt.Value.SelectedItem |> should equal "model-B"
+
+                // 3. 再描画を経ても ModelSelected が誤発火しないこと
+                let firedModelSelected =
+                    recordedMsgs
+                    |> Seq.exists (function ModelSelected _ -> true | _ -> false)
+                Assert.False(firedModelSelected, "ComboBox の初期化・再描画時に意図しない ModelSelected が発火しました。")
+            finally
+                try File.SetAttributes(devPath, FileAttributes.Normal) with _ -> ()
+        )

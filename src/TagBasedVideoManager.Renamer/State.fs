@@ -34,6 +34,7 @@ and Model = {
     ScannedVideoCount: int
     ActiveEnvironment: string
     SettingsSavePath: string
+    ApiKeySourcePath: string option
 
     // データ
     Candidates: RenameProposal list
@@ -47,11 +48,13 @@ and Model = {
     EditingRule: NamingRule option
     ConfirmDialog: DialogConfig option
     AiCancellationCts: System.Threading.CancellationTokenSource option
+    AiPipelineRunId: Guid option
 }
 
 and Msg =
     // 初期化・設定
     | SettingsLoaded of Result<RenamerSettings, RenamerError>
+    | ReloadSettings
     | ThresholdChanged of int
     | ToggleFilterNonJapaneseOnly of bool
     | SetConstraintFilter of ConstraintFilter
@@ -62,9 +65,9 @@ and Msg =
     // 走査 & AI提案 (ワンアクション & 非同期パイプライン)
     | ExecuteScanAndPropose
     | ScanCompleted of Result<ScanCandidate list, RenamerError>
-    | CandidateAiProcessing of fullPath: string
-    | CandidateAiProposed of RenameProposal
-    | AllAiProposalsCompleted
+    | CandidateAiProcessing of runId: Guid * fullPath: string
+    | CandidateAiProposed of runId: Guid * RenameProposal
+    | AllAiProposalsCompleted of runId: Guid
     | CancelAiProposal
     | RetryCandidateAiProposal of fullPath: string
     | AiProposeCompleted of Result<RenameProposal list, RenamerError>
@@ -139,6 +142,7 @@ module State =
             candidates |> List.filter (fun c -> c.OriginalViolation = BothViolated)
 
     let private createAsyncPipelineCmd
+        (runId: Guid)
         (apiKey: string)
         (modelName: string)
         (rule: NamingRule)
@@ -152,7 +156,7 @@ module State =
                         try
                             for candidate in candidates do
                                 if not cancellationToken.IsCancellationRequested then
-                                    dispatch (CandidateAiProcessing candidate.FullPath)
+                                    dispatch (CandidateAiProcessing (runId, candidate.FullPath))
 
                                     // Web検索が有効な場合は ddgs 検索を実行
                                     let! searchSnippets =
@@ -183,7 +187,7 @@ module State =
 
                                         match proposalResult with
                                         | Ok proposed ->
-                                            dispatch (CandidateAiProposed proposed)
+                                            dispatch (CandidateAiProposed (runId, proposed))
                                         | Error err ->
                                             // エラー時でも元候補をベースにエラーコメント付きで更新
                                             let errProposal = {
@@ -203,7 +207,7 @@ module State =
                                                 IsAiProcessing = false
                                                 AiError = Some $"AI提案失敗: {err}"
                                             }
-                                            dispatch (CandidateAiProposed errProposal)
+                                            dispatch (CandidateAiProposed (runId, errProposal))
 
                                     // レートリミット対策で少し待機
                                     do! System.Threading.Tasks.Task.Delay(300, cancellationToken)
@@ -211,7 +215,7 @@ module State =
                         | :? System.OperationCanceledException -> ()
                         | _ -> ()
                     finally
-                        dispatch AllAiProposalsCompleted
+                        dispatch (AllAiProposalsCompleted runId)
                 }
             runPipeline () |> ignore
 
@@ -237,6 +241,7 @@ module State =
             ScannedVideoCount = 0
             ActiveEnvironment = envName
             SettingsSavePath = savePath
+            ApiKeySourcePath = None
             Candidates = []
             UndoStack = []
             Docker = initialDockerStatus
@@ -246,6 +251,7 @@ module State =
             EditingRule = None
             ConfirmDialog = None
             AiCancellationCts = None
+            AiPipelineRunId = None
         }
 
         // 起動時に外部設定ファイルロードおよびDockerステータス確認を発行
@@ -259,6 +265,14 @@ module State =
             Cmd.OfAsync.perform (fun () -> ContainerController.checkStatus (ContainerController.defaultRuntime ()) None None (Directory.GetCurrentDirectory())) () DockerStatusUpdated
 
         model, Cmd.batch [ loadSettingsCmd; checkDockerCmd ]
+
+    /// <summary>コンテキスト注入対応の初期化処理（Task 2.2 先行スタブ）</summary>
+    let initWithContext (_ctxOpt: ConfigLoadContext option) : Model * Cmd<Msg> =
+        raise (NotImplementedException("Task 2.2 stub: State.initWithContext is not implemented yet."))
+
+    /// <summary>コンテキスト注入対応の状態更新処理（Task 2.2 先行スタブ）</summary>
+    let updateWithContext (_ctxOpt: ConfigLoadContext option) (_msg: Msg) (_model: Model) : Model * Cmd<Msg> =
+        raise (NotImplementedException("Task 2.2 stub: State.updateWithContext is not implemented yet."))
 
     /// 設定の保存を実行し、保存先パスとエラーメッセージ（発生時のみ Some）を返す共通ヘルパー
     let private saveSettingsWithFeedback (preferredSavePath: string) (newSettings: RenamerSettings) : string * string option =
@@ -282,6 +296,9 @@ module State =
 
         | SettingsLoaded (Error _) ->
             // 設定ファイルが存在しない場合は初期既定値を維持
+            model, Cmd.none
+
+        | ReloadSettings ->
             model, Cmd.none
 
         // 排他ガード: スキャン中またはリネーム中の入力割り込みを無視
@@ -379,7 +396,7 @@ module State =
                                 with _ -> ()
                             )
                             let cts = new System.Threading.CancellationTokenSource()
-                            let pipelineCmd = createAsyncPipelineCmd cleanKey model.Settings.SelectedModel selectedRule sortedCandidates cts.Token
+                            let pipelineCmd = createAsyncPipelineCmd Guid.Empty cleanKey model.Settings.SelectedModel selectedRule sortedCandidates cts.Token
 
                             {
                                 model with
@@ -410,7 +427,7 @@ module State =
                     ErrorMessage = Some (RenamerError.toMessage err) }
             updatedModel, Cmd.none
 
-        | CandidateAiProcessing fullPath ->
+        | CandidateAiProcessing (_runId, fullPath) ->
             let updatedCandidates =
                 model.Candidates
                 |> List.map (fun c ->
@@ -420,7 +437,7 @@ module State =
                 )
             { model with Candidates = updatedCandidates }, Cmd.none
 
-        | CandidateAiProposed proposed ->
+        | CandidateAiProposed (_runId, proposed) ->
             let updatedCandidates =
                 model.Candidates
                 |> List.map (fun c ->
@@ -431,7 +448,7 @@ module State =
                 |> FileScanner.sortCandidates model.SortCriterion
             { model with Candidates = updatedCandidates }, Cmd.none
 
-        | AllAiProposalsCompleted ->
+        | AllAiProposalsCompleted _runId ->
             let cleanedCandidates =
                 model.Candidates
                 |> List.map (fun c ->
@@ -501,7 +518,7 @@ module State =
                         LastWriteTime = cand.LastWriteTime
                     }
                     let cts = new System.Threading.CancellationTokenSource()
-                    let singleCmd = createAsyncPipelineCmd cleanKey model.Settings.SelectedModel selectedRule [ scanCand ] cts.Token
+                    let singleCmd = createAsyncPipelineCmd Guid.Empty cleanKey model.Settings.SelectedModel selectedRule [ scanCand ] cts.Token
                     { model with Candidates = updatedCandidates; IsRequestingAi = true }, singleCmd
                 | None -> model, Cmd.none
             | _ ->
