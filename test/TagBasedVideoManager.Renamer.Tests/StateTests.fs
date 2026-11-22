@@ -1248,8 +1248,7 @@ module StateTests =
         )
 
     /// <summary>
-    /// 【Phase 2.2 統一ガード移行対象】RetryCandidateAiProposal の API キー未設定時エラー検証。
-    /// Phase 2.2〜2.3 で validateApiKeyForAi 統一ガード導入時に環境別保存先案内検証（ST-RETRY-01）へ拡張予定。
+    /// RetryCandidateAiProposal の API キー未設定時エラー検証（統一ガード仕様）。
     /// </summary>
     [<Fact>]
     let ``RetryCandidateAiProposal は APIKey 未設定時にエラーメッセージを設定し処理を開始しない`` () =
@@ -1275,14 +1274,20 @@ module StateTests =
             let model = {
                 initialModel with
                     Settings = { initialModel.Settings with ApiKey = None }
+                    ApiKeySourcePath = None
                     Candidates = [ cand ]
                     IsRequestingAi = false
             }
 
             let newModel, _ = State.update (RetryCandidateAiProposal "C:\\Videos\\existing.mp4") model
-            newModel.ErrorMessage |> should equal (Some "OpenRouter APIキーが設定されていません。")
             newModel.IsRequestingAi |> should equal false
+            newModel.AiPipelineRunId |> should equal None
             newModel.Candidates.Head.IsAiProcessing |> should equal false
+            newModel.ErrorMessage |> should not' (equal None)
+            newModel.ErrorMessage.Value |> should contain "OpenRouter APIキーが未設定"
+            newModel.ErrorMessage.Value |> should contain tempSavePath
+            newModel.ErrorMessage.Value |> should contain "\"apiKey\": \"sk-or-v1-...\""
+            newModel.ErrorMessage.Value |> should contain "🔄 設定を再読込"
         )
 
     [<Fact>]

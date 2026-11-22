@@ -69,6 +69,16 @@ module OpenRouterClient =
             elif String.Equals(c.Trim(), "null", StringComparison.OrdinalIgnoreCase) then None
             else Some (c.Trim())
 
+    /// <summary>
+    /// OpenRouter API の非 2xx ステータスコードに対するエラーメッセージを構築する。
+    /// 401 認証エラー時は廃止済みの .env を案内せず appsettings.{Environment}.json の apiKey 確認を促す。
+    /// </summary>
+    let private formatStatusError (statusCode: int) (responseBody: string) : string =
+        if statusCode = 401 then
+            $"OpenRouter API returned error status 401 (認証エラー): APIキーが無効または未設定です (Raw: {responseBody})。appsettings.{{Environment}}.json の apiKey ('sk-or-v1-...') を確認してください。"
+        else
+            $"OpenRouter API returned error status {statusCode}: {responseBody}"
+
     /// AIモデルへリネーム候補を問い合わせる
     let requestProposals
         (httpHandler: (string -> string -> Async<int * string>) option)
@@ -119,12 +129,7 @@ module OpenRouterClient =
                             }
 
                     if statusCode < 200 || statusCode >= 300 then
-                        let detailMsg =
-                            if statusCode = 401 then
-                                $"OpenRouter API returned error status 401 (認証エラー): APIキーが無効または未設定です (Raw: {responseBody})。appsettings.json または .env の apiKey ('sk-or-v1-...') を確認してください。"
-                            else
-                                $"OpenRouter API returned error status {statusCode}: {responseBody}"
-                        return Error (OpenRouterError (statusCode, detailMsg))
+                        return Error (OpenRouterError (statusCode, formatStatusError statusCode responseBody))
                     else
                         try
                             use rootDoc = JsonDocument.Parse(responseBody)
@@ -345,12 +350,7 @@ module OpenRouterClient =
                         }
 
                 if statusCode < 200 || statusCode >= 300 then
-                    let detailMsg =
-                        if statusCode = 401 then
-                            $"OpenRouter API returned error status 401 (認証エラー): APIキーが無効または未設定です (Raw: {responseBody})。appsettings.json または .env の apiKey ('sk-or-v1-...') を確認してください。"
-                        else
-                            $"OpenRouter API returned error status {statusCode}: {responseBody}"
-                    return Error (OpenRouterError (statusCode, detailMsg))
+                    return Error (OpenRouterError (statusCode, formatStatusError statusCode responseBody))
                 else
                     try
                         use rootDoc = JsonDocument.Parse(responseBody)

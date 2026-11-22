@@ -48,7 +48,7 @@
   - `ST-MODEL-01`〜`03` / `ST-RULE-01`〜`05`（Patch Save 呼び出し、保存失敗時の**`Settings.SelectedModel` / `Settings.Rules` / `SelectedRuleId` ロールバック、`DeleteRule` 時の `ConfirmDialog = None` 閉鎖、`EditingRule` 保持**・段階別エラー通知）。
   - `E2E-01`〜`E2E-07`（`initWithContext` / `updateWithContext` を用いた無汚染テスト、実リポジトリ構成 `appsettings.json` `"apiKey": null` での `E2E-02`、モーダル開時背面バナー非表示＆モーダル内バナー検証の `E2E-04`、`shouldDispatchModelSelection` 同値ガード検証の `E2E-07` 含む）を追加し、実行時 Red を確認する。
 
-- [ ] 2.3 `State.fs`・`Views.fs`・`OpenRouterClient.fs` の実装（`pg-implementer` — Green & Refactor）
+- [x] 2.3 `State.fs`・`Views.fs`・`OpenRouterClient.fs` の実装（`pg-implementer` — Green & Refactor）
   - `State.fs`: `Model.ApiKeySourcePath` / `AiPipelineRunId` 追加、`initWithContext` / `updateWithContext`（`init ()` / `update` は `None` ラッパー）による同期メタデータ読込＆起動時 `Warnings` の `ErrorMessage` 反映（冗長な起動時 `loadSettingsCmd` 廃止）、`ReloadSettings`（同期再読込・`TargetDirectory` 維持・ビジー排他）、`saveSettingsPatchWithFeedback`（失敗時ロールバック・`SelectedRuleId` 保護・`ConfirmDialog = None` 閉鎖）、共通 CTS/runId 発行＆`ExecuteScanAndPropose` / `ScanCompleted` 全非 AI 分岐での `IsRequestingAi = false`・`AiPipelineRunId = None` リセット＆全通知 `runId` ガード、`validateApiKeyForAi`（`MissingApiKey` 時は常に環境別 `SettingsSavePath` 案内）を実装。
   - `Views.fs`（`mockup.html` 忠実再現）: メイン側 `if not model.IsRuleManagerOpen then errorBanner model dispatch`（背面バナー重複抑止）、`ruleManagerModal` 上部への `errorBanner` 配置、`errorBanner` の 3 ボタン統一（`🔄 設定を再読込`, `📋 コピー`, `✕`）、コントロールパネル常設の「🔄 設定を再読込」ボタン（ビジー時非活性）、`ComboBox.onSelectedIndexChanged` 内で同一クロージャ内の `availableModels |> List.tryItem idx` を渡す同値チェックガード `shouldDispatchModelSelection` を実装。
   - `OpenRouterClient.fs`: L124, L350 の 401 認証エラー案内から廃止済み `.env` 記述を整理し `appsettings.{Environment}.json` 案内に統一。

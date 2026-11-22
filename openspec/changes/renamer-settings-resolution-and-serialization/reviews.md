@@ -1472,3 +1472,205 @@
 - **次のアクション**: 次タスクへ（Task 2.2 完了処理後、Task 2.3 `State.fs`・`Views.fs`・`OpenRouterClient.fs` の本実装へ進行）
 - **テスト品質評価**: 堅牢（合格）
 - **承認者**: QA Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 2.3 (Cycle 1 - PG Reviewer)
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 2.3 `State.fs`・`Views.fs`・`OpenRouterClient.fs` の実装（Cycle 1）
+- **レビュアー**: pg (PG Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/State.fs`, `src/TagBasedVideoManager.Renamer/Views.fs`, `src/TagBasedVideoManager.Renamer/OpenRouterClient.fs`
+
+---
+
+## 1. 挑戦的設問への回答
+
+### 設問1: 暗黙の前提と破綻シナリオ（checklist §2-1）
+
+1. `RetryCandidateAiProposal`（`State.fs` L606-646）で先行パイプライン中断・キー検証エラー時に他候補の `IsAiProcessing = true` がクリアされず、旧 `AllAiProposalsCompleted` も無視されるため UI 上永久「処理中」ロックになる。
+2. `Views.errorBannerWithMargin`（L2531-2534）が `Some null` で `NullReferenceException` になる。
+3. `State.fs` `ModelSelected`（L472-489）自体に同値・空白ガードがなく、UI 外からのディスパッチ時に保存が抑止されない。
+4. `Views.fs` 命名規則 `ComboBox`（L733-757）で `Rules = []` 時インデックス `0` 問題および再描画時インデックス競合がある。
+5. `State.fs` L579 `CandidateAiProposed` が失敗候補（`AiError.IsSome`）にも `IsAiProposed = true` を設定している。
+
+### 設問2: 例外の握りつぶし・サイレントエラー（checklist §2-2）
+
+- `disposeAndClearCts`（`State.fs` L131-139）の `with _ -> ()` と `createAsyncPipelineCmd`（L284-289）の `| _ -> ()` が `ObjectDisposedException` / `OperationCanceledException` 以外の予期せぬ例外までログなしで握りつぶしている。API キー漏洩なし、401 文言統一済み。
+
+### 設問3: 30%コード削減リファクタ提案（checklist §3）
+
+- `resolveEffectiveSavePath`、`resolveSelectedRuleId`、`applySettingsPatch`、`startAiPipelineOrReset` の共通ヘルパー抽出により、`ModelSelected`/`applyRulesPatch` および `ScanCompleted`/`RetryCandidateAiProposal` の重複を統合して約 30% 削減可能。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（QA Reviewer 記録を参照）。
+
+---
+
+## 3. 指摘事項
+
+- **指摘1 (Major)**: `RetryCandidateAiProposal` 実行時の他候補 `IsAiProcessing` リセット漏れ解消。
+- **指摘2 (Major)**: `disposeAndClearCts` および `createAsyncPipelineCmd` の予期せぬ例外の無ログ握りつぶし廃止（`eprintfn` 警告出力）。
+- **指摘3 (Minor)**: `Views.errorBannerWithMargin` の `null`/空白ガード、`CandidateAiProposed` の `IsAiProposed` 整合、`ModelSelected` 同値・空白ガード。
+- **指摘4 (Suggestion)**: `State.fs` 共通ヘルパー統合（約 30% 削減リファクタ）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし（Major 1〜2 解消後に再レビュー）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 2.3 (Cycle 1 - QA Reviewer / Adversarial QA)
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 2.3 `State.fs`・`Views.fs`・`OpenRouterClient.fs` の実装（Cycle 1）
+- **レビュアー**: qa (QA Reviewer Agent / Adversarial QA 担当)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/State.fs`, `src/TagBasedVideoManager.Renamer/Views.fs`, `src/TagBasedVideoManager.Renamer/OpenRouterClient.fs`
+
+---
+
+## 1. 挑戦的設問への回答
+
+- 命名規則 `ComboBox`（L733-757）が `ReloadSettings` / `MoveRuleOrder` 再描画時に `RuleSelected` を誤発火する（Attack 7b, 7c）。
+- `RetryCandidateAiProposal` で先行処理中候補がゾンビスピナー化する（Attack 1, 2）。
+- `ModelSelected` に同値・`null`/空白ガードがない（Attack 5, 10）。
+- `ruleManagerModal` の固定 `960x680` が最小検証幅 `800x650` で画面外にはみ出す（`ModalBounds = (-80, -14.67, 960, 680)`, Attack 6）。
+- `RetryCandidateAiProposal` の `IsScanning || IsRenaming` 排他抜け（Attack 3a, 3b）およびルール CRUD ハンドラ（`DeleteRule`/`SaveEditingRule`/`SaveRule`）境界バリデーション不足（Attack 4a/b/c）。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+- **破壊テストコード**: `adversarial_qa_task23.fsx`（実行後削除済み）
+- **実行コマンド**: `dotnet fsi ...\adversarial_qa_task23.fsx`
+- **実行判定**: **バグ検出（Red / 16 ケース中 12 件で失敗検出）**
+  - `Attack1`, `Attack2`: ゾンビスピナー残留
+  - `Attack3a`, `Attack3b`: スキャン/リネーム中 `RetryCandidateAiProposal` 起動
+  - `Attack4a`, `Attack4b`, `Attack4c`: 最後の 1 件削除、`Id=null` 混入、空白ルール名許容
+  - `Attack5`, `Attack10`: `ModelSelected` `null`/空白/同値保存発火
+  - `Attack6`: `800x650` ウィンドウでモーダル座標 `(-80, -14.67, 960, 680)` はみ出し
+  - `Attack7b`, `Attack7c`: `ReloadSettings` / `MoveRuleOrder` 再描画で `RuleSelected` 誤発火
+  - `Attack7a`, `Attack7d`, `Attack8`, `Attack9`: 通過（堅牢）
+
+---
+
+## 3. 指摘事項
+
+- **指摘1 (Major)**: 命名規則 `ComboBox` の再描画時 `RuleSelected` 誤発火修正（および `Rules = []` 時 `-1` 統一）。
+- **指摘2 (Major)**: `RetryCandidateAiProposal` 実行時の他候補 `IsAiProcessing` リセット。
+- **指摘3 (Major)**: `State.fs` `ModelSelected` の同値保存抑止・`null`/空白ガード。
+- **指摘4 (Major)**: `Views.fs` `ruleManagerModal` 固定サイズ `960x680` 廃止・レスポンシブ制約化（`800x650` 枠内収容）。
+- **指摘5 (Minor)**: `RetryCandidateAiProposal` の `IsScanning || IsRenaming` 排他（`State.fs` ＆ `Views.fs` 再試行ボタン無効化）。
+- **指摘6 (Minor)**: ルール CRUD（`DeleteRule` 残り 1 件・`SaveEditingRule`/`SaveRule` 必須項目検証）境界ガード追加。
+
+---
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー（`pg-implementer` で修正・リファクタ後、450 件テスト＋Adversarial QA 再実施）
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 2.3 (Cycle 2 - PG Reviewer)
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 2.3 `State.fs`・`Views.fs`・`OpenRouterClient.fs` の実装（Cycle 2 再レビュー）
+- **レビュアー**: pg (PG Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/State.fs`, `src/TagBasedVideoManager.Renamer/Views.fs`, `src/TagBasedVideoManager.Renamer/OpenRouterClient.fs`
+
+---
+
+## 1. 挑戦的設問への回答
+
+### 設問1: Cycle 1 指摘の解消および `ConditionalWeakTable` / DRY ヘルパー検証
+
+- `RetryCandidateAiProposal` の `IsScanning || IsRenaming` 排他（`State.fs` L496・`Views.fs` L1303/L1782）と `startAiPipelineOrReset` による全他候補 `IsAiProcessing = false` リセットを確認。
+- `Views.errorBannerWithMargin`（L2619）の非空白ガード、`ModelSelected`（L547）の同値/空白ガード、`CandidateAiProposed`（L628）の `IsAiProposed && AiError.IsNone` 整合を確認。
+- `ConditionalWeakTable<ComboBox, RuleComboBoxState>`（`Views.fs` L117-206）に逆参照によるメモリリークはなく、`IsSyncing` 排他＋`RuleComboItem` 構造的等値により同名ルール・空リスト・再描画誤発火を構造的に防止。`ruleManagerModal` のレスポンシブ化およびルール CRUD 境界ガードも確認。
+
+### 設問2: 例外の握りつぶし・サイレントエラー検証
+
+- `disposeAndClearCts`（L149-160）は `ObjectDisposedException` のみ、`createAsyncPipelineCmd`（L306-310）は `OperationCanceledException` のみ静かに無視し、予期せぬ例外は `eprintfn "[WARN] ..."` へ記録するよう改善済み。401 文言統一・API キー保護も適切。
+
+### 設問3: コード削減・設計・モック忠実性
+
+- `resolveEffectiveSavePath`, `resolveSelectedRuleId`, `clearAllAiProcessing`, `startAiPipelineOrReset`, `applySettingsPatch`, `updateCandidateByPath`, `mapEditingRule`, `startRename` により重複ロジックを適切に削減。`mockup.html`・`design.md`・日本語 XML コメント規約と整合。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（下記 QA Reviewer 記録を参照。親エージェント側で非 Deploy 全 450 件 Pass 確認済み）。
+
+---
+
+## 3. 指摘事項
+
+なし（Cycle 1 指摘 1〜4 解消済み。なお `design.md` §2.6.1 記載の `SettingsLoadedWithMeta` 不採用と後方互換 `SettingsLoaded` 残存の軽微差分のみ Archive 時 `handover.md` 申し送り候補）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（`Critical`: 0、`Major`: 0、`Minor`: 0、`Suggestion`: 0）
+- **保留指摘（申し送り）**: `design.md` §2.6.1 の `SettingsLoadedWithMeta` 記述と実装（同期ロード＋旧 `SettingsLoaded` 互換維持）の軽微差分
+- **次のアクション**: QA Reviewer Cycle 2 記録へ続く
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 2.3 (Cycle 2 - QA Reviewer / Adversarial QA)
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 2.3 `State.fs`・`Views.fs`・`OpenRouterClient.fs` の実装（Cycle 2 再レビュー）
+- **レビュアー**: qa (QA Reviewer Agent / Adversarial QA 担当)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/State.fs`, `src/TagBasedVideoManager.Renamer/Views.fs`, `src/TagBasedVideoManager.Renamer/OpenRouterClient.fs`
+
+---
+
+## 1. 挑戦的設問への回答
+
+- `RuleComboItem` / `ConditionalWeakTable` により `ReloadSettings` 順序入替（Attack 7b）、`MoveRuleOrder`（Attack 7c）、空リスト往復（Attack 7a+11d, 15）、`Rule.Name = null`（Attack 11a）、同名ルール切替・`ItemsSource` 参照維持（Attack 7d+11b+11c）すべてで誤発火・例外なし。
+- `RetryCandidateAiProposal` ゾンビスピナー（Attack 1, 2）、`IsScanning`/`IsRenaming` 排他（Attack 3a, 3b, 13）、`ModelSelected` `null`/空白/同値抑止（Attack 5, 10）、`ruleManagerModal` `800x650`/`1100x720` 内収容（Attack 6+12a, 12b）、ルール CRUD 境界ガード（Attack 4a/b/c, 16）、`CandidateAiProposed` 整合＆既破棄 CTS 保護（Attack 14）すべて堅牢確認。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果 — Cycle 2）
+
+- **破壊テストコード**: `adversarial_qa_task23_cycle2.fsx`（実行後削除済み、`appsettings*.json` SHA256 不変確認済み）
+- **実行コマンド**: `dotnet fsi ...\adversarial_qa_task23_cycle2.fsx`
+- **実行判定**: **堅牢性確認（Green / 失敗・バグ検出 0 件 / 全 22 ケース通過）**
+
+---
+
+## 3. 指摘事項
+
+なし（450/450 Pass + Adversarial QA 全 22 ケース堅牢確認）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（`Critical`: 0、`Major`: 0、`Minor`: 0、`Suggestion`: 0）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 次タスクへ（Task 2.3 を完了 `[x]` に更新・コミットし、Phase 3 Task 3.1 実画面視覚検証へ進む）
