@@ -8,7 +8,7 @@
 
 ## Phase 1: 既存テスト実ファイル隔離と Root Cause 先行再現テスト (QA Tester — Red)
 
-- [ ] 1.1 既存テストの実設定ファイル隔離・旧 `%APPDATA%` テスト整理（実ファイル破壊防止のため最優先実施）
+- [x] 1.1 既存テストの実設定ファイル隔離・旧 `%APPDATA%` テスト整理（実ファイル破壊防止のため最優先実施）
   - `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs` の `ModelSelected`・ルール追加/編集/削除/並び替えテスト（L233, L369, L376, L613, L631, L652, L1203 等）に一時 `SettingsSavePath` 注入および**テスト実行前後に実設定ファイル `src/TagBasedVideoManager.Renamer/appsettings.{env}.json` の内容を保護・検証する安全ラッパー**を適用する。また `StateTests.fs` L1140 の `RetryCandidateAiProposal` 未設定エラー検証を統一ガード導入（Phase 2.2〜2.3）に備えて一時隔離・整理する。
   - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` の `%APPDATA%` 前提テスト（`UT-04`, `IT-02`, `%APPDATA%` 最優先上書き回帰テスト）および実ファイル `appsettings.Development.json` 固定値依存テスト（L279, L396）を、一時ディレクトリフィクスチャによるテストへ切り替える。
   - 隔離後、`dotnet test test/TagBasedVideoManager.Renamer.Tests/TagBasedVideoManager.Renamer.Tests.fsproj` が全件 Pass し、かつリポジトリ内の実 `appsettings.Development.json` に一切変更が走らないことを確認する。

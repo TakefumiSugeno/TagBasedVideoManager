@@ -728,3 +728,194 @@
 - **条件付きLGTM**: なし（`Critical`: 0 件、`Major`: 0 件、`Minor`: 2 件、`Suggestion`: 0 件。Cycle 3 指摘 1〜4 全解消確認済み）
 - **保留指摘（申し送り）**: 指摘 1（`SettingsLoadedWithMeta` 整理・`CancelAiProposal` 時 `AiPipelineRunId = None`）、指摘 2（Task 1.2 スタブ一覧補完・Task 2.2 `RenameIntegrationE2ETests.fs` `Msg` 追従）
 - **次のアクション**: 次フェーズへ（Gate 1 検証 `openspec validate` / `verify-gate.ps1 -Gate propose` 通過後、Apply フェーズへ進行）
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 1.1 (Cycle 1)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: 1.1 既存テストの実設定ファイル隔離・旧 `%APPDATA%` テスト整理
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_apply_test.md
+- **対象成果物**: test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs, test/TagBasedVideoManager.Renamer.Tests/StateTests.fs, openspec/changes/renamer-settings-resolution-and-serialization/tasks.md
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: トートロジーテスト（実装式のコピペ）と形式的アサーションの告発（checklist §1）
+
+- **確認内容・回答**:
+  - `SettingsTests.fs` L254-263（`UT-04`）および L854-861（`IT-02`）では、`path |> should equal expectedEnvPath`（`tempBaseDir` / `tempDir` 配下）で完全一致検証した直後に `Path.GetDirectoryName(path)` と `StartsWith(appDataRoaming)` の重複・形式アサーションが付いている。
+  - `StateTests.fs` で `withIsolatedStateTest (fun tempSavePath -> ...)` が `tempSavePath` を注入している保存を伴う全 7 テストにおいて `ErrorMessage |> should equal None` 等を確認しておらず、実保存失敗を見逃す形式的隔離となっている。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L250-265, L847-875
+  - `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs` L85-142, L386-397, L528-562, L795-858, L1495-1529
+
+### 設問2: 甘いアサーション・無意味なモックの告発（checklist §2）
+
+- **確認内容・回答**:
+  - `SettingsTests.fs` L389-456 は固定 JSON を定義しながら `SelectedModel |> should not' (be EmptyString)`、`Rules.Length |> should be (greaterThan 0)` の曖昧アサーションのまま。
+  - `SettingsTests.fs` L287-319 はテスト名で `loadConfiguration` としているが実装は `loadConfigurationWithConfig` を呼んでおり L459 と重複、`Settings.loadConfiguration` 経由のオーバーライドロード検証が欠落している。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L287-319, L389-456, L459-496
+
+### 設問3: ミューテーション思考（バグのすり抜け検証）（checklist §3）
+
+- **確認内容・回答**:
+  1. `SettingsTests.fs` L1011-1036 は `tempDir` に `appsettings.Development.json` 等を置かず既定値 `240` と比較しているため、環境名サニタイズ破壊でも Pass する。
+  2. `SettingsTests.fs` L447-454 の `prodJson` は既定値と同値であり、`Settings.load` が `defaultSettings ()` を返す破壊でも Pass する。
+  3. `StateTests.fs` の保存系 7 テストは `ErrorMessage |> should equal None` を確認しておらず、保存失敗でも Pass する。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L414-455, L1011-1036
+  - `src/TagBasedVideoManager.Renamer/Settings.fs` L317-327
+  - `src/TagBasedVideoManager.Renamer/State.fs` L264-270, L312-315, L821-905
+  - `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs` L386-397, L528-562, L795-858, L1495-1529
+
+### 設問4: フレーキー要因・環境依存・隔離漏れ・クリーンアップ安全性の摘出（checklist §4）
+
+- **確認内容・回答**:
+  - `SettingsTests` での `DOTNET_ENVIRONMENT` 等プロセスグローバル環境変数書換と `StateTests` / `RenameIntegrationE2ETests` 間の `[<Collection>]` 直列化がなく並列実行競合リスクがある。
+  - `withIsolatedStateTest` で `tempDir` 作成後のバックアップ取得が `try ... finally` 外にあり、また `with _ -> ()` で復元失敗を握りつぶしている。
+  - `StateTests.fs` L145 の `State.init ()` が実設定依存のまま、かつ `RenameIntegrationE2ETests.fs` の 9 箇所の `State.init ()` が未隔離である。また親環境で `DeployScript*` 以外の非 Deploy テスト全件結果の確認も必要。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs` L12-142, L145-156
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L137-163, L268-283, L645-672, L732-750
+  - `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs` L544, L628, L691, L753, L844, L1032, L1104, L1163, L1299
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）※Apply実装レビュー時のみ
+
+対象外（Apply テストレビューフェーズのため `checklist_apply_test.md` 観点のみ実施）。
+
+---
+
+## 3. 指摘事項
+
+### 指摘1
+
+- **内容**: `SettingsTests.fs` の一時フィクスチャ化箇所に甘いアサーション・ミューテーションすり抜け・`loadConfiguration` 未検証経路が残存（L389-456 曖昧アサーション＆既定値一致 JSON、L1011-1036 `240` 比較のみ、L287-319 `loadConfigurationWithConfig` 重複）。
+- **重要度**: Major
+- **対応方針**: 採用
+- **理由**: 実装破壊時にすり抜ける甘いテストであるため。
+- **対応コミット**: Cycle 2 修正で対応予定
+
+### 指摘2
+
+- **内容**: `StateTests.fs` の保存を伴う全 7 テスト（L386, L528, L537, L795, L815, L838, L1495-1529）で `ErrorMessage |> should equal None` 等の保存成否検証が欠落。
+- **重要度**: Major
+- **対応方針**: 採用
+- **理由**: 保存失敗を見逃す形式的テストであるため。
+- **対応コミット**: Cycle 2 修正で対応予定
+
+### 指摘3
+
+- **内容**: テストクラス間（`SettingsTests`, `StateTests`, `RenameIntegrationE2ETests`）の `[<Collection>]` 直列化不在による環境変数/`bin/` 競合リスク、`withIsolatedStateTest` の `try ... finally` 外準備＆例外握りつぶし、`StateTests.fs` L145 および `RenameIntegrationE2ETests.fs` 9 箇所の `State.init ()` 隔離漏れ。
+- **重要度**: Major
+- **対応方針**: 採用
+- **理由**: フレーキー要因・クリーンアップ安全性・Task 1.1 の隔離要件に直結するため。
+- **対応コミット**: Cycle 2 修正で対応予定
+
+### 指摘4
+
+- **内容**: `SettingsTests.fs` L258-263 / L855-861 の冗長アサーションと両テストファイル末尾の余分な空行。
+- **重要度**: Minor
+- **対応方針**: 採用
+- **理由**: 可読性・フォーマット統一のため。
+- **対応コミット**: Cycle 2 修正で対応予定
+
+---
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし（Major 指摘 1〜3 解消および全非 Deploy テスト Pass・実設定不変確認後に Cycle 2 再レビュー）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー（`qa-tester` で指摘 1〜4 を修正）
+- **テスト品質評価**: 要改善
+- **承認者**: QA Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 1.1 (Cycle 2)
+
+- **日時**: 2026-11-22
+- **フェーズ**: apply
+- **タスク**: 1.1 既存テストの実設定ファイル隔離・旧 `%APPDATA%` テスト整理（Cycle 2 再レビュー）
+- **レビュアー**: qa
+- **使用プロトコル**: openspec/templates/checklist_apply_test.md
+- **対象成果物**: test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs, test/TagBasedVideoManager.Renamer.Tests/StateTests.fs, test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs, openspec/changes/renamer-settings-resolution-and-serialization/tasks.md
+
+---
+
+## 1. 挑戦的設問への回答（悪魔の代弁者・ブラインド突合等）
+
+### 設問1: トートロジーテスト（実装式のコピペ）と重複・形式アサーションの検証（checklist §1）
+
+- **確認内容・回答**:
+  - Cycle 1 指摘 4 で挙げた `SettingsTests.fs` `UT-04`（L440-452）および `IT-02`（L1050-1075）の冗長アサーション（`Path.GetDirectoryName`・`StartsWith(appDataRoaming)`）が整理され、`path |> should equal expectedEnvPath` / `saveTarget |> should equal expectedPath` による簡潔かつ明確な期待値比較になった。
+  - `SettingsTests.fs` L578-659 / L1211-1279 および `StateTests.fs` の期待値はすべて具体的な固定リテラル値で定義されており、実装ロジックのコピペによるトートロジーは存在しない。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L440-452, L578-659, L1050-1075, L1211-1279
+
+### 設問2: 甘いアサーション・無意味なモックの告発と Cycle 1 指摘 1〜2 解消確認（checklist §2）
+
+- **確認内容・回答**:
+  - **指摘 1-(1) 解消**: `SettingsTests.fs` L578-659（`一時ディレクトリの appsettings.Development.json と appsettings.Production.json は正しくデシリアライズできる`）で、両 JSON に既定値（`240`, `""`, `"meta-llama/..."`）と異なる非既定値（`200` / `180`, `"D:\\ProdVideos"`, `"fixture/dev-model:free"` / `"fixture/prod-model:v1"`）を設定し、`TargetDirectory`, `PathLengthThreshold`, `SelectedModel`, `ApiKey`, `Rules.Length = 1` および先頭ルール全項目（`Id`, `Name`, `Pattern`, `PromptInstruction`, `Order`, `EnableWebSearch`）を具体リテラルで厳密検証している。
+  - **指摘 1-(3) 解消**: `SettingsTests.fs` L474-508（`loadConfiguration は一時ディレクトリ内の構成別設定ファイルをベース設定にオーバーライドロードする`）が `Settings.defaultConfigurationName` に対応したファイルを作成し、実際に `Settings.loadConfiguration None (Some dummyEnvPath)` を呼び出してオーバーライドおよびベース非既定値（`PathLengthThreshold = 210`）の継承を検証している。
+  - **指摘 2 解消**: `StateTests.fs` の保存系全 7 テスト（`MoveRuleOrder` L269, `ModelSelected` L408, `OpenRuleManager と SaveEditingRule` L431, `SaveEditingRule` 既存更新 L681・新規追加 L708, `RequestDeleteRule`→`DeleteRule` L733, `State.update の各種メッセージ遷移` 内の `DeleteRule`/`SaveRule`/`MoveRuleOrder` L1376, L1384, L1396, L1403, L1408, L1413）で `ErrorMessage |> should equal None` が追加され、保存失敗の黙殺が解消された。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L474-508, L578-659
+  - `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs` L260-272, L403-439, L672-738, L1374-1415
+
+### 設問3: ミューテーション思考（バグのすり抜け検証）（checklist §3）
+
+- **確認内容・回答**:
+  - **指摘 1-(2) 解消**: `SettingsTests.fs` L1211-1279（`loadConfigurationWithConfig は空白環境名・パストラバーサル文字列・不在ディレクトリ指定時に安全フォールバックする`）で、環境変数を一時クリアした上で隔離ディレクトリにフォールバック先用の非既定値（`199`, `"fallback-env-model"`）を配置し、かつトラバーサル・不正名参照先に別の罠値（`222`, `"evil-model"`）を配置した。これにより、サニタイズやトラバーサル防止の条件を反転・削除すれば確実に `240` または `222` となって Red（失敗）になる。
+  - **Task 1.1 範囲における死角・スコープ境界の明確化**: 現行 `State.fs`（L265）は未修正のまま Task 2.1 へ進む段階であるため、`StateTests.fs` 内の保存系テストは「実設定ファイル不変 + 暫定退避復元 + `ErrorMessage = None`」までを検証しており、`tempSavePath` 実ファイル自体への書き込み・部分更新確認は計画通り Phase 2（Task 2.1 の `State.fs` 前倒し保護および Task 2.2 の `ST-MODEL-01〜02`, `ST-RULE-01〜05`）の責務となる。また未変更の既存テスト `SettingsTests.fs` L1178（`env*with:bad?chars`）は既定値 `240` 比較のままだが、同じ `sanitize` ロジックの検証は上記 L1211 で厳格にカバーされている。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L1178-1191, L1211-1279
+  - `src/TagBasedVideoManager.Renamer/Settings.fs` L317-327
+  - `openspec/changes/renamer-settings-resolution-and-serialization/tasks.md` L11-14, L39
+
+### 設問4: フレーキー要因・環境依存・隔離漏れ・クリーンアップ安全性の確認（checklist §4）
+
+- **確認内容・回答**:
+  - **指摘 3-(1) 並列実行直列化**: `SettingsTests.fs` L11-12 で `[<CollectionDefinition("IsolatedSettingsAndState", DisableParallelization = true)>]` が定義され、`SettingsTests`（L198）、`StateTests`（L9）、`RenameIntegrationE2ETests`（L10）の 3 モジュールすべてに `[<Collection("IsolatedSettingsAndState")>]` が付与された（他ファイルからの `Settings.` / `SetEnvironmentVariable` 呼び出しがないことも全テスト検索で確認済み）。
+  - **指摘 3-(2) クリーンアップ安全性と無変更書戻し回避**: `SettingsIsolationHarness.withIsolatedSettingsEnvironment`（`SettingsTests.fs` L93-151）で、`realSnapshots` と `transientBackups` の取得が `try ... finally` の内側に入り、一時ディレクトリ削除と復元の失敗が `cleanupErrors` へ集約され、テスト本体成功時にクリーンアップ失敗があれば `failwith` で通知されるようになった。また L135 の `System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(path), bytes)` により内容変更時のみ書き戻すため、不要なタイムスタンプ更新が発生しない。
+  - **指摘 3-(3)(4) 隔離漏れ解消と実ファイル不変の実測**:
+    - `StateTests.fs` L19-30, L741-745, L878-902 の `State.init ()` 呼び出しが `SettingsIsolationHarness.withCleanInitEnvironment`（一意のクリーン環境名 `IsolatedCleanEnv_<guid>` を使用し開発者の `appsettings.Development.json` を読まない）へ移行された。
+    - `RenameIntegrationE2ETests.fs` の `State.init ()` 呼び出し全 9 箇所（L531, L630, L695, L759, L852, L1042, L1116, L1177, L1254）が `SettingsIsolationHarness.withIsolatedSettingsEnvironment` ＋ `initIsolatedModel` へ隔離された。
+    - ワークスペース実測で、`src/TagBasedVideoManager.Renamer/` 配下の設定ファイルは未変更であり、`src/TagBasedVideoManager.Renamer/appsettings.Development.json` と `test/TagBasedVideoManager.Renamer.Tests/bin/Debug/net10.0/appsettings.Development.json` の SHA256 ハッシュも完全一致（`3CC161541975F7DC6F984C3A8CE430F14DE290C6D953699FFDC1D59B09BF1FEB`）している。
+    - 親エージェント側で非 Deploy 全テスト 389 件（`SettingsTests`, `StateTests`, `RenameIntegrationE2ETests` 他 7 テストクラス）が **合計: 389, 失敗: 0, 成功: 389, スキップ済み: 0** で通過している（なお除外された `DeployScript*` / `BugReproductionTests` は `git ls-files --eol scripts/deploy.sh` が `i/lf w/crlf` となる Windows チェックアウト既存のスコープ外要因によるものであることを実測確認済み）。
+  - **規約準拠**: 行末空白・タブ 0 件、`Skip` / `Ignore` 属性 0 件、日本語 XML ドキュメントコメント準拠。
+- **確認根拠**:
+  - `test/TagBasedVideoManager.Renamer.Tests/SettingsTests.fs` L10-198
+  - `test/TagBasedVideoManager.Renamer.Tests/StateTests.fs` L9-30, L741-745, L878-902
+  - `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs` L10, L531, L630, L695, L759, L852, L1042, L1116, L1177, L1254
+  - 実測: `git status -s`、`Get-FileHash`（`src/` と `bin/` の `appsettings*.json` 全 3 ファイル SHA256 一致）、`git ls-files --eol scripts/deploy.sh`（`i/lf w/crlf`）
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）※Apply実装レビュー時のみ
+
+対象外（Apply テストレビューフェーズのため `checklist_apply_test.md` に基づくテストコード批判的レビュー・ミューテーション思考・隔離安全性検証を実施）。
+
+---
+
+## 3. 指摘事項
+
+なし（理由: Cycle 1 の指摘 1〜4 がすべて適切に解消され、テストの厳格性・ミューテーション耐性・並列実行直列化・例外時クリーンアップ安全性・隔離網羅性および非 Deploy テスト全 389 件 Pass・実設定ファイル不変を確認済みのため。なお `SettingsIsolationHarness` の `transientBackups` は `tasks.md` 通り Task 2.1 での `State.fs` 保存先切替までの暫定保護措置として機能している）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（`Critical`: 0 件、`Major`: 0 件、`Minor`: 0 件、`Suggestion`: 0 件）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 次タスクへ（Task 1.1 完了、`[x]` 更新・Gate 2 確認の上で Task 1.2 へ進行）
+- **テスト品質評価**: 堅牢（合格）
+- **承認者**: QA Reviewer Agent

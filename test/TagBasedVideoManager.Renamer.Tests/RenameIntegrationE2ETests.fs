@@ -7,6 +7,7 @@ open FsUnit
 open Avalonia
 open TagBasedVideoManager.Renamer
 
+[<Collection("IsolatedSettingsAndState")>]
 module RenameIntegrationE2ETests =
 
     /// <summary>
@@ -527,190 +528,129 @@ module RenameIntegrationE2ETests =
 
     [<Fact>]
     let ``E2E: Zero-configuration user journey (no API key, scan long paths, fallback proposal, manual edit, physical rename and undo)`` () =
-        withTempDirectory (fun tempDir ->
-            // 1. テスト用の長パスファイル作成
-            let targetNameLen1 = max 20 (245 - tempDir.Length - 1)
-            let longName1 = "2024-05-01_" + String('a', targetNameLen1 - 15) + ".mp4"
-            let longPath1 = Path.Combine(tempDir, longName1)
-            File.WriteAllText(longPath1, "initial-video-data-1")
+        SettingsIsolationHarness.withIsolatedSettingsEnvironment (fun tempSavePath ->
+            withTempDirectory (fun tempDir ->
+                // 1. テスト用の長パスファイル作成
+                let targetNameLen1 = max 20 (245 - tempDir.Length - 1)
+                let longName1 = "2024-05-01_" + String('a', targetNameLen1 - 15) + ".mp4"
+                let longPath1 = Path.Combine(tempDir, longName1)
+                File.WriteAllText(longPath1, "initial-video-data-1")
 
-            let targetNameLen2 = max 20 (245 - tempDir.Length - 1)
-            let longName2 = "random_no_date_video_" + String('b', targetNameLen2 - 25) + ".mp4"
-            let longPath2 = Path.Combine(tempDir, longName2)
-            File.WriteAllText(longPath2, "initial-video-data-2")
+                let targetNameLen2 = max 20 (245 - tempDir.Length - 1)
+                let longName2 = "random_no_date_video_" + String('b', targetNameLen2 - 25) + ".mp4"
+                let longPath2 = Path.Combine(tempDir, longName2)
+                File.WriteAllText(longPath2, "initial-video-data-2")
 
-            // 2. 初期Modelセットアップ (APIキー未設定 = None)
-            let initialSettings = { Settings.defaultSettings () with TargetDirectory = tempDir; ApiKey = None }
-            let baseModel, _ = State.init ()
-            let model1 = { baseModel with Settings = initialSettings }
+                // 2. 初期Modelセットアップ (APIキー未設定 = None)
+                let baseModel = SettingsIsolationHarness.initIsolatedModel tempSavePath
+                let initialSettings = { baseModel.Settings with TargetDirectory = tempDir; ApiKey = None }
+                let model1 = { baseModel with Settings = initialSettings }
 
-            // 3. 走査実行 (FileScanner.scanLongPaths)
-            let scanResult = FileScanner.scanLongPaths tempDir 240 false
-            match scanResult with
-            | Error err -> failwith $"走査失敗: {err}"
-            | Ok candidates ->
-                candidates.Length |> should equal 2
+                // 3. 走査実行 (FileScanner.scanLongPaths)
+                let scanResult = FileScanner.scanLongPaths tempDir 240 false
+                match scanResult with
+                | Error err -> failwith $"走査失敗: {err}"
+                | Ok candidates ->
+                    candidates.Length |> should equal 2
 
-                // 4. State.update で ScanCompleted を処理
-                // (APIキー未設定のため、LLMを偽装せず未提案として元ファイル名を保持し警告を表示)
-                let model2, cmd = State.update (ScanCompleted (Ok candidates)) model1
-                
-                // 候補が Candidates に格納されていることを検証
-                model2.Candidates.Length |> should equal 2
-                
-                let prop1 = model2.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath1)
-                let prop2 = model2.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath2)
+                    // 4. State.update で ScanCompleted を処理
+                    // (APIキー未設定のため、LLMを偽装せず未提案として元ファイル名を保持し警告を表示)
+                    let model2, cmd = State.update (ScanCompleted (Ok candidates)) model1
+                    
+                    // 候補が Candidates に格納されていることを検証
+                    model2.Candidates.Length |> should equal 2
+                    
+                    let prop1 = model2.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath1)
+                    let prop2 = model2.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath2)
 
-                // LLM未接続のため「未提案」状態（IsAiProposed = false）
-                prop1.IsAiProposed |> should equal false
-                prop2.IsAiProposed |> should equal false
-                // 初期状態は待機中コメント
-                prop1.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
-                prop2.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
-                // 初期提案名は元ファイル名（手動編集用）
-                prop1.ProposedFileName |> should equal longName1
-                prop2.ProposedFileName |> should equal longName2
-                // 警告案内メッセージが表示されていること
-                model2.ErrorMessage |> should not' (equal None)
-                model2.ErrorMessage.Value |> should contain "APIキーが未設定"
+                    // LLM未接続のため「未提案」状態（IsAiProposed = false）
+                    prop1.IsAiProposed |> should equal false
+                    prop2.IsAiProposed |> should equal false
+                    // 初期状態は待機中コメント
+                    prop1.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
+                    prop2.AiComment |> should equal (Some "（AI提案の開始を待機しています...）")
+                    // 初期提案名は元ファイル名（手動編集用）
+                    prop1.ProposedFileName |> should equal longName1
+                    prop2.ProposedFileName |> should equal longName2
+                    // 警告案内メッセージが表示されていること
+                    model2.ErrorMessage |> should not' (equal None)
+                    model2.ErrorMessage.Value |> should contain "APIキーが未設定"
 
-                // 5. ユーザーによる手動ファイル名編集のシミュレート (UpdateProposedName)
-                let customName1 = "2024-05-01_my_edited_title.mp4"
-                let model3, _ = State.update (UpdateProposedName (longPath1, customName1)) model2
-                let updatedProp1 = model3.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath1)
-                updatedProp1.ProposedFileName |> should equal customName1
+                    // 5. ユーザーによる手動ファイル名編集のシミュレート (UpdateProposedName)
+                    let customName1 = "2024-05-01_my_edited_title.mp4"
+                    let model3, _ = State.update (UpdateProposedName (longPath1, customName1)) model2
+                    let updatedProp1 = model3.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath1)
+                    updatedProp1.ProposedFileName |> should equal customName1
 
-                let customName2 = "2026-09-28_custom_title.mp4"
-                let model3b, _ = State.update (UpdateProposedName (longPath2, customName2)) model3
+                    let customName2 = "2026-09-28_custom_title.mp4"
+                    let model3b, _ = State.update (UpdateProposedName (longPath2, customName2)) model3
 
-                // 6. リネーム実行 (State.update ExecuteRenameOnly)
-                let model4, _ = State.update ExecuteRenameOnly model3b
-                // 物理リネームの実行 (FileRenamer.executeRename)
-                let renameRes = FileRenamer.executeRename model3b.Candidates
-                match renameRes with
-                | Error err -> failwith $"リネーム失敗: {err}"
-                | Ok undoRecords ->
-                    let model5, _ = State.update (RenameCompleted (false, Ok undoRecords)) model4
+                    // 6. リネーム実行 (State.update ExecuteRenameOnly)
+                    let model4, _ = State.update ExecuteRenameOnly model3b
+                    // 物理リネームの実行 (FileRenamer.executeRename)
+                    let renameRes = FileRenamer.executeRename model3b.Candidates
+                    match renameRes with
+                    | Error err -> failwith $"リネーム失敗: {err}"
+                    | Ok undoRecords ->
+                        let model5, _ = State.update (RenameCompleted (false, Ok undoRecords)) model4
 
-                    // 物理ファイルの存在検証
-                    let renamedPath1 = Path.Combine(tempDir, customName1)
-                    let renamedPath2 = Path.Combine(tempDir, customName2)
-                    File.Exists(longPath1) |> should equal false
-                    File.Exists(longPath2) |> should equal false
-                    File.Exists(renamedPath1) |> should equal true
-                    File.Exists(renamedPath2) |> should equal true
+                        // 物理ファイルの存在検証
+                        let renamedPath1 = Path.Combine(tempDir, customName1)
+                        let renamedPath2 = Path.Combine(tempDir, customName2)
+                        File.Exists(longPath1) |> should equal false
+                        File.Exists(longPath2) |> should equal false
+                        File.Exists(renamedPath1) |> should equal true
+                        File.Exists(renamedPath2) |> should equal true
 
-                    // 7. Undoスタックに履歴が積まれ、Undo可能状態になっていることを検証
-                    model5.UndoStack.IsEmpty |> should equal false
+                        // 7. Undoスタックに履歴が積まれ、Undo可能状態になっていることを検証
+                        model5.UndoStack.IsEmpty |> should equal false
 
-                    // 8. Undo確認ダイアログの表示と実行 (RequestUndo -> ConfirmDialog -> ExecuteUndo)
-                    let model6, _ = State.update RequestUndo model5
-                    model6.ConfirmDialog |> should not' (equal None)
+                        // 8. Undo確認ダイアログの表示と実行 (RequestUndo -> ConfirmDialog -> ExecuteUndo)
+                        let model6, _ = State.update RequestUndo model5
+                        model6.ConfirmDialog |> should not' (equal None)
 
-                    let undoRes = FileRenamer.executeUndo undoRecords
-                    match undoRes with
-                    | Error err -> failwith $"Undo失敗: {err}"
-                    | Ok () ->
-                        let model7, _ = State.update (UndoCompleted (Ok ())) model6
+                        let undoRes = FileRenamer.executeUndo undoRecords
+                        match undoRes with
+                        | Error err -> failwith $"Undo失敗: {err}"
+                        | Ok () ->
+                            let model7, _ = State.update (UndoCompleted (Ok ())) model6
 
-                        // 元の長パスファイルが完全に復元されていること
-                        File.Exists(longPath1) |> should equal true
-                        File.Exists(longPath2) |> should equal true
-                        File.Exists(renamedPath1) |> should equal false
-                        File.Exists(renamedPath2) |> should equal false
-                        File.ReadAllText(longPath1) |> should equal "initial-video-data-1"
-                        File.ReadAllText(longPath2) |> should equal "initial-video-data-2"
+                            // 元の長パスファイルが完全に復元されていること
+                            File.Exists(longPath1) |> should equal true
+                            File.Exists(longPath2) |> should equal true
+                            File.Exists(renamedPath1) |> should equal false
+                            File.Exists(renamedPath2) |> should equal false
+                            File.ReadAllText(longPath1) |> should equal "initial-video-data-1"
+                            File.ReadAllText(longPath2) |> should equal "initial-video-data-2"
+            )
         )
 
     [<Fact>]
     let ``GUI: unproposed or unshortened candidate displays danger warning instead of safe badge`` () =
-        ensureAppInitialized ()
-        let baseModel, _ = State.init ()
-        let candidate: RenameProposal = {
-            OriginalFullPath = "E:\\videos\\unshortened_danger_path_exceeding_threshold_by_far_test.mp4"
-            OriginalFileName = "unshortened_danger_path_exceeding_threshold_by_far_test.mp4"
-            DirectoryPath = "E:\\videos"
-            OriginalLength = 255
-            OriginalFileNameBytes = 63
-            OriginalViolation = WindowsPathOnly
-            ProposedFileName = "unshortened_danger_path_exceeding_threshold_by_far_test.mp4"
-            ProposedLength = 255
-            ProposedFileNameBytes = 63
-            AiComment = None
-            IsAiProposed = false
-            IsAiProcessing = false
-            IsSelected = true
-            LastWriteTime = DateTime.UtcNow
-            AiError = None
-        }
-        let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
+        SettingsIsolationHarness.withIsolatedSettingsEnvironment (fun tempSavePath ->
+            ensureAppInitialized ()
+            let baseModel = SettingsIsolationHarness.initIsolatedModel tempSavePath
+            let candidate: RenameProposal = {
+                OriginalFullPath = "E:\\videos\\unshortened_danger_path_exceeding_threshold_by_far_test.mp4"
+                OriginalFileName = "unshortened_danger_path_exceeding_threshold_by_far_test.mp4"
+                DirectoryPath = "E:\\videos"
+                OriginalLength = 255
+                OriginalFileNameBytes = 63
+                OriginalViolation = WindowsPathOnly
+                ProposedFileName = "unshortened_danger_path_exceeding_threshold_by_far_test.mp4"
+                ProposedLength = 255
+                ProposedFileNameBytes = 63
+                AiComment = None
+                IsAiProposed = false
+                IsAiProcessing = false
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+                AiError = None
+            }
+            let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
 
-        let w = new Avalonia.FuncUI.Hosts.HostWindow()
-        w.Width <- 1100.0
-        w.Height <- 720.0
-        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
-        |> Avalonia.FuncUI.Elmish.Program.withHost w
-        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
-        w.Show()
-        w.UpdateLayout()
-
-        // ビジュアルツリーから全 TextBlock の文字列を収集
-        let rec collectTexts (control: Avalonia.Controls.Control) : string list =
-            let currentText =
-                match control with
-                | :? Avalonia.Controls.TextBlock as tb -> [ tb.Text ]
-                | _ -> []
-            let childTexts =
-                match control with
-                | :? Avalonia.Controls.Panel as panel ->
-                    panel.Children |> Seq.collect collectTexts |> Seq.toList
-                | :? Avalonia.Controls.ContentControl as cc ->
-                    match cc.Content with
-                    | :? Avalonia.Controls.Control as c -> collectTexts c
-                    | _ -> []
-                | :? Avalonia.Controls.Decorator as dec when dec.Child <> null ->
-                    collectTexts dec.Child
-                | _ -> []
-            currentText @ childTexts
-
-        let allTexts = collectTexts w
-        w.Close()
-
-        // 閾値以上（255字 >= 240字）の場合:
-        // AFTER行のラベルは「[安全]」ではなく「[危険]」と表示されるべき
-        allTexts |> List.exists (fun t -> t <> null && t.Contains("AFTER (255字 [危険])")) |> should equal true
-        // 「✓ 安全」や「AFTER (255字 [安全])」は絶対に存在してはならない
-        allTexts |> List.exists (fun t -> t <> null && t.Contains("AFTER (255字 [安全])")) |> should equal false
-        allTexts |> List.exists (fun t -> t <> null && t.Contains("✓ 安全")) |> should equal false
-        // ステータスに「要短縮」が含まれるべき
-        allTexts |> List.exists (fun t -> t <> null && t.Contains("要短縮")) |> should equal true
-
-    [<Fact>]
-    let ``GUI: candidate card border right boundary stays within container across various window widths`` () =
-        ensureAppInitialized ()
-        let baseModel, _ = State.init ()
-        let candidate: RenameProposal = {
-            OriginalFullPath = "E:\\videos\\sub_directory_with_quite_long_nested_path_structure\\2024-01-01_" + String('x', 260) + "_extremely_long_video_name.mp4"
-            OriginalFileName = "2024-01-01_" + String('x', 260) + "_extremely_long_video_name.mp4"
-            DirectoryPath = "E:\\videos\\sub_directory_with_quite_long_nested_path_structure"
-            OriginalLength = 350
-            OriginalFileNameBytes = 295
-            OriginalViolation = WindowsPathOnly
-            ProposedFileName = "2024-01-01_" + String('y', 260) + "_long_proposed_name.mp4"
-            ProposedLength = 350
-            ProposedFileNameBytes = 289
-            AiComment = Some "長いAIコメント：元ファイル名に撮影日時が含まれていなかったため補完しました。さらに親コンテナ幅制約を検証するための長文コメントです。"
-            IsAiProposed = false
-            IsAiProcessing = false
-            IsSelected = true
-            LastWriteTime = DateTime.UtcNow
-            AiError = None
-        }
-        let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
-
-        for testWidth in [ 450.0; 500.0; 600.0; 700.0; 800.0; 1100.0; 1600.0 ] do
             let w = new Avalonia.FuncUI.Hosts.HostWindow()
-            w.Width <- testWidth
+            w.Width <- 1100.0
             w.Height <- 720.0
             Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
             |> Avalonia.FuncUI.Elmish.Program.withHost w
@@ -718,96 +658,165 @@ module RenameIntegrationE2ETests =
             w.Show()
             w.UpdateLayout()
 
-            // ビジュアルツリーから全 Border を走査し、青い外枠（accentBlue）の Border を特定
-            let rec findSelectedCards (control: Avalonia.Controls.Control) : Avalonia.Controls.Border list =
-                let current =
+            // ビジュアルツリーから全 TextBlock の文字列を収集
+            let rec collectTexts (control: Avalonia.Controls.Control) : string list =
+                let currentText =
                     match control with
-                    | :? Avalonia.Controls.Border as b when b.BorderBrush <> null && b.BorderBrush.ToString().Contains("2563eb") ->
-                        [ b ]
+                    | :? Avalonia.Controls.TextBlock as tb -> [ tb.Text ]
                     | _ -> []
-                let children =
+                let childTexts =
                     match control with
-                    | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect findSelectedCards |> Seq.toList
+                    | :? Avalonia.Controls.Panel as panel ->
+                        panel.Children |> Seq.collect collectTexts |> Seq.toList
                     | :? Avalonia.Controls.ContentControl as cc ->
                         match cc.Content with
-                        | :? Avalonia.Controls.Control as c -> findSelectedCards c
+                        | :? Avalonia.Controls.Control as c -> collectTexts c
                         | _ -> []
-                    | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
-                        findSelectedCards d.Child
+                    | :? Avalonia.Controls.Decorator as dec when dec.Child <> null ->
+                        collectTexts dec.Child
                     | _ -> []
-                current @ children
+                currentText @ childTexts
 
-            let cards = findSelectedCards w
-            cards.Length |> should be (greaterThan 0)
-            for card in cards do
-                let parentBorder = card.Parent :?> Avalonia.Controls.StackPanel
-                printfn $"[LAYOUT_DEBUG] testWidth={testWidth}, card.Bounds={card.Bounds}, card.DesiredSize={card.DesiredSize}"
-                // カードの幅がウィンドウ幅より小さく（マージンやパディングがあるため）、右端がはみ出ていないこと
-                card.Bounds.Width |> should be (lessThan testWidth)
-                card.Bounds.Right |> should be (lessThanOrEqualTo testWidth)
+            let allTexts = collectTexts w
             w.Close()
+
+            // 閾値以上（255字 >= 240字）の場合:
+            // AFTER行のラベルは「[安全]」ではなく「[危険]」と表示されるべき
+            allTexts |> List.exists (fun t -> t <> null && t.Contains("AFTER (255字 [危険])")) |> should equal true
+            // 「✓ 安全」や「AFTER (255字 [安全])」は絶対に存在してはならない
+            allTexts |> List.exists (fun t -> t <> null && t.Contains("AFTER (255字 [安全])")) |> should equal false
+            allTexts |> List.exists (fun t -> t <> null && t.Contains("✓ 安全")) |> should equal false
+            // ステータスに「要短縮」が含まれるべき
+            allTexts |> List.exists (fun t -> t <> null && t.Contains("要短縮")) |> should equal true
+        )
+
+    [<Fact>]
+    let ``GUI: candidate card border right boundary stays within container across various window widths`` () =
+        SettingsIsolationHarness.withIsolatedSettingsEnvironment (fun tempSavePath ->
+            ensureAppInitialized ()
+            let baseModel = SettingsIsolationHarness.initIsolatedModel tempSavePath
+            let candidate: RenameProposal = {
+                OriginalFullPath = "E:\\videos\\sub_directory_with_quite_long_nested_path_structure\\2024-01-01_" + String('x', 260) + "_extremely_long_video_name.mp4"
+                OriginalFileName = "2024-01-01_" + String('x', 260) + "_extremely_long_video_name.mp4"
+                DirectoryPath = "E:\\videos\\sub_directory_with_quite_long_nested_path_structure"
+                OriginalLength = 350
+                OriginalFileNameBytes = 295
+                OriginalViolation = WindowsPathOnly
+                ProposedFileName = "2024-01-01_" + String('y', 260) + "_long_proposed_name.mp4"
+                ProposedLength = 350
+                ProposedFileNameBytes = 289
+                AiComment = Some "長いAIコメント：元ファイル名に撮影日時が含まれていなかったため補完しました。さらに親コンテナ幅制約を検証するための長文コメントです。"
+                IsAiProposed = false
+                IsAiProcessing = false
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+                AiError = None
+            }
+            let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
+
+            for testWidth in [ 450.0; 500.0; 600.0; 700.0; 800.0; 1100.0; 1600.0 ] do
+                let w = new Avalonia.FuncUI.Hosts.HostWindow()
+                w.Width <- testWidth
+                w.Height <- 720.0
+                Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+                |> Avalonia.FuncUI.Elmish.Program.withHost w
+                |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+                w.Show()
+                w.UpdateLayout()
+
+                // ビジュアルツリーから全 Border を走査し、青い外枠（accentBlue）の Border を特定
+                let rec findSelectedCards (control: Avalonia.Controls.Control) : Avalonia.Controls.Border list =
+                    let current =
+                        match control with
+                        | :? Avalonia.Controls.Border as b when b.BorderBrush <> null && b.BorderBrush.ToString().Contains("2563eb") ->
+                            [ b ]
+                        | _ -> []
+                    let children =
+                        match control with
+                        | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect findSelectedCards |> Seq.toList
+                        | :? Avalonia.Controls.ContentControl as cc ->
+                            match cc.Content with
+                            | :? Avalonia.Controls.Control as c -> findSelectedCards c
+                            | _ -> []
+                        | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
+                            findSelectedCards d.Child
+                        | _ -> []
+                    current @ children
+
+                let cards = findSelectedCards w
+                cards.Length |> should be (greaterThan 0)
+                for card in cards do
+                    let parentBorder = card.Parent :?> Avalonia.Controls.StackPanel
+                    printfn $"[LAYOUT_DEBUG] testWidth={testWidth}, card.Bounds={card.Bounds}, card.DesiredSize={card.DesiredSize}"
+                    // カードの幅がウィンドウ幅より小さく（マージンやパディングがあるため）、右端がはみ出ていないこと
+                    card.Bounds.Width |> should be (lessThan testWidth)
+                    card.Bounds.Right |> should be (lessThanOrEqualTo testWidth)
+                w.Close()
+        )
 
     [<Fact>]
     let ``GUI: manually increased proposed name length displays danger warning badges instead of safe`` () =
-        ensureAppInitialized ()
-        let baseModel, _ = State.init ()
-        // 元200文字（閾値240未満）だが、手動編集で220文字に増加した候補（ProposedLength > OriginalLength）
-        let candidate: RenameProposal = {
-            OriginalFullPath = "D:\\videos\\short_original_video.mp4"
-            OriginalFileName = "short_original_video.mp4"
-            DirectoryPath = "D:\\videos"
-            OriginalLength = 200
-            OriginalFileNameBytes = 24
-            OriginalViolation = WindowsPathOnly
-            ProposedFileName = "manually_edited_longer_name_sample_video.mp4"
-            ProposedLength = 220 // 元より20文字増加
-            ProposedFileNameBytes = 43
-            AiComment = None
-            IsAiProposed = false
-            IsAiProcessing = false
-            IsSelected = true
-            LastWriteTime = DateTime.UtcNow
-            AiError = None
-        }
-        let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
+        SettingsIsolationHarness.withIsolatedSettingsEnvironment (fun tempSavePath ->
+            ensureAppInitialized ()
+            let baseModel = SettingsIsolationHarness.initIsolatedModel tempSavePath
+            // 元200文字（閾値240未満）だが、手動編集で220文字に増加した候補（ProposedLength > OriginalLength）
+            let candidate: RenameProposal = {
+                OriginalFullPath = "D:\\videos\\short_original_video.mp4"
+                OriginalFileName = "short_original_video.mp4"
+                DirectoryPath = "D:\\videos"
+                OriginalLength = 200
+                OriginalFileNameBytes = 24
+                OriginalViolation = WindowsPathOnly
+                ProposedFileName = "manually_edited_longer_name_sample_video.mp4"
+                ProposedLength = 220 // 元より20文字増加
+                ProposedFileNameBytes = 43
+                AiComment = None
+                IsAiProposed = false
+                IsAiProcessing = false
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+                AiError = None
+            }
+            let testModel = { baseModel with Candidates = [ candidate ]; CurrentThreshold = 240 }
 
-        let w = new Avalonia.FuncUI.Hosts.HostWindow()
-        w.Width <- 1000.0
-        w.Height <- 700.0
-        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
-        |> Avalonia.FuncUI.Elmish.Program.withHost w
-        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
-        w.Show()
-        w.UpdateLayout()
+            let w = new Avalonia.FuncUI.Hosts.HostWindow()
+            w.Width <- 1000.0
+            w.Height <- 700.0
+            Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+            |> Avalonia.FuncUI.Elmish.Program.withHost w
+            |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+            w.Show()
+            w.UpdateLayout()
 
-        let rec collectTextBlocks (control: Avalonia.Controls.Control) : string list =
-            let text =
-                match control with
-                | :? Avalonia.Controls.TextBlock as tb -> [ tb.Text ]
-                | _ -> []
-            let children =
-                match control with
-                | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectTextBlocks |> Seq.toList
-                | :? Avalonia.Controls.ContentControl as cc ->
-                    match cc.Content with
-                    | :? Avalonia.Controls.Control as c -> collectTextBlocks c
+            let rec collectTextBlocks (control: Avalonia.Controls.Control) : string list =
+                let text =
+                    match control with
+                    | :? Avalonia.Controls.TextBlock as tb -> [ tb.Text ]
                     | _ -> []
-                | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
-                    collectTextBlocks d.Child
-                | _ -> []
-            text @ children
+                let children =
+                    match control with
+                    | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectTextBlocks |> Seq.toList
+                    | :? Avalonia.Controls.ContentControl as cc ->
+                        match cc.Content with
+                        | :? Avalonia.Controls.Control as c -> collectTextBlocks c
+                        | _ -> []
+                    | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
+                        collectTextBlocks d.Child
+                    | _ -> []
+                text @ children
 
-        let allTexts = collectTextBlocks w
-        w.Close()
+            let allTexts = collectTextBlocks w
+            w.Close()
 
-        // 元より文字数が増加しているため、「[安全]」や「✓ 安全」は絶対に存在してはならない
-        allTexts |> List.exists (fun t -> t <> null && t.Contains("[安全]")) |> should equal false
-        allTexts |> List.exists (fun t -> t <> null && t.Contains("✓ 安全")) |> should equal false
+            // 元より文字数が増加しているため、「[安全]」や「✓ 安全」は絶対に存在してはならない
+            allTexts |> List.exists (fun t -> t <> null && t.Contains("[安全]")) |> should equal false
+            allTexts |> List.exists (fun t -> t <> null && t.Contains("✓ 安全")) |> should equal false
 
-        // 「増加」または「+20字」のバッジが存在すること
-        allTexts |> List.exists (fun t -> t <> null && (t.Contains("増加") || t.Contains("+20字"))) |> should equal true
-        // ステータスに「文字数増加」が含まれること
-        allTexts |> List.exists (fun t -> t <> null && t.Contains("文字数増加")) |> should equal true
+            // 「増加」または「+20字」のバッジが存在すること
+            allTexts |> List.exists (fun t -> t <> null && (t.Contains("増加") || t.Contains("+20字"))) |> should equal true
+            // ステータスに「文字数増加」が含まれること
+            allTexts |> List.exists (fun t -> t <> null && t.Contains("文字数増加")) |> should equal true
+        )
 
     [<Fact>]
     let ``Settings: appsettings.json sample exists in project root and can be deserialized`` () =
@@ -840,115 +849,117 @@ module RenameIntegrationE2ETests =
 
     [<Fact>]
     let ``GUI: async processing candidate displays processing indicator, 3-row layout, active stop button and disabled rename buttons`` () =
-        ensureAppInitialized ()
-        let baseModel, _ = State.init ()
-        let candidate1: RenameProposal = {
-            OriginalFullPath = "D:\\videos\\2024-01-01_completed_sample_video.mp4"
-            OriginalFileName = "2024-01-01_completed_sample_video.mp4"
-            DirectoryPath = "D:\\videos"
-            OriginalLength = 250
-            OriginalFileNameBytes = 38
-            OriginalViolation = WindowsPathOnly
-            ProposedFileName = "2024-01-01_nature_documentary_short.mp4"
-            ProposedLength = 220
-            ProposedFileNameBytes = 38
-            AiComment = Some "DuckDuckGo Web検索結果から正式タイトルと日付を特定して命名しました。"
-            IsAiProposed = true
-            IsAiProcessing = false
-            IsSelected = true
-            LastWriteTime = DateTime.UtcNow
-            AiError = None
-        }
-        let candidate2: RenameProposal = {
-            OriginalFullPath = "D:\\videos\\in_progress_sample_video.mp4"
-            OriginalFileName = "in_progress_sample_video.mp4"
-            DirectoryPath = "D:\\videos"
-            OriginalLength = 255
-            OriginalFileNameBytes = 31
-            OriginalViolation = WindowsPathOnly
-            ProposedFileName = "in_progress_sample_video.mp4"
-            ProposedLength = 255
-            ProposedFileNameBytes = 31
-            AiComment = Some "（AI提案の開始を待機しています...）"
-            IsAiProposed = false
-            IsAiProcessing = true // 処理中フラグ
-            IsSelected = true
-            LastWriteTime = DateTime.UtcNow
-            AiError = None
-        }
-        let testModel = {
-            baseModel with
-                Candidates = [ candidate1; candidate2 ]
-                CurrentThreshold = 240
-                IsRequestingAi = true // AI提案中フラグ
-        }
+        SettingsIsolationHarness.withIsolatedSettingsEnvironment (fun tempSavePath ->
+            ensureAppInitialized ()
+            let baseModel = SettingsIsolationHarness.initIsolatedModel tempSavePath
+            let candidate1: RenameProposal = {
+                OriginalFullPath = "D:\\videos\\2024-01-01_completed_sample_video.mp4"
+                OriginalFileName = "2024-01-01_completed_sample_video.mp4"
+                DirectoryPath = "D:\\videos"
+                OriginalLength = 250
+                OriginalFileNameBytes = 38
+                OriginalViolation = WindowsPathOnly
+                ProposedFileName = "2024-01-01_nature_documentary_short.mp4"
+                ProposedLength = 220
+                ProposedFileNameBytes = 38
+                AiComment = Some "DuckDuckGo Web検索結果から正式タイトルと日付を特定して命名しました。"
+                IsAiProposed = true
+                IsAiProcessing = false
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+                AiError = None
+            }
+            let candidate2: RenameProposal = {
+                OriginalFullPath = "D:\\videos\\in_progress_sample_video.mp4"
+                OriginalFileName = "in_progress_sample_video.mp4"
+                DirectoryPath = "D:\\videos"
+                OriginalLength = 255
+                OriginalFileNameBytes = 31
+                OriginalViolation = WindowsPathOnly
+                ProposedFileName = "in_progress_sample_video.mp4"
+                ProposedLength = 255
+                ProposedFileNameBytes = 31
+                AiComment = Some "（AI提案の開始を待機しています...）"
+                IsAiProposed = false
+                IsAiProcessing = true // 処理中フラグ
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+                AiError = None
+            }
+            let testModel = {
+                baseModel with
+                    Candidates = [ candidate1; candidate2 ]
+                    CurrentThreshold = 240
+                    IsRequestingAi = true // AI提案中フラグ
+            }
 
-        let w = new Avalonia.FuncUI.Hosts.HostWindow()
-        w.Width <- 1100.0
-        w.Height <- 720.0
-        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
-        |> Avalonia.FuncUI.Elmish.Program.withHost w
-        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
-        w.Show()
-        w.UpdateLayout()
+            let w = new Avalonia.FuncUI.Hosts.HostWindow()
+            w.Width <- 1100.0
+            w.Height <- 720.0
+            Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+            |> Avalonia.FuncUI.Elmish.Program.withHost w
+            |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+            w.Show()
+            w.UpdateLayout()
 
-        let rec collectControls (control: Avalonia.Controls.Control) : Avalonia.Controls.Control list =
-            let current = [ control ]
-            let children =
-                match control with
-                | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectControls |> Seq.toList
-                | :? Avalonia.Controls.ContentControl as cc ->
-                    match cc.Content with
-                    | :? Avalonia.Controls.Control as c -> collectControls c
+            let rec collectControls (control: Avalonia.Controls.Control) : Avalonia.Controls.Control list =
+                let current = [ control ]
+                let children =
+                    match control with
+                    | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectControls |> Seq.toList
+                    | :? Avalonia.Controls.ContentControl as cc ->
+                        match cc.Content with
+                        | :? Avalonia.Controls.Control as c -> collectControls c
+                        | _ -> []
+                    | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
+                        collectControls d.Child
                     | _ -> []
-                | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
-                    collectControls d.Child
-                | _ -> []
-            current @ children
+                current @ children
 
-        let allControls = collectControls w
-        w.Close()
+            let allControls = collectControls w
+            w.Close()
 
-        let textBlocks =
-            allControls
-            |> List.choose (fun c ->
-                match c with
-                | :? Avalonia.Controls.TextBlock as tb -> Some tb.Text
-                | _ -> None
-            )
+            let textBlocks =
+                allControls
+                |> List.choose (fun c ->
+                    match c with
+                    | :? Avalonia.Controls.TextBlock as tb -> Some tb.Text
+                    | _ -> None
+                )
 
-        let buttons =
-            allControls
-            |> List.choose (fun c ->
-                match c with
-                | :? Avalonia.Controls.Button as btn ->
-                    let contentStr = if btn.Content <> null then btn.Content.ToString() else ""
-                    Some (contentStr, btn.IsEnabled)
-                | _ -> None
-            )
+            let buttons =
+                allControls
+                |> List.choose (fun c ->
+                    match c with
+                    | :? Avalonia.Controls.Button as btn ->
+                        let contentStr = if btn.Content <> null then btn.Content.ToString() else ""
+                        Some (contentStr, btn.IsEnabled)
+                    | _ -> None
+                )
 
-        // 1. 処理中行アニメーションインジケーターが表示されていること
-        textBlocks |> List.exists (fun t -> t <> null && t.Contains("DuckDuckGo (ddgs) 検索・LLM提案を実行中...")) |> should equal true
+            // 1. 処理中行アニメーションインジケーターが表示されていること
+            textBlocks |> List.exists (fun t -> t <> null && t.Contains("DuckDuckGo (ddgs) 検索・LLM提案を実行中...")) |> should equal true
 
-        // 2. フッターに進捗バッジ（1/2件完了）が表示されていること
-        textBlocks |> List.exists (fun t -> t <> null && t.Contains("🤖 AI提案中... (1/2件完了)")) |> should equal true
+            // 2. フッターに進捗バッジ（1/2件完了）が表示されていること
+            textBlocks |> List.exists (fun t -> t <> null && t.Contains("🤖 AI提案中... (1/2件完了)")) |> should equal true
 
-        // 3. 3行常時表示（BEFORE, AFTER, 💬 AI COMMENT:）が表示されていること
-        textBlocks |> List.exists (fun t -> t <> null && t.Contains("BEFORE")) |> should equal true
-        textBlocks |> List.exists (fun t -> t <> null && t.Contains("AFTER")) |> should equal true
-        textBlocks |> List.exists (fun t -> t <> null && t.Contains("💬 AI COMMENT:")) |> should equal true
+            // 3. 3行常時表示（BEFORE, AFTER, 💬 AI COMMENT:）が表示されていること
+            textBlocks |> List.exists (fun t -> t <> null && t.Contains("BEFORE")) |> should equal true
+            textBlocks |> List.exists (fun t -> t <> null && t.Contains("AFTER")) |> should equal true
+            textBlocks |> List.exists (fun t -> t <> null && t.Contains("💬 AI COMMENT:")) |> should equal true
 
-        // 4. 「⏹ 中止」ボタンが活性化（IsEnabled = true）されていること
-        let stopButton = buttons |> List.tryFind (fun (label, _) -> label.Contains("中止"))
-        stopButton |> should not' (equal None)
-        let (_, isStopEnabled) = stopButton.Value
-        isStopEnabled |> should equal true
+            // 4. 「⏹ 中止」ボタンが活性化（IsEnabled = true）されていること
+            let stopButton = buttons |> List.tryFind (fun (label, _) -> label.Contains("中止"))
+            stopButton |> should not' (equal None)
+            let (_, isStopEnabled) = stopButton.Value
+            isStopEnabled |> should equal true
 
-        // 5. リネームボタン（「リネームのみ実行」）が非活性（IsEnabled = false）であること
-        let renameButton = buttons |> List.tryFind (fun (label, _) -> label.Contains("リネームのみ実行"))
-        renameButton |> should not' (equal None)
-        let (_, isRenameEnabled) = renameButton.Value
-        isRenameEnabled |> should equal false
+            // 5. リネームボタン（「リネームのみ実行」）が非活性（IsEnabled = false）であること
+            let renameButton = buttons |> List.tryFind (fun (label, _) -> label.Contains("リネームのみ実行"))
+            renameButton |> should not' (equal None)
+            let (_, isRenameEnabled) = renameButton.Value
+            isRenameEnabled |> should equal false
+        )
 
     [<Fact>]
     let ``UI: FilterNonJapaneseOnly checkbox exists and reflects model state`` () =
@@ -1028,519 +1039,527 @@ module RenameIntegrationE2ETests =
 
     [<Fact>]
     let ``GUI: rule manager modal displays two-pane layout, edit buttons, large textarea, and proper template labels`` () =
-        ensureAppInitialized ()
-        let baseModel, _ = State.init ()
-        let testModel = { baseModel with IsRuleManagerOpen = true }
+        SettingsIsolationHarness.withIsolatedSettingsEnvironment (fun tempSavePath ->
+            ensureAppInitialized ()
+            let baseModel = SettingsIsolationHarness.initIsolatedModel tempSavePath
+            let testModel = { baseModel with IsRuleManagerOpen = true }
 
-        let w = new Avalonia.FuncUI.Hosts.HostWindow()
-        w.Width <- 1100.0
-        w.Height <- 750.0
-        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
-        |> Avalonia.FuncUI.Elmish.Program.withHost w
-        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
-        w.Show()
-        w.UpdateLayout()
-
-        let rec collectControls (control: Avalonia.Controls.Control) : Avalonia.Controls.Control list =
-            let current = [ control ]
-            let children =
-                match control with
-                | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectControls |> Seq.toList
-                | :? Avalonia.Controls.ContentControl as cc ->
-                    match cc.Content with
-                    | :? Avalonia.Controls.Control as c -> collectControls c
-                    | _ -> []
-                | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
-                    collectControls d.Child
-                | _ -> []
-            current @ children
-
-        let allControls = collectControls w
-        w.Close()
-
-        let textBlocks =
-            allControls
-            |> List.choose (fun c ->
-                match c with
-                | :? Avalonia.Controls.TextBlock as tb -> Some (if tb.Text <> null then tb.Text else "")
-                | _ -> None
-            )
-
-        let buttons =
-            allControls
-            |> List.choose (fun c ->
-                match c with
-                | :? Avalonia.Controls.Button as btn ->
-                    let contentStr = if btn.Content <> null then btn.Content.ToString() else ""
-                    Some (contentStr, btn.IsEnabled)
-                | _ -> None
-            )
-
-        let textBoxes =
-            allControls
-            |> List.choose (fun c ->
-                match c with
-                | :? Avalonia.Controls.TextBox as tb -> Some tb
-                | _ -> None
-            )
-
-        // 1. ヘッダーに「左右2ペイン構成」バッジが存在すること
-        textBlocks |> List.exists (fun t -> t.Contains("左右2ペイン構成")) |> should equal true
-
-        // 2. 左ペインの各カードに「✏」ボタンが存在すること
-        buttons |> List.exists (fun (lbl, _) -> lbl.Contains("✏")) |> should equal true
-
-        // 3. 右ペインに「命名パターン (テンプレート)」の表記が存在し、旧「対象パターン」が存在しないこと
-        textBlocks |> List.exists (fun t -> t.Contains("命名パターン (テンプレート)")) |> should equal true
-        textBlocks |> List.exists (fun t -> t.Contains("対象パターン:")) |> should equal false
-
-        // 4. プロンプト指示文のTextBoxが複数行対応かつ高さ280px以上確保されていること
-        let promptBoxes = textBoxes |> List.filter (fun tb -> tb.Height >= 280.0 && tb.AcceptsReturn)
-        promptBoxes.Length |> should be (greaterThanOrEqualTo 1)
-
-    [<Fact>]
-    let ``UI: AIモデルComboBoxはハードコード一覧を排除し設定値SelectedModelのみを単一項目として提供する`` () =
-        ensureAppInitialized ()
-        let baseModel, _ = State.init ()
-        let testModel = {
-            baseModel with
-                Settings = {
-                    baseModel.Settings with
-                        SelectedModel = "nvidia/nemotron-3-super-120b-a12b:free"
-                }
-        }
-
-        let w = new Avalonia.FuncUI.Hosts.HostWindow()
-        w.Width <- 1100.0
-        w.Height <- 720.0
-        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
-        |> Avalonia.FuncUI.Elmish.Program.withHost w
-        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
-        w.Show()
-        w.UpdateLayout()
-
-        let rec collectComboBoxes (control: Avalonia.Controls.Control) : Avalonia.Controls.ComboBox list =
-            let current =
-                match control with
-                | :? Avalonia.Controls.ComboBox as cb -> [ cb ]
-                | _ -> []
-            let children =
-                match control with
-                | :? Avalonia.Controls.Panel as panel ->
-                    panel.Children |> Seq.collect collectComboBoxes |> Seq.toList
-                | :? Avalonia.Controls.ContentControl as cc ->
-                    match cc.Content with
-                    | :? Avalonia.Controls.Control as c -> collectComboBoxes c
-                    | _ -> []
-                | :? Avalonia.Controls.Decorator as dec when dec.Child <> null ->
-                    collectComboBoxes dec.Child
-                | _ -> []
-            current @ children
-
-        let allComboBoxes = collectComboBoxes w
-        w.Close()
-
-        let modelComboBoxOpt =
-            allComboBoxes
-            |> List.tryFind (fun cb ->
-                cb.ItemsSource <> null &&
-                (cb.ItemsSource |> Seq.cast<obj> |> Seq.exists (fun item -> string item = "nvidia/nemotron-3-super-120b-a12b:free"))
-            )
-
-        modelComboBoxOpt |> should not' (equal None)
-        let modelCb = modelComboBoxOpt.Value
-        let items = modelCb.ItemsSource |> Seq.cast<obj> |> Seq.map string |> Seq.toList
-
-        items |> should equal [ "nvidia/nemotron-3-super-120b-a12b:free" ]
-        items |> List.exists (fun m -> m.Contains("llama-3.3")) |> should equal false
-        items |> List.exists (fun m -> m.Contains("gemini-2.0")) |> should equal false
-        items |> List.exists (fun m -> m.Contains("mistral-small")) |> should equal false
-        items |> List.exists (fun m -> m.Contains("nemotron-3-ultra")) |> should equal false
-
-    [<Fact>]
-    let ``UI: 対比リスト最下部スクロール時に末尾カード全体とAIコメント枠が完全表示される`` () =
-        ensureAppInitialized ()
-        let baseModel, _ = State.init ()
-        let candidate i = {
-            OriginalFullPath = $"D:\\Videos\\path_{i}_" + String('a', 230) + ".mp4"
-            OriginalFileName = $"file_{i}_" + String('a', 230) + ".mp4"
-            DirectoryPath = "D:\\Videos"
-            OriginalLength = 250
-            OriginalFileNameBytes = 239
-            OriginalViolation = WindowsPathOnly
-            ProposedFileName = $"short_{i}.mp4"
-            ProposedLength = 30
-            ProposedFileNameBytes = $"short_{i}.mp4".Length
-            AiComment = Some $"AI Comment for item {i}: 命名規則に基づき適切に短縮しました。"
-            IsAiProposed = true
-            IsAiProcessing = false
-            IsSelected = true
-            LastWriteTime = DateTime.UtcNow
-            AiError = None
-        }
-        let testModel = {
-            baseModel with
-                Candidates = [ for i in 1 .. 4 -> candidate i ]
-        }
-
-        let w = new Avalonia.FuncUI.Hosts.HostWindow()
-        w.Width <- 1100.0
-        w.Height <- 720.0
-        Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
-        |> Avalonia.FuncUI.Elmish.Program.withHost w
-        |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
-        w.Show()
-        w.UpdateLayout()
-
-        let rec findScrollViewer (control: Avalonia.Controls.Control) : Avalonia.Controls.ScrollViewer option =
-            match control with
-            | :? Avalonia.Controls.ScrollViewer as sv -> Some sv
-            | :? Avalonia.Controls.Panel as p ->
-                p.Children |> Seq.tryPick (fun c -> findScrollViewer c)
-            | :? Avalonia.Controls.ContentControl as cc ->
-                match cc.Content with
-                | :? Avalonia.Controls.Control as c -> findScrollViewer c
-                | _ -> None
-            | :? Avalonia.Controls.Decorator as dec when dec.Child <> null ->
-                findScrollViewer dec.Child
-            | _ -> None
-
-        let svOpt = findScrollViewer w
-        svOpt |> should not' (equal None)
-        let sv = svOpt.Value
-
-        sv.ScrollToEnd()
-        w.UpdateLayout()
-
-        let pixelSize = Avalonia.PixelSize(1100, 720)
-        let dpi = Avalonia.Vector(96.0, 96.0)
-        let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
-        rtb.Render(w)
-
-        let rec findRepoRoot (dir: DirectoryInfo) =
-            if dir = null then AppContext.BaseDirectory
-            elif File.Exists(Path.Combine(dir.FullName, "AGENTS.md")) then dir.FullName
-            elif dir.Parent = null then AppContext.BaseDirectory
-            else findRepoRoot dir.Parent
-        let repoRoot = findRepoRoot (DirectoryInfo(AppContext.BaseDirectory))
-        let outputDir = Path.Combine(repoRoot, "test", "TestResults")
-        if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
-        let outputPath = Path.Combine(outputDir, "E2E_11_Scrolled_To_Bottom_Full_Clearance.png")
-        rtb.Save(outputPath)
-        w.Close()
-
-        File.Exists(outputPath) |> should equal true
-        FileInfo(outputPath).Length |> should be (greaterThan 1000L)
-
-    [<Fact>]
-    let ``E2E: 新UI状態の実描画（Zero-State, 各スピナー状態, エラーリカバリ）およびスクリーンショット出力`` () =
-        ensureAppInitialized ()
-
-        let rec findRepoRoot (dir: DirectoryInfo) =
-            if dir = null then AppContext.BaseDirectory
-            elif File.Exists(Path.Combine(dir.FullName, "AGENTS.md")) then dir.FullName
-            elif dir.Parent = null then AppContext.BaseDirectory
-            else findRepoRoot dir.Parent
-        let repoRoot = findRepoRoot (DirectoryInfo(AppContext.BaseDirectory))
-        let outputDir = Path.Combine(repoRoot, "test", "TestResults")
-        if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
-
-        let renderAndCapture (m: Model) (fileName: string) : string * string list =
-            let width = 1100.0
-            let height = 720.0
             let w = new Avalonia.FuncUI.Hosts.HostWindow()
-            w.Width <- width
-            w.Height <- height
-            w.Background <- Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#1a1a1a"))
-
-            Elmish.Program.mkProgram (fun () -> m, Elmish.Cmd.none) State.update Views.view
+            w.Width <- 1100.0
+            w.Height <- 750.0
+            Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
             |> Avalonia.FuncUI.Elmish.Program.withHost w
             |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
-
             w.Show()
             w.UpdateLayout()
 
-            let rec collect (control: Avalonia.Controls.Control) : string list =
+            let rec collectControls (control: Avalonia.Controls.Control) : Avalonia.Controls.Control list =
+                let current = [ control ]
+                let children =
+                    match control with
+                    | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collectControls |> Seq.toList
+                    | :? Avalonia.Controls.ContentControl as cc ->
+                        match cc.Content with
+                        | :? Avalonia.Controls.Control as c -> collectControls c
+                        | _ -> []
+                    | :? Avalonia.Controls.Decorator as d when d.Child <> null ->
+                        collectControls d.Child
+                    | _ -> []
+                current @ children
+
+            let allControls = collectControls w
+            w.Close()
+
+            let textBlocks =
+                allControls
+                |> List.choose (fun c ->
+                    match c with
+                    | :? Avalonia.Controls.TextBlock as tb -> Some (if tb.Text <> null then tb.Text else "")
+                    | _ -> None
+                )
+
+            let buttons =
+                allControls
+                |> List.choose (fun c ->
+                    match c with
+                    | :? Avalonia.Controls.Button as btn ->
+                        let contentStr = if btn.Content <> null then btn.Content.ToString() else ""
+                        Some (contentStr, btn.IsEnabled)
+                    | _ -> None
+                )
+
+            let textBoxes =
+                allControls
+                |> List.choose (fun c ->
+                    match c with
+                    | :? Avalonia.Controls.TextBox as tb -> Some tb
+                    | _ -> None
+                )
+
+            // 1. ヘッダーに「左右2ペイン構成」バッジが存在すること
+            textBlocks |> List.exists (fun t -> t.Contains("左右2ペイン構成")) |> should equal true
+
+            // 2. 左ペインの各カードに「✏」ボタンが存在すること
+            buttons |> List.exists (fun (lbl, _) -> lbl.Contains("✏")) |> should equal true
+
+            // 3. 右ペインに「命名パターン (テンプレート)」の表記が存在し、旧「対象パターン」が存在しないこと
+            textBlocks |> List.exists (fun t -> t.Contains("命名パターン (テンプレート)")) |> should equal true
+            textBlocks |> List.exists (fun t -> t.Contains("対象パターン:")) |> should equal false
+
+            // 4. プロンプト指示文のTextBoxが複数行対応かつ高さ280px以上確保されていること
+            let promptBoxes = textBoxes |> List.filter (fun tb -> tb.Height >= 280.0 && tb.AcceptsReturn)
+            promptBoxes.Length |> should be (greaterThanOrEqualTo 1)
+        )
+
+    [<Fact>]
+    let ``UI: AIモデルComboBoxはハードコード一覧を排除し設定値SelectedModelのみを単一項目として提供する`` () =
+        SettingsIsolationHarness.withIsolatedSettingsEnvironment (fun tempSavePath ->
+            ensureAppInitialized ()
+            let baseModel = SettingsIsolationHarness.initIsolatedModel tempSavePath
+            let testModel = {
+                baseModel with
+                    Settings = {
+                        baseModel.Settings with
+                            SelectedModel = "nvidia/nemotron-3-super-120b-a12b:free"
+                    }
+            }
+
+            let w = new Avalonia.FuncUI.Hosts.HostWindow()
+            w.Width <- 1100.0
+            w.Height <- 720.0
+            Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+            |> Avalonia.FuncUI.Elmish.Program.withHost w
+            |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+            w.Show()
+            w.UpdateLayout()
+
+            let rec collectComboBoxes (control: Avalonia.Controls.Control) : Avalonia.Controls.ComboBox list =
                 let current =
                     match control with
-                    | :? Avalonia.Controls.TextBlock as tb when tb.Text <> null -> [ tb.Text ]
-                    | :? Avalonia.Controls.SelectableTextBlock as stb when stb.Text <> null -> [ stb.Text ]
-                    | :? Avalonia.Controls.TextBox as tb when tb.Text <> null -> [ tb.Text ]
-                    | :? Avalonia.Controls.ContentControl as cc when cc.Content <> null && (cc.Content :? string) -> [ cc.Content :?> string ]
+                    | :? Avalonia.Controls.ComboBox as cb -> [ cb ]
                     | _ -> []
                 let children =
                     match control with
-                    | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collect |> Seq.toList
+                    | :? Avalonia.Controls.Panel as panel ->
+                        panel.Children |> Seq.collect collectComboBoxes |> Seq.toList
                     | :? Avalonia.Controls.ContentControl as cc ->
                         match cc.Content with
-                        | :? Avalonia.Controls.Control as c -> collect c
+                        | :? Avalonia.Controls.Control as c -> collectComboBoxes c
                         | _ -> []
-                    | :? Avalonia.Controls.Decorator as d when d.Child <> null -> collect d.Child
+                    | :? Avalonia.Controls.Decorator as dec when dec.Child <> null ->
+                        collectComboBoxes dec.Child
                     | _ -> []
                 current @ children
-            let texts = collect w
 
-            let pixelSize = Avalonia.PixelSize(int width, int height)
+            let allComboBoxes = collectComboBoxes w
+            w.Close()
+
+            let modelComboBoxOpt =
+                allComboBoxes
+                |> List.tryFind (fun cb ->
+                    cb.ItemsSource <> null &&
+                    (cb.ItemsSource |> Seq.cast<obj> |> Seq.exists (fun item -> string item = "nvidia/nemotron-3-super-120b-a12b:free"))
+                )
+
+            modelComboBoxOpt |> should not' (equal None)
+            let modelCb = modelComboBoxOpt.Value
+            let items = modelCb.ItemsSource |> Seq.cast<obj> |> Seq.map string |> Seq.toList
+
+            items |> should equal [ "nvidia/nemotron-3-super-120b-a12b:free" ]
+            items |> List.exists (fun m -> m.Contains("llama-3.3")) |> should equal false
+            items |> List.exists (fun m -> m.Contains("gemini-2.0")) |> should equal false
+            items |> List.exists (fun m -> m.Contains("mistral-small")) |> should equal false
+            items |> List.exists (fun m -> m.Contains("nemotron-3-ultra")) |> should equal false
+        )
+
+    [<Fact>]
+    let ``UI: 対比リスト最下部スクロール時に末尾カード全体とAIコメント枠が完全表示される`` () =
+        SettingsIsolationHarness.withIsolatedSettingsEnvironment (fun tempSavePath ->
+            ensureAppInitialized ()
+            let baseModel = SettingsIsolationHarness.initIsolatedModel tempSavePath
+            let candidate i = {
+                OriginalFullPath = $"D:\\Videos\\path_{i}_" + String('a', 230) + ".mp4"
+                OriginalFileName = $"file_{i}_" + String('a', 230) + ".mp4"
+                DirectoryPath = "D:\\Videos"
+                OriginalLength = 250
+                OriginalFileNameBytes = 239
+                OriginalViolation = WindowsPathOnly
+                ProposedFileName = $"short_{i}.mp4"
+                ProposedLength = 30
+                ProposedFileNameBytes = $"short_{i}.mp4".Length
+                AiComment = Some $"AI Comment for item {i}: 命名規則に基づき適切に短縮しました。"
+                IsAiProposed = true
+                IsAiProcessing = false
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+                AiError = None
+            }
+            let testModel = {
+                baseModel with
+                    Candidates = [ for i in 1 .. 4 -> candidate i ]
+            }
+
+            let w = new Avalonia.FuncUI.Hosts.HostWindow()
+            w.Width <- 1100.0
+            w.Height <- 720.0
+            Elmish.Program.mkProgram (fun () -> testModel, Elmish.Cmd.none) State.update Views.view
+            |> Avalonia.FuncUI.Elmish.Program.withHost w
+            |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+            w.Show()
+            w.UpdateLayout()
+
+            let rec findScrollViewer (control: Avalonia.Controls.Control) : Avalonia.Controls.ScrollViewer option =
+                match control with
+                | :? Avalonia.Controls.ScrollViewer as sv -> Some sv
+                | :? Avalonia.Controls.Panel as p ->
+                    p.Children |> Seq.tryPick (fun c -> findScrollViewer c)
+                | :? Avalonia.Controls.ContentControl as cc ->
+                    match cc.Content with
+                    | :? Avalonia.Controls.Control as c -> findScrollViewer c
+                    | _ -> None
+                | :? Avalonia.Controls.Decorator as dec when dec.Child <> null ->
+                    findScrollViewer dec.Child
+                | _ -> None
+
+            let svOpt = findScrollViewer w
+            svOpt |> should not' (equal None)
+            let sv = svOpt.Value
+
+            sv.ScrollToEnd()
+            w.UpdateLayout()
+
+            let pixelSize = Avalonia.PixelSize(1100, 720)
             let dpi = Avalonia.Vector(96.0, 96.0)
             let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
             rtb.Render(w)
 
-            let outputPath = Path.Combine(outputDir, fileName)
+            let rec findRepoRoot (dir: DirectoryInfo) =
+                if dir = null then AppContext.BaseDirectory
+                elif File.Exists(Path.Combine(dir.FullName, "AGENTS.md")) then dir.FullName
+                elif dir.Parent = null then AppContext.BaseDirectory
+                else findRepoRoot dir.Parent
+            let repoRoot = findRepoRoot (DirectoryInfo(AppContext.BaseDirectory))
+            let outputDir = Path.Combine(repoRoot, "test", "TestResults")
+            if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
+            let outputPath = Path.Combine(outputDir, "E2E_11_Scrolled_To_Bottom_Full_Clearance.png")
             rtb.Save(outputPath)
             w.Close()
 
             File.Exists(outputPath) |> should equal true
             FileInfo(outputPath).Length |> should be (greaterThan 1000L)
-            (outputPath, texts)
-
-        // =================================================================
-        // 1. E2E-01: クリーン起動 Zero-State (Development 環境バッジ + 保存先 + フォルダ未設定導線)
-        // =================================================================
-        let baseModel, _ = State.init ()
-        let devSavePath = Path.Combine(repoRoot, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
-        let zeroStateModel =
-            { baseModel with
-                Settings = { baseModel.Settings with TargetDirectory = "" }
-                Candidates = []
-                IsScanning = false
-                IsRequestingAi = false
-                IsRenaming = false
-                IsDockerBusy = false
-                HasScanned = false
-                ScannedVideoCount = 0
-                ActiveEnvironment = "Development"
-                SettingsSavePath = devSavePath
-            }
-
-        let pngPath12, texts12 = renderAndCapture zeroStateModel "E2E_12_Spinner_ZeroState_DEV.png"
-        texts12 |> List.exists (fun t -> t.Contains("ENV: Development")) |> should equal true
-        texts12 |> List.exists (fun t -> t.Contains("appsettings.Development.json")) |> should equal true
-        texts12 |> List.exists (fun t -> t.Contains("対象フォルダが設定されていません")) |> should equal true
-        texts12 |> List.exists (fun t -> t.Contains("フォルダを選択して設定")) |> should equal true
-
-        // =================================================================
-        // 2. E2E-02: 各スピナー状態の実描画
-        // =================================================================
-        // (a) IsScanning = true (スキャン中中央スピナー)
-        let scanningModel =
-            { baseModel with
-                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
-                IsScanning = true
-                Candidates = []
-            }
-        let pngPath13, texts13 = renderAndCapture scanningModel "E2E_13_Spinner_Scanning.png"
-        texts13 |> List.exists (fun t -> t.Contains("動画ファイルをスキャン中...")) |> should equal true
-        texts13 |> List.exists (fun t -> t.Contains("走査対象: D:\\Videos")) |> should equal true
-
-        // (b) IsRequestingAi = true ＋ 処理中候補行 (IsAiProcessing) ＋ 失敗エラー再試行行 (AiError) ＋ フッター進捗スピナー
-        let cand1: RenameProposal = {
-            OriginalFullPath = "D:\\Videos\\2024-01-01_completed_sample_documentary_video_file.mp4"
-            OriginalFileName = "2024-01-01_completed_sample_documentary_video_file.mp4"
-            DirectoryPath = "D:\\Videos"
-            OriginalLength = 250
-            OriginalFileNameBytes = 55
-            OriginalViolation = WindowsPathOnly
-            ProposedFileName = "2024-01-01_completed_doc.mp4"
-            ProposedLength = 29
-            ProposedFileNameBytes = 29
-            AiComment = Some "命名規則に基づき適切に短縮しました。"
-            IsSelected = true
-            LastWriteTime = DateTime.UtcNow
-            IsAiProposed = true
-            IsAiProcessing = false
-            AiError = None
-        }
-        let cand2: RenameProposal = {
-            OriginalFullPath = "D:\\Videos\\2024-01-02_processing_in_progress_long_path_video_file.mp4"
-            OriginalFileName = "2024-01-02_processing_in_progress_long_path_video_file.mp4"
-            DirectoryPath = "D:\\Videos"
-            OriginalLength = 260
-            OriginalFileNameBytes = 58
-            OriginalViolation = WindowsPathOnly
-            ProposedFileName = "2024-01-02_processing_in_progress_long_path_video_file.mp4"
-            ProposedLength = 260
-            ProposedFileNameBytes = 58
-            AiComment = None
-            IsSelected = true
-            LastWriteTime = DateTime.UtcNow
-            IsAiProposed = false
-            IsAiProcessing = true
-            AiError = None
-        }
-        let cand3: RenameProposal = {
-            OriginalFullPath = "D:\\Videos\\2024-01-03_failed_llm_request_timeout_sample_file.mp4"
-            OriginalFileName = "2024-01-03_failed_llm_request_timeout_sample_file.mp4"
-            DirectoryPath = "D:\\Videos"
-            OriginalLength = 255
-            OriginalFileNameBytes = 54
-            OriginalViolation = WindowsPathOnly
-            ProposedFileName = "2024-01-03_failed_llm_request_timeout_sample_file.mp4"
-            ProposedLength = 255
-            ProposedFileNameBytes = 54
-            AiComment = Some "AI提案取得失敗: タイムアウト"
-            IsSelected = true
-            LastWriteTime = DateTime.UtcNow
-            IsAiProposed = false
-            IsAiProcessing = false
-            AiError = Some "AI提案取得失敗: HTTP 504 タイムアウト"
-        }
-        // 待機中・未選択候補カード (IsSelected = false, IsAiProcessing = false, AiError = None)
-        // 縦・横双方でのボーダー色 (borderZinc800) およびボーダー太さ (1.0) の描画分岐を網羅
-        let cand4: RenameProposal = {
-            OriginalFullPath = "D:\\Videos\\2024-01-04_waiting_idle_unselected_candidate_video_file.mp4"
-            OriginalFileName = "2024-01-04_waiting_idle_unselected_candidate_video_file.mp4"
-            DirectoryPath = "D:\\Videos"
-            OriginalLength = 265
-            OriginalFileNameBytes = 60
-            OriginalViolation = WindowsPathOnly
-            ProposedFileName = "2024-01-04_waiting_idle_unselected_candidate_video_file.mp4"
-            ProposedLength = 265
-            ProposedFileNameBytes = 60
-            AiComment = None
-            IsSelected = false
-            LastWriteTime = DateTime.UtcNow
-            IsAiProposed = false
-            IsAiProcessing = false
-            AiError = None
-        }
-
-        let aiProcessingModel =
-            { baseModel with
-                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
-                IsRequestingAi = true
-                Candidates = [ cand1; cand2; cand3; cand4 ]
-            }
-        let pngPath14, texts14 = renderAndCapture aiProcessingModel "E2E_14_Spinner_AiProcessing_And_ErrorRetry.png"
-        texts14 |> List.exists (fun t -> t.Contains("処理中")) |> should equal true
-        texts14 |> List.exists (fun t -> t.Contains("⚠️ 失敗")) |> should equal true
-        texts14 |> List.exists (fun t -> t.Contains("↻ 再試行")) |> should equal true
-        texts14 |> List.exists (fun t -> t.Contains("AI提案中...") && t.Contains("2/4件完了")) |> should equal true
-        texts14 |> List.exists (fun t -> t.Contains("waiting_idle_unselected_candidate")) |> should equal true
-
-        // (c) IsRenaming = true (半透明暗転オーバーレイ＋中央スピナー)
-        let renamingModel =
-            { baseModel with
-                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
-                IsRenaming = true
-                Candidates = [ cand1 ]
-            }
-        let pngPath15, texts15 = renderAndCapture renamingModel "E2E_15_Spinner_Renaming_Overlay.png"
-        texts15 |> List.exists (fun t -> t.Contains("ファイル名を変更中...")) |> should equal true
-        texts15 |> List.exists (fun t -> t.Contains("物理リネームおよび Undo 履歴の確定完了まで操作をお待ちください")) |> should equal true
-
-        // (d) IsDockerBusy = true (コンテナ操作スピナー) ＋ 全件安全状態 (HasScanned=true, ScannedVideoCount=3, Candidates=[])
-        let dockerBusyAllSafeModel =
-            { baseModel with
-                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
-                IsDockerBusy = true
-                Candidates = []
-                HasScanned = true
-                ScannedVideoCount = 3
-                ActiveEnvironment = "Development"
-                SettingsSavePath = devSavePath
-            }
-        let pngPath16, texts16 = renderAndCapture dockerBusyAllSafeModel "E2E_16_Spinner_DockerBusy_AllSafe.png"
-        texts16 |> List.exists (fun t -> t.Contains("コンテナ操作中...")) |> should equal true
-        texts16 |> List.exists (fun t -> t.Contains("対象ファイルはありません（全件安全）")) |> should equal true
-        texts16 |> List.exists (fun t -> t.Contains("動画 3 本を検査しましたが")) |> should equal true
-
-        // =================================================================
-        // 3. E2E-03: 不在ディレクトリ指定スキャン失敗 → 回復・再スキャン成功
-        // =================================================================
-        withTempDirectory (fun tempDir ->
-            let nonExistentDir = Path.Combine(tempDir, "absent_dir_" + Guid.NewGuid().ToString("N"))
-            let initialScanningModel =
-                { baseModel with
-                    Settings = { baseModel.Settings with TargetDirectory = nonExistentDir }
-                    IsScanning = true
-                }
-
-            // 不在エラーによる ScanCompleted イベント発行
-            let scanError = IoError ($"指定されたディレクトリが存在しません: {nonExistentDir}", None)
-            let failedModel, _ = State.update (ScanCompleted (Error scanError)) initialScanningModel
-
-            // スピナー解除およびエラーメッセージ設定のアサート
-            failedModel.IsScanning |> should equal false
-            failedModel.ErrorMessage |> should not' (equal None)
-            failedModel.ErrorMessage.Value |> should contain "存在しません"
-
-            // 失敗画面のUI描画検証
-            let _, failedTexts = renderAndCapture failedModel "E2E_17_Scan_Failure_ErrorBanner.png"
-            failedTexts |> List.exists (fun t -> t.Contains("存在しません")) |> should equal true
-            failedTexts |> List.exists (fun t -> t.Contains("動画ファイルをスキャン中...")) |> should equal false
-
-            // 有効ディレクトリへの変更
-            let validModel, _ = State.update (TargetDirectoryChanged tempDir) failedModel
-            validModel.Settings.TargetDirectory |> should equal tempDir
-
-            // 有効ディレクトリで走査結果を受信（回復）
-            let recoveredCandidate: ScanCandidate = {
-                FullPath = Path.Combine(tempDir, "valid_long_name_video.mp4")
-                FileName = "valid_long_name_video.mp4"
-                DirectoryPath = tempDir
-                PathLength = 245
-                FileNameBytes = 25
-                Violation = WindowsPathOnly
-                FileSizeBytes = 1024L
-                LastWriteTime = DateTime.UtcNow
-            }
-            let recoveredModel, _ = State.update (ScanCompleted (Ok [ recoveredCandidate ])) validModel
-
-            // スピナー解除、候補反映、HasScanned 整合性のアサート
-            recoveredModel.IsScanning |> should equal false
-            recoveredModel.Candidates.Length |> should equal 1
-            recoveredModel.HasScanned |> should equal true
-
-            // 回復後画面のUI描画検証
-            let _, recoveredTexts = renderAndCapture recoveredModel "E2E_18_Scan_Recovery_Success.png"
-            recoveredTexts |> List.exists (fun t -> t.Contains("valid_long_name_video")) |> should equal true
         )
 
-        // =================================================================
-        // 4. 追加描画検証: 横並びレイアウト (Horizontal) での AI 提案中・エラー再試行実描画
-        // =================================================================
-        let horizontalAiErrorModel =
-            { baseModel with
-                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
-                Layout = Horizontal
-                IsRequestingAi = true
-                Candidates = [ cand1; cand2; cand3; cand4 ]
-            }
-        let pngPath14b, texts14b = renderAndCapture horizontalAiErrorModel "E2E_14b_Spinner_Horizontal_AiError.png"
-        texts14b |> List.exists (fun t -> t.Contains("処理中")) |> should equal true
-        texts14b |> List.exists (fun t -> t.Contains("⚠️ 取得エラー") || t.Contains("HTTP 504")) |> should equal true
-        texts14b |> List.exists (fun t -> t.Contains("AI提案中...") && t.Contains("2/4件完了")) |> should equal true
-        texts14b |> List.exists (fun t -> t.Contains("waiting_idle_unselected_candidate")) |> should equal true
+    [<Fact>]
+    let ``E2E: 新UI状態の実描画（Zero-State, 各スピナー状態, エラーリカバリ）およびスクリーンショット出力`` () =
+        SettingsIsolationHarness.withIsolatedSettingsEnvironment (fun tempSavePath ->
+            ensureAppInitialized ()
 
-        // =================================================================
-        // 5. 追加描画検証: 動画ファイル 0 件検出時の Empty State 画面実描画
-        // =================================================================
-        let emptyScannedModel =
-            { baseModel with
-                Settings = { baseModel.Settings with TargetDirectory = "D:\\EmptyVideos" }
-                HasScanned = true
-                ScannedVideoCount = 0
-                Candidates = []
-            }
-        let pngPath19, texts19 = renderAndCapture emptyScannedModel "E2E_19_Scanned_Zero_Videos_EmptyState.png"
-        texts19 |> List.exists (fun t -> t.Contains("動画ファイル（.mp4）が見つかりませんでした")) |> should equal true
-        texts19 |> List.exists (fun t -> t.Contains("📁 別のフォルダを指定する")) |> should equal true
+            let rec findRepoRoot (dir: DirectoryInfo) =
+                if dir = null then AppContext.BaseDirectory
+                elif File.Exists(Path.Combine(dir.FullName, "AGENTS.md")) then dir.FullName
+                elif dir.Parent = null then AppContext.BaseDirectory
+                else findRepoRoot dir.Parent
+            let repoRoot = findRepoRoot (DirectoryInfo(AppContext.BaseDirectory))
+            let outputDir = Path.Combine(repoRoot, "test", "TestResults")
+            if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
 
-        // =================================================================
-        // 6. 追加描画検証: フィルタ条件に一致する候補 0 件時の画面実描画 (E2E_20)
-        // =================================================================
-        // cand1 は WindowsPathOnly なので、FilterLinuxOnly 適用時は該当 0 件となる
-        let filterZeroModel =
-            { baseModel with
-                Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
-                HasScanned = true
-                ScannedVideoCount = 1
-                Candidates = [ cand1 ]
-                FilterConstraint = FilterLinuxOnly
+            let renderAndCapture (m: Model) (fileName: string) : string * string list =
+                let width = 1100.0
+                let height = 720.0
+                let w = new Avalonia.FuncUI.Hosts.HostWindow()
+                w.Width <- width
+                w.Height <- height
+                w.Background <- Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#1a1a1a"))
+
+                Elmish.Program.mkProgram (fun () -> m, Elmish.Cmd.none) State.update Views.view
+                |> Avalonia.FuncUI.Elmish.Program.withHost w
+                |> Avalonia.FuncUI.Elmish.Program.runWithAvaloniaSyncDispatch ()
+
+                w.Show()
+                w.UpdateLayout()
+
+                let rec collect (control: Avalonia.Controls.Control) : string list =
+                    let current =
+                        match control with
+                        | :? Avalonia.Controls.TextBlock as tb when tb.Text <> null -> [ tb.Text ]
+                        | :? Avalonia.Controls.SelectableTextBlock as stb when stb.Text <> null -> [ stb.Text ]
+                        | :? Avalonia.Controls.TextBox as tb when tb.Text <> null -> [ tb.Text ]
+                        | :? Avalonia.Controls.ContentControl as cc when cc.Content <> null && (cc.Content :? string) -> [ cc.Content :?> string ]
+                        | _ -> []
+                    let children =
+                        match control with
+                        | :? Avalonia.Controls.Panel as p -> p.Children |> Seq.collect collect |> Seq.toList
+                        | :? Avalonia.Controls.ContentControl as cc ->
+                            match cc.Content with
+                            | :? Avalonia.Controls.Control as c -> collect c
+                            | _ -> []
+                        | :? Avalonia.Controls.Decorator as d when d.Child <> null -> collect d.Child
+                        | _ -> []
+                    current @ children
+                let texts = collect w
+
+                let pixelSize = Avalonia.PixelSize(int width, int height)
+                let dpi = Avalonia.Vector(96.0, 96.0)
+                let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
+                rtb.Render(w)
+
+                let outputPath = Path.Combine(outputDir, fileName)
+                rtb.Save(outputPath)
+                w.Close()
+
+                File.Exists(outputPath) |> should equal true
+                FileInfo(outputPath).Length |> should be (greaterThan 1000L)
+                (outputPath, texts)
+
+            // =================================================================
+            // 1. E2E-01: クリーン起動 Zero-State (Development 環境バッジ + 保存先 + フォルダ未設定導線)
+            // =================================================================
+            let baseModel = SettingsIsolationHarness.initIsolatedModel tempSavePath
+            let devSavePath = Path.Combine(repoRoot, "src", "TagBasedVideoManager.Renamer", "appsettings.Development.json")
+            let zeroStateModel =
+                { baseModel with
+                    Settings = { baseModel.Settings with TargetDirectory = "" }
+                    Candidates = []
+                    IsScanning = false
+                    IsRequestingAi = false
+                    IsRenaming = false
+                    IsDockerBusy = false
+                    HasScanned = false
+                    ScannedVideoCount = 0
+                    ActiveEnvironment = "Development"
+                    SettingsSavePath = devSavePath
+                }
+
+            let pngPath12, texts12 = renderAndCapture zeroStateModel "E2E_12_Spinner_ZeroState_DEV.png"
+            texts12 |> List.exists (fun t -> t.Contains("ENV: Development")) |> should equal true
+            texts12 |> List.exists (fun t -> t.Contains("appsettings.Development.json")) |> should equal true
+            texts12 |> List.exists (fun t -> t.Contains("対象フォルダが設定されていません")) |> should equal true
+            texts12 |> List.exists (fun t -> t.Contains("フォルダを選択して設定")) |> should equal true
+
+            // =================================================================
+            // 2. E2E-02: 各スピナー状態の実描画
+            // =================================================================
+            // (a) IsScanning = true (スキャン中中央スピナー)
+            let scanningModel =
+                { baseModel with
+                    Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                    IsScanning = true
+                    Candidates = []
+                }
+            let pngPath13, texts13 = renderAndCapture scanningModel "E2E_13_Spinner_Scanning.png"
+            texts13 |> List.exists (fun t -> t.Contains("動画ファイルをスキャン中...")) |> should equal true
+            texts13 |> List.exists (fun t -> t.Contains("走査対象: D:\\Videos")) |> should equal true
+
+            // (b) IsRequestingAi = true ＋ 処理中候補行 (IsAiProcessing) ＋ 失敗エラー再試行行 (AiError) ＋ フッター進捗スピナー
+            let cand1: RenameProposal = {
+                OriginalFullPath = "D:\\Videos\\2024-01-01_completed_sample_documentary_video_file.mp4"
+                OriginalFileName = "2024-01-01_completed_sample_documentary_video_file.mp4"
+                DirectoryPath = "D:\\Videos"
+                OriginalLength = 250
+                OriginalFileNameBytes = 55
+                OriginalViolation = WindowsPathOnly
+                ProposedFileName = "2024-01-01_completed_doc.mp4"
+                ProposedLength = 29
+                ProposedFileNameBytes = 29
+                AiComment = Some "命名規則に基づき適切に短縮しました。"
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+                IsAiProposed = true
+                IsAiProcessing = false
+                AiError = None
             }
-        let pngPath20, texts20 = renderAndCapture filterZeroModel "E2E_20_Filter_Zero_Matches.png"
-        texts20 |> List.exists (fun t -> t.Contains("フィルタ該当 0 / 全 1 件") || t.Contains("該当するファイルがありません")) |> should equal true
-        texts20 |> List.exists (fun t -> t.Contains("フィルタを「すべて」に戻す")) |> should equal true
+            let cand2: RenameProposal = {
+                OriginalFullPath = "D:\\Videos\\2024-01-02_processing_in_progress_long_path_video_file.mp4"
+                OriginalFileName = "2024-01-02_processing_in_progress_long_path_video_file.mp4"
+                DirectoryPath = "D:\\Videos"
+                OriginalLength = 260
+                OriginalFileNameBytes = 58
+                OriginalViolation = WindowsPathOnly
+                ProposedFileName = "2024-01-02_processing_in_progress_long_path_video_file.mp4"
+                ProposedLength = 260
+                ProposedFileNameBytes = 58
+                AiComment = None
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+                IsAiProposed = false
+                IsAiProcessing = true
+                AiError = None
+            }
+            let cand3: RenameProposal = {
+                OriginalFullPath = "D:\\Videos\\2024-01-03_failed_llm_request_timeout_sample_file.mp4"
+                OriginalFileName = "2024-01-03_failed_llm_request_timeout_sample_file.mp4"
+                DirectoryPath = "D:\\Videos"
+                OriginalLength = 255
+                OriginalFileNameBytes = 54
+                OriginalViolation = WindowsPathOnly
+                ProposedFileName = "2024-01-03_failed_llm_request_timeout_sample_file.mp4"
+                ProposedLength = 255
+                ProposedFileNameBytes = 54
+                AiComment = Some "AI提案取得失敗: タイムアウト"
+                IsSelected = true
+                LastWriteTime = DateTime.UtcNow
+                IsAiProposed = false
+                IsAiProcessing = false
+                AiError = Some "AI提案取得失敗: HTTP 504 タイムアウト"
+            }
+            // 待機中・未選択候補カード (IsSelected = false, IsAiProcessing = false, AiError = None)
+            // 縦・横双方でのボーダー色 (borderZinc800) およびボーダー太さ (1.0) の描画分岐を網羅
+            let cand4: RenameProposal = {
+                OriginalFullPath = "D:\\Videos\\2024-01-04_waiting_idle_unselected_candidate_video_file.mp4"
+                OriginalFileName = "2024-01-04_waiting_idle_unselected_candidate_video_file.mp4"
+                DirectoryPath = "D:\\Videos"
+                OriginalLength = 265
+                OriginalFileNameBytes = 60
+                OriginalViolation = WindowsPathOnly
+                ProposedFileName = "2024-01-04_waiting_idle_unselected_candidate_video_file.mp4"
+                ProposedLength = 265
+                ProposedFileNameBytes = 60
+                AiComment = None
+                IsSelected = false
+                LastWriteTime = DateTime.UtcNow
+                IsAiProposed = false
+                IsAiProcessing = false
+                AiError = None
+            }
+
+            let aiProcessingModel =
+                { baseModel with
+                    Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                    IsRequestingAi = true
+                    Candidates = [ cand1; cand2; cand3; cand4 ]
+                }
+            let pngPath14, texts14 = renderAndCapture aiProcessingModel "E2E_14_Spinner_AiProcessing_And_ErrorRetry.png"
+            texts14 |> List.exists (fun t -> t.Contains("処理中")) |> should equal true
+            texts14 |> List.exists (fun t -> t.Contains("⚠️ 失敗")) |> should equal true
+            texts14 |> List.exists (fun t -> t.Contains("↻ 再試行")) |> should equal true
+            texts14 |> List.exists (fun t -> t.Contains("AI提案中...") && t.Contains("2/4件完了")) |> should equal true
+            texts14 |> List.exists (fun t -> t.Contains("waiting_idle_unselected_candidate")) |> should equal true
+
+            // (c) IsRenaming = true (半透明暗転オーバーレイ＋中央スピナー)
+            let renamingModel =
+                { baseModel with
+                    Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                    IsRenaming = true
+                    Candidates = [ cand1 ]
+                }
+            let pngPath15, texts15 = renderAndCapture renamingModel "E2E_15_Spinner_Renaming_Overlay.png"
+            texts15 |> List.exists (fun t -> t.Contains("ファイル名を変更中...")) |> should equal true
+            texts15 |> List.exists (fun t -> t.Contains("物理リネームおよび Undo 履歴の確定完了まで操作をお待ちください")) |> should equal true
+
+            // (d) IsDockerBusy = true (コンテナ操作スピナー) ＋ 全件安全状態 (HasScanned=true, ScannedVideoCount=3, Candidates=[])
+            let dockerBusyAllSafeModel =
+                { baseModel with
+                    Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                    IsDockerBusy = true
+                    Candidates = []
+                    HasScanned = true
+                    ScannedVideoCount = 3
+                    ActiveEnvironment = "Development"
+                    SettingsSavePath = devSavePath
+                }
+            let pngPath16, texts16 = renderAndCapture dockerBusyAllSafeModel "E2E_16_Spinner_DockerBusy_AllSafe.png"
+            texts16 |> List.exists (fun t -> t.Contains("コンテナ操作中...")) |> should equal true
+            texts16 |> List.exists (fun t -> t.Contains("対象ファイルはありません（全件安全）")) |> should equal true
+            texts16 |> List.exists (fun t -> t.Contains("動画 3 本を検査しましたが")) |> should equal true
+
+            // =================================================================
+            // 3. E2E-03: 不在ディレクトリ指定スキャン失敗 → 回復・再スキャン成功
+            // =================================================================
+            withTempDirectory (fun tempDir ->
+                let nonExistentDir = Path.Combine(tempDir, "absent_dir_" + Guid.NewGuid().ToString("N"))
+                let initialScanningModel =
+                    { baseModel with
+                        Settings = { baseModel.Settings with TargetDirectory = nonExistentDir }
+                        IsScanning = true
+                    }
+
+                // 不在エラーによる ScanCompleted イベント発行
+                let scanError = IoError ($"指定されたディレクトリが存在しません: {nonExistentDir}", None)
+                let failedModel, _ = State.update (ScanCompleted (Error scanError)) initialScanningModel
+
+                // スピナー解除およびエラーメッセージ設定のアサート
+                failedModel.IsScanning |> should equal false
+                failedModel.ErrorMessage |> should not' (equal None)
+                failedModel.ErrorMessage.Value |> should contain "存在しません"
+
+                // 失敗画面のUI描画検証
+                let _, failedTexts = renderAndCapture failedModel "E2E_17_Scan_Failure_ErrorBanner.png"
+                failedTexts |> List.exists (fun t -> t.Contains("存在しません")) |> should equal true
+                failedTexts |> List.exists (fun t -> t.Contains("動画ファイルをスキャン中...")) |> should equal false
+
+                // 有効ディレクトリへの変更
+                let validModel, _ = State.update (TargetDirectoryChanged tempDir) failedModel
+                validModel.Settings.TargetDirectory |> should equal tempDir
+
+                // 有効ディレクトリで走査結果を受信（回復）
+                let recoveredCandidate: ScanCandidate = {
+                    FullPath = Path.Combine(tempDir, "valid_long_name_video.mp4")
+                    FileName = "valid_long_name_video.mp4"
+                    DirectoryPath = tempDir
+                    PathLength = 245
+                    FileNameBytes = 25
+                    Violation = WindowsPathOnly
+                    FileSizeBytes = 1024L
+                    LastWriteTime = DateTime.UtcNow
+                }
+                let recoveredModel, _ = State.update (ScanCompleted (Ok [ recoveredCandidate ])) validModel
+
+                // スピナー解除、候補反映、HasScanned 整合性のアサート
+                recoveredModel.IsScanning |> should equal false
+                recoveredModel.Candidates.Length |> should equal 1
+                recoveredModel.HasScanned |> should equal true
+
+                // 回復後画面のUI描画検証
+                let _, recoveredTexts = renderAndCapture recoveredModel "E2E_18_Scan_Recovery_Success.png"
+                recoveredTexts |> List.exists (fun t -> t.Contains("valid_long_name_video")) |> should equal true
+            )
+
+            // =================================================================
+            // 4. 追加描画検証: 横並びレイアウト (Horizontal) での AI 提案中・エラー再試行実描画
+            // =================================================================
+            let horizontalAiErrorModel =
+                { baseModel with
+                    Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                    Layout = Horizontal
+                    IsRequestingAi = true
+                    Candidates = [ cand1; cand2; cand3; cand4 ]
+                }
+            let pngPath14b, texts14b = renderAndCapture horizontalAiErrorModel "E2E_14b_Spinner_Horizontal_AiError.png"
+            texts14b |> List.exists (fun t -> t.Contains("処理中")) |> should equal true
+            texts14b |> List.exists (fun t -> t.Contains("⚠️ 取得エラー") || t.Contains("HTTP 504")) |> should equal true
+            texts14b |> List.exists (fun t -> t.Contains("AI提案中...") && t.Contains("2/4件完了")) |> should equal true
+            texts14b |> List.exists (fun t -> t.Contains("waiting_idle_unselected_candidate")) |> should equal true
+
+            // =================================================================
+            // 5. 追加描画検証: 動画ファイル 0 件検出時の Empty State 画面実描画
+            // =================================================================
+            let emptyScannedModel =
+                { baseModel with
+                    Settings = { baseModel.Settings with TargetDirectory = "D:\\EmptyVideos" }
+                    HasScanned = true
+                    ScannedVideoCount = 0
+                    Candidates = []
+                }
+            let pngPath19, texts19 = renderAndCapture emptyScannedModel "E2E_19_Scanned_Zero_Videos_EmptyState.png"
+            texts19 |> List.exists (fun t -> t.Contains("動画ファイル（.mp4）が見つかりませんでした")) |> should equal true
+            texts19 |> List.exists (fun t -> t.Contains("📁 別のフォルダを指定する")) |> should equal true
+
+            // =================================================================
+            // 6. 追加描画検証: フィルタ条件に一致する候補 0 件時の画面実描画 (E2E_20)
+            // =================================================================
+            // cand1 は WindowsPathOnly なので、FilterLinuxOnly 適用時は該当 0 件となる
+            let filterZeroModel =
+                { baseModel with
+                    Settings = { baseModel.Settings with TargetDirectory = "D:\\Videos" }
+                    HasScanned = true
+                    ScannedVideoCount = 1
+                    Candidates = [ cand1 ]
+                    FilterConstraint = FilterLinuxOnly
+                }
+            let pngPath20, texts20 = renderAndCapture filterZeroModel "E2E_20_Filter_Zero_Matches.png"
+            texts20 |> List.exists (fun t -> t.Contains("フィルタ該当 0 / 全 1 件") || t.Contains("該当するファイルがありません")) |> should equal true
+            texts20 |> List.exists (fun t -> t.Contains("フィルタを「すべて」に戻す")) |> should equal true
+        )
 
     [<Fact>]
     let ``UI: SpinnerControl の CLR プロパティラッパーおよび MeasureOverride によるサイズ計測の検証`` () =
@@ -1563,8 +1582,3 @@ module RenameIntegrationE2ETests =
         spinner.Measure(Avalonia.Size(100.0, 100.0))
         spinner.DesiredSize.Width |> should equal 24.0
         spinner.DesiredSize.Height |> should equal 24.0
-
-
-
-
-
