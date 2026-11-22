@@ -62,7 +62,7 @@
   - `E2E-01`〜`E2E-07` を実行し、`test/TestResults/` へ PNG スクリーンショット（`E2E_Settings_HappyPath.png`, `E2E_Settings_ZeroState_MissingKey.png`, `E2E_Settings_Placeholder_Error.png`, `E2E_Settings_Placeholder_Recovered.png`, `E2E_Settings_ModalSaveError.png`, `E2E_Settings_ModalSaveRecovered.png`, `E2E_Settings_LongPathBanner_800.png`, `E2E_Settings_LongPathBanner_1100.png`, `E2E_Settings_StartupWarningBanner.png`）を出力する。
   - `E2E-05` について、ビジュアルツリー上の `errorBanner`・各ボタン・環境バッジの `Bounds` がウィンドウ幅内に収まり相互重なり・はみ出しがないことをアサートで機械検証し、出力 PNG を目視確認して `mockup.html` と整合していることを確認する。
 
-- [ ] 3.2 ドキュメント（`README.md`）およびバージョン（`.fsproj`）の整合更新
+- [x] 3.2 ドキュメント（`README.md`）およびバージョン（`.fsproj`）の整合更新
   - `README.md` から `%APPDATA%` に関する記述を削除し、2 段階ディレクトリ解決、Patch Save 仕様、最小 JSON 書式例（`{ "apiKey": "sk-or-v1-..." }`）、正しい camelCase 設定キー名（`targetDirectory`, `pathLengthThreshold`, `selectedModel`, `apiKey`, `rules`）へ更新する。
   - `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj` の `<Version>` を `0.2.0` → `0.3.0`（L2 Minor インクリメント）へ更新する。
 

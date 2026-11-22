@@ -1889,3 +1889,45 @@
 - **条件付きLGTM**: なし（`Critical`: 0、`Major`: 0、`Minor`: 0、`Suggestion`: 0）
 - **保留指摘（申し送り）**: 折り返し時の縦区切り線・`MinWidth = 450.0` 付近の余白・閾値 `TextBox` 同値ガード
 - **次のアクション**: 次タスクへ（Task 3.1 `[x]` 更新・コミット後、Task 3.2 `README.md` / `.fsproj` レビューへ進む）
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 3.2 (PG Reviewer)
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 3.2 ドキュメント（`README.md`）およびバージョン（`.fsproj`）の整合更新
+- **レビュアー**: pg (PG Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`（非コード変更／設定整合観点）
+- **対象成果物**: `README.md`, `src/TagBasedVideoManager.Renamer/TagBasedVideoManager.Renamer.fsproj`
+
+---
+
+## 1. 挑戦的設問への回答
+
+- `README.md` から `%APPDATA%`・廃止済み PascalCase キー（`OpenRouterApiKey`, `OpenRouterModel`, `NamingRules`）は完全除去済み（0 件）。
+- 2 段階ディレクトリ解決、`appsettings.{Environment}.json` 階層マージ、JSONC 許容・プレースホルダー保護・明示 `null`、最小 JSON `{ "apiKey": "sk-or-v1-..." }`、Patch Save、「🔄 設定を再読込」導線、および `TagBasedVideoManager.Renamer.fsproj` `<Version>0.3.0</Version>`（Web 側 `0.3.0` 無傷）の整合を確認。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（非コードタスク・ドキュメントおよび `.fsproj` バージョン更新）。
+
+---
+
+## 3. 指摘事項
+
+- **指摘1 (Minor / 保留申し送り)**: `README.md` L341「全項目の記述例」のルール例が実 `appsettings.json` ではなく `defaultRules` ベースの記述。
+- **指摘2 (Minor / 保留申し送り)**: `README.md` L55 バッジ例示が `DEV / appsettings.Development.json` となっている点（実 UI は `ENV: Development`）。
+- **指摘3 (Suggestion / 保留申し送り)**: L320-323 へ Patch Save 時に JSONC コメント・末尾カンマが保持されない制約の補足検討。
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（`Critical`: 0、`Major`: 0、`Minor`: 2、`Suggestion`: 1）
+- **保留指摘（申し送り）**: 指摘 1（L341 記述例）、指摘 2（L55 バッジ表記例）、指摘 3（L320-323 JSONC コメント非保持補足）
+- **次のアクション**: 次タスクへ（Task 3.2 `[x]` 更新・コミット後、Phase 4 Task 4.1 最終フォーマット・TRX/カバレッジ検証・Web 回帰確認・総括レビューへ進む）
+- **承認者**: PG Reviewer Agent
