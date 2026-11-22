@@ -573,182 +573,154 @@ module Views =
                                     Border.padding (8.0, 4.0)
                                     Border.margin (0.0, 0.0, 0.0, 6.0)
                                     Border.child (
-                                        StackPanel.create [
-                                            StackPanel.orientation Orientation.Horizontal
-                                            StackPanel.spacing 5.0
-                                            StackPanel.verticalAlignment VerticalAlignment.Center
-                                            StackPanel.children [
-                                                TextBlock.create [
-                                                    TextBlock.text "抽出基準 (パス長):"
-                                                    TextBlock.foreground (SolidColorBrush textSub)
-                                                    TextBlock.fontSize 11.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                    TextBlock.fontWeight FontWeight.Medium
+                                        let isInputEnabled = not model.IsScanning && not model.IsRenaming
+                                        let row1SubGroup rightMargin children =
+                                            StackPanel.create [
+                                                StackPanel.orientation Orientation.Horizontal
+                                                StackPanel.spacing 5.0
+                                                StackPanel.verticalAlignment VerticalAlignment.Center
+                                                StackPanel.margin (0.0, 2.0, rightMargin, 2.0)
+                                                StackPanel.children children
+                                            ]
+                                        let row1Label (text: string) (color: Color) size weight =
+                                            TextBlock.create [
+                                                TextBlock.text text
+                                                TextBlock.foreground (SolidColorBrush color)
+                                                TextBlock.fontSize size
+                                                TextBlock.fontWeight weight
+                                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                            ]
+                                        let row1Divider leftMargin rightMargin =
+                                            Border.create [
+                                                Border.width 1.0
+                                                Border.height 14.0
+                                                Border.background (SolidColorBrush borderZinc700)
+                                                Border.margin (leftMargin, 0.0, rightMargin, 0.0)
+                                                Border.verticalAlignment VerticalAlignment.Center
+                                            ]
+                                        let countLinux, countWindows, countBoth =
+                                            ((0, 0, 0), model.Candidates)
+                                            ||> List.fold (fun (l, w, b) c ->
+                                                match c.OriginalViolation with
+                                                | LinuxFileNameOnly -> (l + 1, w, b)
+                                                | WindowsPathOnly -> (l, w + 1, b)
+                                                | BothViolated -> (l, w, b + 1)
+                                            )
+                                        let filterOptions = [
+                                            FilterAll, $"すべて (全{model.Candidates.Length}件)"
+                                            FilterLinuxOnly, $"🐧 Linuxファイル名超過のみ ({countLinux}件)"
+                                            FilterWindowsOnly, $"🪟 Windowsパス長超過のみ ({countWindows}件)"
+                                            FilterBothOnly, $"⚠️ 両方超過 ({countBoth}件)"
+                                        ]
+                                        let selectedFilterIdx =
+                                            filterOptions
+                                            |> List.tryFindIndex (fun (f, _) -> f = model.FilterConstraint)
+                                            |> Option.defaultValue 0
+                                        let selectedFilterText = filterOptions.[selectedFilterIdx] |> snd
+
+                                        WrapPanel.create [
+                                            WrapPanel.orientation Orientation.Horizontal
+                                            WrapPanel.verticalAlignment VerticalAlignment.Center
+                                            WrapPanel.children [
+                                                // 1. Windows パス長閾値グループ
+                                                row1SubGroup 6.0 [
+                                                    row1Label "抽出基準 (パス長):" textSub 11.0 FontWeight.Medium
+                                                    row1Label "≧" textBeforeLabel 12.0 FontWeight.Bold
+                                                    TextBox.create [
+                                                        TextBox.text (string model.CurrentThreshold)
+                                                        TextBox.isEnabled isInputEnabled
+                                                        TextBox.width 50.0
+                                                        TextBox.height 26.0
+                                                        TextBox.verticalAlignment VerticalAlignment.Center
+                                                        TextBox.verticalContentAlignment VerticalAlignment.Center
+                                                        TextBox.textAlignment TextAlignment.Center
+                                                        TextBox.background (SolidColorBrush bgBlack)
+                                                        TextBox.foreground (SolidColorBrush textAiComment)
+                                                        TextBox.fontFamily (FontFamily "Consolas, monospace")
+                                                        TextBox.fontWeight FontWeight.Bold
+                                                        TextBox.borderBrush (SolidColorBrush borderZinc700)
+                                                        TextBox.borderThickness 1.0
+                                                        TextBox.cornerRadius 3.0
+                                                        TextBox.padding (4.0, 0.0)
+                                                        TextBox.fontSize 11.0
+                                                        TextBox.onTextChanged (fun text ->
+                                                            match Int32.TryParse(text) with
+                                                            | true, v -> dispatch (ThresholdChanged v)
+                                                            | _ -> ()
+                                                        )
+                                                    ]
+                                                    row1Label "文字" textZinc400 11.0 FontWeight.Normal
+                                                    row1Label "(※一時変更)" textZinc500 10.0 FontWeight.Normal
                                                 ]
-                                                TextBlock.create [
-                                                    TextBlock.text "≧"
-                                                    TextBlock.foreground (SolidColorBrush textBeforeLabel)
-                                                    TextBlock.fontWeight FontWeight.Bold
-                                                    TextBlock.fontSize 12.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
+
+                                                // 2. Linux ファイル名基準グループ
+                                                row1SubGroup 6.0 [
+                                                    row1Divider 0.0 4.0
+                                                    row1Label "Linuxファイル名:" textSub 11.0 FontWeight.Medium
+                                                    row1Label "≧" textBeforeLabel 12.0 FontWeight.Bold
+                                                    TextBlock.create [
+                                                        TextBlock.text "240"
+                                                        TextBlock.foreground (SolidColorBrush textAiComment)
+                                                        TextBlock.fontWeight FontWeight.Bold
+                                                        TextBlock.fontFamily (FontFamily "Consolas, monospace")
+                                                        TextBlock.fontSize 11.0
+                                                        TextBlock.verticalAlignment VerticalAlignment.Center
+                                                    ]
+                                                    row1Label "B" textZinc400 11.0 FontWeight.Normal
+                                                    row1Divider 4.0 0.0
                                                 ]
-                                                TextBox.create [
-                                                    TextBox.text (string model.CurrentThreshold)
-                                                    TextBox.isEnabled (not model.IsScanning && not model.IsRenaming)
-                                                    TextBox.width 50.0
-                                                    TextBox.height 26.0
-                                                    TextBox.verticalAlignment VerticalAlignment.Center
-                                                    TextBox.verticalContentAlignment VerticalAlignment.Center
-                                                    TextBox.textAlignment TextAlignment.Center
-                                                    TextBox.background (SolidColorBrush bgBlack)
-                                                    TextBox.foreground (SolidColorBrush textAiComment)
-                                                    TextBox.fontFamily (FontFamily "Consolas, monospace")
-                                                    TextBox.fontWeight FontWeight.Bold
-                                                    TextBox.borderBrush (SolidColorBrush borderZinc700)
-                                                    TextBox.borderThickness 1.0
-                                                    TextBox.cornerRadius 3.0
-                                                    TextBox.padding (4.0, 0.0)
-                                                    TextBox.fontSize 11.0
-                                                    TextBox.onTextChanged (fun text ->
-                                                        match Int32.TryParse(text) with
-                                                        | true, v -> dispatch (ThresholdChanged v)
-                                                        | _ -> ()
-                                                    )
+
+                                                // 3. フィルタグループ
+                                                row1SubGroup 6.0 [
+                                                    row1Label "🔍 フィルタ:" textSub 11.0 FontWeight.Medium
+                                                    ComboBox.create [
+                                                        ComboBox.dataItems (filterOptions |> List.map snd)
+                                                        ComboBox.isEnabled isInputEnabled
+                                                        ComboBox.selectedIndex selectedFilterIdx
+                                                        ComboBox.selectedItem selectedFilterText
+                                                        ComboBox.height 26.0
+                                                        ComboBox.fontSize 11.0
+                                                        ComboBox.minWidth 190.0
+                                                        ComboBox.verticalAlignment VerticalAlignment.Center
+                                                        ComboBox.background (SolidColorBrush btnDark)
+                                                        ComboBox.foreground (SolidColorBrush textWhite)
+                                                        ComboBox.borderBrush (SolidColorBrush borderZinc700)
+                                                        ComboBox.borderThickness 1.0
+                                                        ComboBox.cornerRadius 3.0
+                                                        ComboBox.padding (6.0, 2.0)
+                                                        ComboBox.onSelectedIndexChanged (fun idx ->
+                                                            if idx <> selectedFilterIdx then
+                                                                filterOptions
+                                                                |> List.tryItem idx
+                                                                |> Option.iter (fun (filterVal, _) -> dispatch (SetConstraintFilter filterVal))
+                                                        )
+                                                    ]
                                                 ]
-                                                TextBlock.create [
-                                                    TextBlock.text "文字"
-                                                    TextBlock.foreground (SolidColorBrush textZinc400)
-                                                    TextBlock.fontSize 11.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                TextBlock.create [
-                                                    TextBlock.text "(※一時変更)"
-                                                    TextBlock.foreground (SolidColorBrush textZinc500)
-                                                    TextBlock.fontSize 10.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                // 縦区切り線
-                                                Border.create [
-                                                    Border.width 1.0
-                                                    Border.height 14.0
-                                                    Border.background (SolidColorBrush borderZinc700)
-                                                    Border.margin (4.0, 0.0, 4.0, 0.0)
-                                                    Border.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                // Linuxファイル名バイト数基準表示
-                                                TextBlock.create [
-                                                    TextBlock.text "Linuxファイル名:"
-                                                    TextBlock.foreground (SolidColorBrush textSub)
-                                                    TextBlock.fontSize 11.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                    TextBlock.fontWeight FontWeight.Medium
-                                                ]
-                                                TextBlock.create [
-                                                    TextBlock.text "≧"
-                                                    TextBlock.foreground (SolidColorBrush textBeforeLabel)
-                                                    TextBlock.fontWeight FontWeight.Bold
-                                                    TextBlock.fontSize 12.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                TextBlock.create [
-                                                    TextBlock.text "240"
-                                                    TextBlock.foreground (SolidColorBrush textAiComment)
-                                                    TextBlock.fontWeight FontWeight.Bold
-                                                    TextBlock.fontFamily (FontFamily "Consolas, monospace")
-                                                    TextBlock.fontSize 11.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                TextBlock.create [
-                                                    TextBlock.text "B"
-                                                    TextBlock.foreground (SolidColorBrush textZinc400)
-                                                    TextBlock.fontSize 11.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                // 縦区切り線
-                                                Border.create [
-                                                    Border.width 1.0
-                                                    Border.height 14.0
-                                                    Border.background (SolidColorBrush borderZinc700)
-                                                    Border.margin (4.0, 0.0, 4.0, 0.0)
-                                                    Border.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                // 表示フィルタ ComboBox
-                                                TextBlock.create [
-                                                    TextBlock.text "🔍 フィルタ:"
-                                                    TextBlock.foreground (SolidColorBrush textSub)
-                                                    TextBlock.fontSize 11.0
-                                                    TextBlock.fontWeight FontWeight.Medium
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                let countLinux = model.Candidates |> List.filter (fun c -> c.OriginalViolation = LinuxFileNameOnly) |> List.length
-                                                let countWindows = model.Candidates |> List.filter (fun c -> c.OriginalViolation = WindowsPathOnly) |> List.length
-                                                let countBoth = model.Candidates |> List.filter (fun c -> c.OriginalViolation = BothViolated) |> List.length
-                                                let countAll = model.Candidates.Length
-                                                let filterItems = [
-                                                    $"すべて (全{countAll}件)"
-                                                    $"🐧 Linuxファイル名超過のみ ({countLinux}件)"
-                                                    $"🪟 Windowsパス長超過のみ ({countWindows}件)"
-                                                    $"⚠️ 両方超過 ({countBoth}件)"
-                                                ]
-                                                let selectedFilterIdx =
-                                                    match model.FilterConstraint with
-                                                    | FilterAll -> 0
-                                                    | FilterLinuxOnly -> 1
-                                                    | FilterWindowsOnly -> 2
-                                                    | FilterBothOnly -> 3
-                                                ComboBox.create [
-                                                    ComboBox.dataItems filterItems
-                                                    ComboBox.selectedIndex selectedFilterIdx
-                                                    ComboBox.height 26.0
-                                                    ComboBox.fontSize 11.0
-                                                    ComboBox.minWidth 190.0
-                                                    ComboBox.verticalAlignment VerticalAlignment.Center
-                                                    ComboBox.background (SolidColorBrush btnDark)
-                                                    ComboBox.foreground (SolidColorBrush textWhite)
-                                                    ComboBox.borderBrush (SolidColorBrush borderZinc700)
-                                                    ComboBox.borderThickness 1.0
-                                                    ComboBox.cornerRadius 3.0
-                                                    ComboBox.padding (6.0, 2.0)
-                                                    ComboBox.onSelectedIndexChanged (fun idx ->
-                                                        match idx with
-                                                        | 0 -> dispatch (SetConstraintFilter FilterAll)
-                                                        | 1 -> dispatch (SetConstraintFilter FilterLinuxOnly)
-                                                        | 2 -> dispatch (SetConstraintFilter FilterWindowsOnly)
-                                                        | 3 -> dispatch (SetConstraintFilter FilterBothOnly)
-                                                        | _ -> ()
-                                                    )
-                                                ]
-                                                // 縦区切り線
-                                                Border.create [
-                                                    Border.width 1.0
-                                                    Border.height 14.0
-                                                    Border.background (SolidColorBrush borderZinc700)
-                                                    Border.margin (4.0, 0.0, 4.0, 0.0)
-                                                    Border.verticalAlignment VerticalAlignment.Center
-                                                ]
-                                                // 日本語除外抽出チェックボックス
-                                                CheckBox.create [
-                                                    CheckBox.content "ファイル名に日本語を含まないもののみ抽出"
-                                                    CheckBox.isChecked model.FilterNonJapaneseOnly
-                                                    CheckBox.isEnabled (not model.IsScanning && not model.IsRenaming)
-                                                    CheckBox.foreground (SolidColorBrush textSub)
-                                                    CheckBox.fontSize 11.0
-                                                    CheckBox.verticalAlignment VerticalAlignment.Center
-                                                    CheckBox.onIsCheckedChanged (fun e ->
-                                                        match getCheckBoxValue e with
-                                                        | Some isChecked when isChecked <> model.FilterNonJapaneseOnly ->
-                                                            dispatch (ToggleFilterNonJapaneseOnly isChecked)
-                                                        | _ -> ()
-                                                    )
-                                                ]
-                                                // 該当件数
-                                                TextBlock.create [
-                                                    TextBlock.text $"| 該当: {model.Candidates.Length} 件"
-                                                    TextBlock.foreground (SolidColorBrush textWhite)
-                                                    TextBlock.fontWeight FontWeight.Bold
-                                                    TextBlock.fontSize 11.0
-                                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                                    TextBlock.margin (6.0, 0.0, 0.0, 0.0)
+
+                                                // 4. 非日本語抽出チェック＋該当件数グループ
+                                                row1SubGroup 0.0 [
+                                                    CheckBox.create [
+                                                        CheckBox.content "ファイル名に日本語を含まないもののみ抽出"
+                                                        CheckBox.isChecked model.FilterNonJapaneseOnly
+                                                        CheckBox.isEnabled isInputEnabled
+                                                        CheckBox.foreground (SolidColorBrush textSub)
+                                                        CheckBox.fontSize 11.0
+                                                        CheckBox.verticalAlignment VerticalAlignment.Center
+                                                        CheckBox.onIsCheckedChanged (fun e ->
+                                                            match getCheckBoxValue e with
+                                                            | Some isChecked when isChecked <> model.FilterNonJapaneseOnly ->
+                                                                dispatch (ToggleFilterNonJapaneseOnly isChecked)
+                                                            | _ -> ()
+                                                        )
+                                                    ]
+                                                    TextBlock.create [
+                                                        TextBlock.text $"| 該当: {model.Candidates.Length} 件"
+                                                        TextBlock.foreground (SolidColorBrush textWhite)
+                                                        TextBlock.fontWeight FontWeight.Bold
+                                                        TextBlock.fontSize 11.0
+                                                        TextBlock.verticalAlignment VerticalAlignment.Center
+                                                        TextBlock.margin (6.0, 0.0, 0.0, 0.0)
+                                                    ]
                                                 ]
                                             ]
                                         ]

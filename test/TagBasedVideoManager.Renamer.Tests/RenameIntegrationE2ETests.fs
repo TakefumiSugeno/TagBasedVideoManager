@@ -558,10 +558,10 @@ module RenameIntegrationE2ETests =
                     // 4. State.update で ScanCompleted を処理
                     // (APIキー未設定のため、LLMを偽装せず未提案として元ファイル名を保持し警告を表示)
                     let model2, cmd = State.update (ScanCompleted (Ok candidates)) model1
-                    
+
                     // 候補が Candidates に格納されていることを検証
                     model2.Candidates.Length |> should equal 2
-                    
+
                     let prop1 = model2.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath1)
                     let prop2 = model2.Candidates |> List.find (fun c -> c.OriginalFullPath = longPath2)
 
@@ -1628,12 +1628,12 @@ module RenameIntegrationE2ETests =
                     try Directory.Delete(tempRoot, true) with _ -> ()
         )
 
-    /// <summary>test/TestResults 配下へ実画面 PNG を保存し、可視コントロールとウィンドウ座標 Bounds を収集する</summary>
-    let private renderModelAndInspect
+    /// <summary>実画面レイアウトを描画して可視コントロール・ウィンドウ座標 Bounds・可視テキストを収集し、必要に応じて test/TestResults 配下へ PNG を保存する</summary>
+    let private inspectModelLayout
         (model: Model)
-        (fileName: string)
         (width: float)
         (height: float)
+        (pngFileNameOpt: string option)
         : string * (Avalonia.Controls.Control * Avalonia.Rect) list * string list =
 
         ensureAppInitialized ()
@@ -1688,23 +1688,39 @@ module RenameIntegrationE2ETests =
                 | _ -> None
             )
 
-        let pixelSize = Avalonia.PixelSize(int width, int height)
-        let dpi = Avalonia.Vector(96.0, 96.0)
-        let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
-        rtb.Render(w)
+        let outputPath =
+            match pngFileNameOpt with
+            | Some fileName ->
+                let pixelSize = Avalonia.PixelSize(int width, int height)
+                let dpi = Avalonia.Vector(96.0, 96.0)
+                let rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(pixelSize, dpi)
+                rtb.Render(w)
 
-        let repoRoot =
-            SettingsIsolationHarness.tryFindRepoRoot ()
-            |> Option.defaultValue AppContext.BaseDirectory
-        let outputDir = Path.Combine(repoRoot, "test", "TestResults")
-        if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
-        let outputPath = Path.Combine(outputDir, fileName)
-        rtb.Save(outputPath)
-        w.Close()
+                let repoRoot =
+                    SettingsIsolationHarness.tryFindRepoRoot ()
+                    |> Option.defaultValue AppContext.BaseDirectory
+                let outputDir = Path.Combine(repoRoot, "test", "TestResults")
+                if not (Directory.Exists(outputDir)) then Directory.CreateDirectory(outputDir) |> ignore
+                let path = Path.Combine(outputDir, fileName)
+                rtb.Save(path)
+                w.Close()
+                File.Exists(path) |> should equal true
+                FileInfo(path).Length |> should be (greaterThan 1000L)
+                path
+            | None ->
+                w.Close()
+                ""
 
-        File.Exists(outputPath) |> should equal true
-        FileInfo(outputPath).Length |> should be (greaterThan 1000L)
         outputPath, controlRects, visibleTexts
+
+    /// <summary>test/TestResults 配下へ実画面 PNG を保存し、可視コントロールとウィンドウ座標 Bounds を収集する</summary>
+    let private renderModelAndInspect
+        (model: Model)
+        (fileName: string)
+        (width: float)
+        (height: float)
+        : string * (Avalonia.Controls.Control * Avalonia.Rect) list * string list =
+        inspectModelLayout model width height (Some fileName)
 
     /// <summary>サブツリー配下の可視コントロールのみを収集するヘルパー</summary>
     let rec private collectVisibleFromSubtree (control: Avalonia.Controls.Control) : Avalonia.Controls.Control list =
@@ -1875,13 +1891,32 @@ module RenameIntegrationE2ETests =
             reloadedModel.ErrorMessage |> should not' (equal None)
             reloadedModel.ErrorMessage.Value |> should startWith "💡"
 
+            // 再読込直後の 💡 情報バナー・D:\PickedVideos 維持・ボタン表示を UI ツリー上で明示検証
+            let _, _, reloadedTexts = renderModelAndInspect reloadedModel "E2E_Settings_Placeholder_Reloaded.png" 1100.0 720.0
+            reloadedTexts |> List.exists (fun t -> t.Contains("💡 設定ファイルを再読込しました") && t.Contains("appsettings.Development.json")) |> should equal true
+            reloadedTexts |> List.exists (fun t -> t = "D:\\PickedVideos") |> should equal true
+            reloadedTexts |> List.exists (fun t -> t = "🔄 設定を再読込") |> should equal true
+            reloadedTexts |> List.exists (fun t -> t = "📋 コピー") |> should equal true
+            reloadedTexts |> List.exists (fun t -> t = "✕") |> should equal true
+            reloadedTexts |> List.exists (fun t -> t.Contains("sk-or-v1-valid0000")) |> should equal false
+
+            // RetryCandidateAiProposal 実行後の再試行復帰状態を E2E_Settings_Placeholder_Recovered.png として出力・検証
             let recoveredModel, _ =
                 State.updateWithContext (Some ctx) (RetryCandidateAiProposal scanCand.FullPath) reloadedModel
             try
                 recoveredModel.IsRequestingAi |> should equal true
                 recoveredModel.Candidates.Head.IsAiProcessing |> should equal true
-                let _, _, recTexts = renderModelAndInspect reloadedModel "E2E_Settings_Placeholder_Recovered.png" 1100.0 720.0
-                recTexts |> List.exists (fun t -> t.StartsWith("💡") && t.Contains("appsettings.Development.json")) |> should equal true
+                recoveredModel.Settings.TargetDirectory |> should equal "D:\\PickedVideos"
+
+                let _, _, recTexts = renderModelAndInspect recoveredModel "E2E_Settings_Placeholder_Recovered.png" 1100.0 720.0
+                recTexts |> List.exists (fun t -> t.Contains("💡 設定ファイルを再読込しました") && t.Contains("appsettings.Development.json")) |> should equal true
+                recTexts |> List.exists (fun t -> t = "D:\\PickedVideos") |> should equal true
+                recTexts |> List.exists (fun t -> t = "処理中") |> should equal true
+                recTexts |> List.exists (fun t -> t = "AFTER (処理中...)") |> should equal true
+                recTexts |> List.exists (fun t -> t = "🌐 検索中") |> should equal true
+                recTexts |> List.exists (fun t -> t = "⟳ 新条件で再実行") |> should equal true
+                recTexts |> List.exists (fun t -> t = "⏹ 中止") |> should equal true
+                recTexts |> List.exists (fun t -> t.Contains("sk-or-v1-valid0000")) |> should equal false
             finally
                 recoveredModel.AiCancellationCts |> Option.iter (fun c -> try c.Dispose() with _ -> ())
         )
@@ -1995,8 +2030,8 @@ module RenameIntegrationE2ETests =
                     ErrorMessage = Some longErrorBanner
             }
 
-            let verifyWidth (wWidth: float) (wHeight: float) (pngName: string) =
-                let _, controlRects, visibleTexts = renderModelAndInspect testModel pngName wWidth wHeight
+            let assertBannerLayoutClean (targetModel: Model) (wWidth: float) (wHeight: float) (pngNameOpt: string option) =
+                let _, controlRects, visibleTexts = inspectModelLayout targetModel wWidth wHeight pngNameOpt
 
                 // 実 API キー値が画面テキストに出力されないこと
                 visibleTexts |> List.exists (fun t -> t.Contains(secretKey)) |> should equal false
@@ -2005,47 +2040,66 @@ module RenameIntegrationE2ETests =
                     controlRects
                     |> List.filter (fun (c, _) -> predicate c)
 
-                let reloadButtons =
+                let findButtonsByExactText (label: string) =
                     findControlRects (function
                         | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
-                            (b.Content :?> string) = "🔄 設定を再読込"
+                            (b.Content :?> string) = label
                         | _ -> false)
-                let copyButtons =
-                    findControlRects (function
-                        | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
-                            (b.Content :?> string) = "📋 コピー"
-                        | _ -> false)
-                let dismissButtons =
-                    findControlRects (function
-                        | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
-                            (b.Content :?> string) = "✕"
-                        | _ -> false)
+
+                let reloadButtons = findButtonsByExactText "🔄 設定を再読込"
+                let copyButtons = findButtonsByExactText "📋 コピー"
+                let dismissButtons = findButtonsByExactText "✕"
+                let dockerStartButtons = findButtonsByExactText "▶ Start"
+                let dockerStopButtons = findButtonsByExactText "■ Stop"
+                let dockerRestartButtons = findButtonsByExactText "🔄 Restart"
+                let browseButtons = findButtonsByExactText "参照..."
+                let manageButtons = findButtonsByExactText "⚙ 管理..."
+                let stopButtons = findButtonsByExactText "⏹ 中止"
                 let runButtons =
                     findControlRects (function
                         | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
                             (b.Content :?> string).Contains("抽出 ＆ AI提案")
                         | _ -> false)
-                let manageButtons =
+                let targetDirTextBoxes =
                     findControlRects (function
-                        | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
-                            (b.Content :?> string) = "⚙ 管理..."
+                        | :? Avalonia.Controls.TextBox as tb when abs (tb.Width - 220.0) < 0.1 -> true
                         | _ -> false)
-                let stopButtons =
+                let thresholdTextBoxes =
                     findControlRects (function
-                        | :? Avalonia.Controls.Button as b when not (isNull b.Content) && (b.Content :? string) ->
-                            (b.Content :?> string) = "⏹ 中止"
+                        | :? Avalonia.Controls.TextBox as tb when abs (tb.Width - 50.0) < 0.1 -> true
+                        | _ -> false)
+                let nonJapaneseCheckBoxes =
+                    findControlRects (function
+                        | :? Avalonia.Controls.CheckBox as cb when not (isNull cb.Content) && (cb.Content :? string) ->
+                            (cb.Content :?> string) = "ファイル名に日本語を含まないもののみ抽出"
+                        | _ -> false)
+                let row1LabelTexts =
+                    findControlRects (function
+                        | :? Avalonia.Controls.TextBlock as tb when not (isNull tb.Text) ->
+                            tb.Text = "対象フォルダ:"
+                            || tb.Text = "抽出基準 (パス長):"
+                            || tb.Text = "Linuxファイル名:"
+                            || tb.Text = "🔍 フィルタ:"
+                            || tb.Text.StartsWith("| 該当:")
                         | _ -> false)
                 let comboBoxes =
                     findControlRects (function
                         | :? Avalonia.Controls.ComboBox -> true
                         | _ -> false)
+                let envBadgeBorders =
+                    findControlRects (function
+                        | :? Avalonia.Controls.Border as b ->
+                            match b.Child with
+                            | :? Avalonia.Controls.TextBlock as tb when not (isNull tb.Text) && tb.Text = "ENV: Production" -> true
+                            | _ -> false
+                        | _ -> false)
                 let envBadgeTexts =
                     findControlRects (function
-                        | :? Avalonia.Controls.TextBlock as tb when tb.Text = "ENV: Production" -> true
+                        | :? Avalonia.Controls.TextBlock as tb when not (isNull tb.Text) && tb.Text = "ENV: Production" -> true
                         | _ -> false)
                 let saveFileTexts =
                     findControlRects (function
-                        | :? Avalonia.Controls.TextBlock as tb when tb.Text = "💾 appsettings.Production.json" -> true
+                        | :? Avalonia.Controls.TextBlock as tb when not (isNull tb.Text) && tb.Text = "💾 appsettings.Production.json" -> true
                         | _ -> false)
                 let bannerTexts =
                     findControlRects (function
@@ -2056,35 +2110,115 @@ module RenameIntegrationE2ETests =
                 reloadButtons.Length |> should be (greaterThanOrEqualTo 2)
                 copyButtons.Length |> should equal 1
                 dismissButtons.Length |> should equal 1
+                dockerStartButtons.Length |> should equal 1
+                dockerStopButtons.Length |> should equal 1
+                dockerRestartButtons.Length |> should equal 1
+                browseButtons.Length |> should equal 1
+                targetDirTextBoxes.Length |> should equal 1
+                thresholdTextBoxes.Length |> should equal 1
+                nonJapaneseCheckBoxes.Length |> should equal 1
+                row1LabelTexts.Length |> should equal 5
                 runButtons.Length |> should equal 1
                 manageButtons.Length |> should equal 1
                 stopButtons.Length |> should equal 1
-                comboBoxes.Length |> should be (greaterThanOrEqualTo 2)
+                comboBoxes.Length |> should be (greaterThanOrEqualTo 3)
+                envBadgeBorders.Length |> should equal 1
                 envBadgeTexts.Length |> should equal 1
                 saveFileTexts.Length |> should equal 1
                 bannerTexts.Length |> should equal 1
 
+                let actualDirText = (targetDirTextBoxes.Head |> fst :?> Avalonia.Controls.TextBox).Text
+                if String.IsNullOrEmpty(targetModel.Settings.TargetDirectory) then
+                    String.IsNullOrEmpty(actualDirText) |> should equal true
+                else
+                    actualDirText |> should equal targetModel.Settings.TargetDirectory
+
                 let allTargets =
-                    reloadButtons @ copyButtons @ dismissButtons @ runButtons @ manageButtons @ stopButtons @ comboBoxes @ envBadgeTexts @ saveFileTexts @ bannerTexts
+                    reloadButtons
+                    @ copyButtons
+                    @ dismissButtons
+                    @ dockerStartButtons
+                    @ dockerStopButtons
+                    @ dockerRestartButtons
+                    @ browseButtons
+                    @ targetDirTextBoxes
+                    @ thresholdTextBoxes
+                    @ nonJapaneseCheckBoxes
+                    @ row1LabelTexts
+                    @ runButtons
+                    @ manageButtons
+                    @ stopButtons
+                    @ comboBoxes
+                    @ envBadgeBorders
+                    @ envBadgeTexts
+                    @ saveFileTexts
+                    @ bannerTexts
 
-                for (_, rect) in allTargets do
-                    rect.Width |> should be (greaterThan 0.0)
-                    rect.Height |> should be (greaterThan 0.0)
-                    rect.X |> should be (greaterThanOrEqualTo 0.0)
-                    rect.Y |> should be (greaterThanOrEqualTo 0.0)
-                    rect.Right |> should be (lessThanOrEqualTo wWidth)
-                    rect.Bottom |> should be (lessThanOrEqualTo wHeight)
+                let describeControl (c: Avalonia.Controls.Control) =
+                    match c with
+                    | :? Avalonia.Controls.TextBlock as tb -> $"TextBlock('{tb.Text}')"
+                    | :? Avalonia.Controls.TextBox as tb -> $"TextBox('{tb.Text}')"
+                    | :? Avalonia.Controls.Button as b -> $"Button('{b.Content}')"
+                    | :? Avalonia.Controls.CheckBox as cb -> $"CheckBox('{cb.Content}')"
+                    | :? Avalonia.Controls.ComboBox -> $"ComboBox(w={c.Bounds.Width})"
+                    | :? Avalonia.Controls.Border -> "Border"
+                    | _ -> c.GetType().Name
 
-                // 対象リーフ要素間で相互重なり（交差面積あり）が存在しないこと
-                let rectsArr = allTargets |> List.map snd |> List.toArray
-                for i in 0 .. rectsArr.Length - 1 do
-                    for j in i + 1 .. rectsArr.Length - 1 do
-                        let inter = rectsArr.[i].Intersect(rectsArr.[j])
-                        let overlaps = inter.Width > 0.5 && inter.Height > 0.5
-                        Assert.False(overlaps, $"UI 要素間に重なりが検出されました (width={wWidth}): {rectsArr.[i]} vs {rectsArr.[j]}")
+                for (ctrl, rect) in allTargets do
+                    let desc = describeControl ctrl
+                    Assert.True(rect.Width > 0.0, $"要素幅が0以下です (width={wWidth}): {desc} {rect}")
+                    Assert.True(rect.Height > 0.0, $"要素高さが0以下です (width={wWidth}): {desc} {rect}")
+                    Assert.True(rect.X >= 0.0, $"要素左端がウィンドウ外です (width={wWidth}): {desc} {rect}")
+                    Assert.True(rect.Y >= 0.0, $"要素上端がウィンドウ外です (width={wWidth}): {desc} {rect}")
+                    Assert.True(rect.Right <= wWidth - 1.0, $"要素右端がウィンドウ枠外へはみ出しています (width={wWidth}): {desc} {rect}")
+                    Assert.True(rect.Bottom <= wHeight - 1.0, $"要素下端がウィンドウ枠外へはみ出しています (height={wHeight}): {desc} {rect}")
 
-            verifyWidth 800.0 650.0 "E2E_Settings_LongPathBanner_800.png"
-            verifyWidth 1100.0 720.0 "E2E_Settings_LongPathBanner_1100.png"
+                let rec isAncestorControl (parent: Avalonia.Controls.Control) (child: Avalonia.Controls.Control) =
+                    if isNull parent || isNull child || obj.ReferenceEquals(parent, child) then
+                        false
+                    else
+                        let directlyInDecorator =
+                            match parent with
+                            | :? Avalonia.Controls.Decorator as d -> obj.ReferenceEquals(d.Child, child)
+                            | _ -> false
+                        if directlyInDecorator then
+                            true
+                        else
+                            match child.Parent with
+                            | :? Avalonia.Controls.Control as p ->
+                                obj.ReferenceEquals(parent, p) || isAncestorControl parent p
+                            | _ -> false
+
+                // 対象要素間で相互重なり（交差面積あり）が存在しないこと（親子包含ペアは内包を検証）
+                let targetsArr = allTargets |> List.toArray
+                for i in 0 .. targetsArr.Length - 1 do
+                    for j in i + 1 .. targetsArr.Length - 1 do
+                        let c1, r1 = targetsArr.[i]
+                        let c2, r2 = targetsArr.[j]
+                        if isAncestorControl c1 c2 then
+                            Assert.True(
+                                r2.X >= r1.X - 0.5 && r2.Y >= r1.Y - 0.5 && r2.Right <= r1.Right + 0.5 && r2.Bottom <= r1.Bottom + 0.5,
+                                $"子要素が親要素からはみ出しています (width={wWidth}): {describeControl c2} ({r2}) in {describeControl c1} ({r1})"
+                            )
+                        elif isAncestorControl c2 c1 then
+                            Assert.True(
+                                r1.X >= r2.X - 0.5 && r1.Y >= r2.Y - 0.5 && r1.Right <= r2.Right + 0.5 && r1.Bottom <= r2.Bottom + 0.5,
+                                $"子要素が親要素からはみ出しています (width={wWidth}): {describeControl c1} ({r1}) in {describeControl c2} ({r2})"
+                            )
+                        else
+                            let inter = r1.Intersect(r2)
+                            let overlaps = inter.Width > 0.5 && inter.Height > 0.5
+                            Assert.False(overlaps, $"UI 要素間に重なりが検出されました (width={wWidth}): {describeControl c1} ({r1}) vs {describeControl c2} ({r2})")
+
+            let modelWithDir = {
+                testModel with
+                    Settings = { testModel.Settings with TargetDirectory = "D:\\Videos\\LongSubFolder\\SampleTarget" }
+            }
+
+            assertBannerLayoutClean testModel 800.0 650.0 (Some "E2E_Settings_LongPathBanner_800.png")
+            assertBannerLayoutClean testModel 1100.0 720.0 (Some "E2E_Settings_LongPathBanner_1100.png")
+            assertBannerLayoutClean modelWithDir 800.0 650.0 None
+            assertBannerLayoutClean modelWithDir 1100.0 720.0 None
         )
 
     /// <summary>E2E-06: 起動時の旧 { "value": ... } 形式・JSON 構文エラー警告が起動直後からバナー表示されることを検証する</summary>

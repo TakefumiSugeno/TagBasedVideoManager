@@ -1713,3 +1713,179 @@
 - **条件付きLGTM**: なし（`Critical`: 0、`Major`: 0、`Minor`: 0、`Suggestion`: 0）
 - **保留指摘（申し送り）**: なし
 - **次のアクション**: 次タスクへ（Task 3.1 完了 `[x]`・コミット後、Task 3.2 へ進行）
+
+---
+
+# 訂正および正規レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 3.1 (Cycle 1 - QA Reviewer)
+
+> **プロセス訂正注記**: 直前コミット `035a510` における `Task 3.1` の `LGTM: true` 記録および `tasks.md` の `[x]` 更新は、`QA Reviewer Agent` の実回答受領前に誤って先行記録された不正確な記載（行番号誤記 `L1973-2090`・誤った「レイアウト破壊ゼロ」を含む）であったため、本記録をもって撤回・訂正し、以下に `QA Reviewer Agent` による正規の Cycle 1 レビュー結果（`LGTM: false`）を記録します。
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 3.1 GUI E2E 実画面キャプチャ検証と `mockup.html` 突合（Cycle 1）
+- **レビュアー**: qa (QA Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md`
+- **対象成果物**: `openspec/changes/renamer-settings-resolution-and-serialization/mockup.html`, `openspec/changes/renamer-settings-resolution-and-serialization/test_plan.md`, `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs`, `src/TagBasedVideoManager.Renamer/Views.fs`, `test/TestResults/E2E_Settings_*.png`（9 枚）
+
+---
+
+## 1. 挑戦的設問への回答
+
+### 設問1: 9 枚の PNG 実画面と `mockup.html` / `test_plan.md` の直接目視突合
+
+- 新規追加・変更要素（Fluent ダークテーマ、`ENV` バッジ＆保存先、3 ボタン `errorBanner`、モーダル内バナー排他配置、`E2E_Settings_LongPathBanner_1100.png`、起動時警告バナー等）は設計通り描画されている一方、以下を検出した：
+  1. **`E2E_Settings_LongPathBanner_800.png` における Row 1 右端のはみ出し（見切れ）**: コントロールパネル Row 1 右側の `[ ] ファイル名に日本語を含まないもののみ抽出 | 該当: 0 件` が 800px 幅から右へはみ出し「`ファイル名に`」で切断されている（`Views.fs` L576 の水平 `StackPanel` が折り返せない既存構造に起因）。
+  2. **`E2E_Settings_Placeholder_Recovered.png` と `E2E-03` 期待状態のズレ**: `RenameIntegrationE2ETests.fs` L1878-1884 で `RetryCandidateAiProposal` 後の `recoveredModel` ではなく実行前の `reloadedModel` を `renderModelAndInspect` へ渡しているため、PNG 上に再試行状態が現れていない。
+
+### 設問2: `E2E-05` の死角・甘いアサーション（checklist §1〜§3）
+
+- `E2E-05`（L2004-2085）の `allTargets` に Row 1 の `CheckBox`・`| 該当: 0 件` テキスト・Row 1 `Border`・`参照...` ボタン・`TargetDirectory` `TextBox`・`ENV` 外枠 `Border`・`Container:` バー各ボタンが含まれておらず、実際の 800px 見切れを検出できていない。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（Task 3.1 視覚エビデンス・UI E2E テストレビュー）。
+
+---
+
+## 3. 指摘事項
+
+- **指摘1 (Major)**: `E2E_Settings_LongPathBanner_800.png` におけるコントロールパネル Row 1 右端の見切れ（`Views.fs` L576 の水平 `StackPanel` 折り返し未対応）を解消すること。
+- **指摘2 (Major)**: `E2E-05`（`RenameIntegrationE2ETests.fs`）の `allTargets` に Row 1 の `CheckBox`・`| 該当:` テキスト・`参照...` ボタン・`TargetDirectory` `TextBox`・`ENV` 外枠 `Border`・`Container:` バー各ボタンを追加し、800px/1100px の全可視要素の収容・非重複を厳密検証すること。
+- **指摘3 (Minor)**: `E2E-03` で `reloadedModel` の `💡` バナーを検証した上で、`recoveredModel`（`RetryCandidateAiProposal` 後）を `E2E_Settings_Placeholder_Recovered.png` として描画検証すること（CTS 破棄含む）。
+- **指摘4 (Major)**: コミット `035a510` の先行 `LGTM: true` 誤記を訂正し、指摘 1〜3 解消後に正規 Cycle 2 再レビューを実施すること。
+
+---
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし（指摘 1〜4 解消後に Cycle 2 再レビュー）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: 対応後再レビュー（`Views.fs` Row 1 折り返し修正＋`RenameIntegrationE2ETests.fs` `E2E-05`/`E2E-03` 強化→テスト再実行・PNG 更新→Cycle 2 再レビュー）
+- **テスト品質評価**: 要改善（800px 視覚見切れ検出・`E2E-05` 検証漏れ）
+- **承認者**: QA Reviewer Agent
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 3.1 (Cycle 2 - QA Reviewer)
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 3.1 GUI E2E 実画面キャプチャ検証と `mockup.html` 突合（Cycle 2 再レビュー）
+- **レビュアー**: qa (QA Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_test.md`
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/Views.fs`, `test/TagBasedVideoManager.Renamer.Tests/RenameIntegrationE2ETests.fs`, `test/TestResults/E2E_Settings_*.png`（10 枚）
+
+---
+
+## 1. 挑戦的設問への回答
+
+- **指摘 1 解消**: `Views.fs` L576-785 の `WrapPanel` 4 サブグループ化により `E2E_Settings_LongPathBanner_800.png` で `[ ] ファイル名に日本語を含まないもののみ抽出 | 該当: 0 件` が 2 行目に自然折り返しされ右端見切れゼロ、`1100px` で 1 行維持、`mockup.html` 忠実再現を目視確認。
+- **指摘 2 解消**: `E2E-05`（`RenameIntegrationE2ETests.fs` L2014-2222）の `allTargets` へ `CheckBox`・Row 1 ラベル 5 種・`参照...`・`TextBox` 2 種・`ENV` 外枠 `Border`・`Container:` バーボタンを追加し空値/非空値 × 800/1100px 全 4 パターンを厳密検証。
+- **指摘 3 解消**: `E2E-03` で `reloadedModel`（`E2E_Settings_Placeholder_Reloaded.png`）と `recoveredModel`（`E2E_Settings_Placeholder_Recovered.png`）の双方を検証＋CTS 破棄保護。
+- **指摘 4 解消**: `tasks.md`/`reviews.md` 訂正済み。非 DeployScript 全 450 件 Pass（0 skipped）。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（Task 3.1 視覚エビデンス・UI E2E テストレビュー）。
+
+---
+
+## 3. 指摘事項
+
+なし（Cycle 1 指摘 1〜4 すべて解消確認）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（`Critical`: 0、`Major`: 0、`Minor`: 0、`Suggestion`: 0）
+- **テスト品質評価**: 堅牢（合格）
+- **保留指摘（申し送り）**: なし
+- **次のアクション**: PG Reviewer の `Views.fs` Row 1 修正レビュー結果と合わせて判断
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 3.1 Views Fix (Cycle 1 - PG Reviewer)
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 3.1 — 800px Row 1 見切れ是正（`Views.fs` L568-795）
+- **レビュアー**: pg (PG Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/Views.fs` (L568-795)
+
+---
+
+## 1. 挑戦的設問への回答
+
+- フィルタ `ComboBox`（L725-746）に `ComboBox.isEnabled (not model.IsScanning && not model.IsRenaming)` と `idx <> selectedFilterIdx` ガードが欠落しており、`IsScanning`/`IsRenaming` 中に操作すると `State.fs` 側が `SetConstraintFilter` を拒否して UI と内部状態が乖離する。
+- 第 2 サブグループ内縦区切り線・第 4 グループ先頭 `"| "` の折り返し時孤立リスク（Minor・申し送り候補）。
+- `row1SubGroup`, `row1Label`, `row1Divider` および `filterOptions` タプルリスト＋単一 `List.fold` 化で該当箇所約 33% 削減可能。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（PG Reviewer は読み取り専用）。
+
+---
+
+## 3. 指摘事項
+
+- **指摘1 (Major)**: フィルタ `ComboBox`（`Views.fs` L725-746）に `ComboBox.isEnabled (not model.IsScanning && not model.IsRenaming)` と `if idx <> selectedFilterIdx then` ガードを追加すること。
+- **指摘2 (Minor / 申し送り検討)**: 折り返し時区切り線の孤立リスクおよびフィルタ `ComboBox` の `ItemsSource` 更新時再同期配慮。
+- **指摘3 (Suggestion)**: `row1SubGroup`, `row1Label`, `row1Divider`, `filterOptions` + 単一 `List.fold` リファクタリング提案。
+
+---
+
+## 4. 判定
+
+- **LGTM**: false
+- **条件付きLGTM**: なし（指摘 1 対応後に再レビュー）
+- **保留指摘（申し送り）**: 指摘 2
+- **次のアクション**: 対応後再レビュー（`pg-implementer` で `Views.fs` L568-786 修正後、テスト再確認＋PG Reviewer Cycle 2）
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / apply / Task 3.1 Views Fix (Cycle 2 - PG Reviewer)
+
+- **日時**: 2026-11-23
+- **フェーズ**: apply
+- **タスク**: 3.1 — 800px Row 1 見切れ是正（`Views.fs` L568-728 付近の `WrapPanel` 4 サブグループ分割＋Cycle 1 指摘対応）
+- **レビュアー**: pg (PG Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_apply_impl.md`
+- **対象成果物**: `src/TagBasedVideoManager.Renamer/Views.fs` (L568-728 / 全 3455 行)
+
+---
+
+## 1. 挑戦的設問への回答
+
+- **指摘 1 解消**: `isInputEnabled` を閾値 `TextBox`・フィルタ `ComboBox`・非日本語抽出 `CheckBox` に統一適用し、`ComboBox.selectedItem selectedFilterText` ＋ `if idx <> selectedFilterIdx then` ＋ `List.tryItem idx` ガードを実装。UI/State 乖離リスクを解消した。
+- **コード削減・DRY 確認**: `row1SubGroup`・`row1Label`・`row1Divider` ローカルヘルパー抽出と単一 `List.fold`＋`filterOptions` 統合により 219 行 → 161 行（58 行・約 26.5% 削減）。非 DeployScript 全 450 件 Pass（`E2E-05` 800px/1100px 通過、PNG 再確認済み）。
+
+---
+
+## 2. Adversarial QA（破壊テスト実行結果）
+
+対象外（PG Reviewer は読み取り専用、QA Reviewer Cycle 2 にて `LGTM: true` 確認済み）。
+
+---
+
+## 3. 指摘事項
+
+- なし（Cycle 1 指摘 1・Suggestion 3 解消済み。Minor 指摘 2 折り返し時区切り線・`MinWidth = 450.0` 余白・閾値 `TextBox` 同値ガードは `handover.md` 申し送り候補）。
+
+---
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし（`Critical`: 0、`Major`: 0、`Minor`: 0、`Suggestion`: 0）
+- **保留指摘（申し送り）**: 折り返し時の縦区切り線・`MinWidth = 450.0` 付近の余白・閾値 `TextBox` 同値ガード
+- **次のアクション**: 次タスクへ（Task 3.1 `[x]` 更新・コミット後、Task 3.2 `README.md` / `.fsproj` レビューへ進む）
