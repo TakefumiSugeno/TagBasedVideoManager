@@ -2074,3 +2074,29 @@
 - **条件付きLGTM**: なし（Critical: 0 件、Major: 0 件、Minor: 2 件、Suggestion: 1 件）
 - **保留指摘**: 指摘 1・指摘 3（Archive 時 `handover.md` 申し送り候補）
 - **次のアクション**: Gate 2 (`verify-gate.ps1 -Gate apply`) 通過・`scripts/common.ps1` 非混入確認の上、Task 4.1 完了コミットへ進行
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / archive / Archive-Cycle1 (4ロール総括レビュー)
+
+- **日時**: 2026-11-28
+- **フェーズ**: archive (Cycle 1)
+- **レビュアー**: user / se / pg / qa (Reviewer Agents 並列実行)
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+
+## 1. 各ロール判定サマリ（Cycle 1）
+
+| ロール          | 判定          | Critical | Major | Minor | Suggestion | 主な指摘概要                                                                                                                                                                                                                                                                                                                 |
+| :-------------- | :------------ | :------: | :---: | :---: | :--------: | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pg-reviewer`   | `LGTM: false` |    0     |   2   |   3   |     0      | `handover.md` L63 誤記（`Cycle 3`/`DismissError`）訂正、未記録の技術的負債・将来罠（`envPathOpt` バイパス、`AiProposeCompleted` / `Directory.GetCurrentDirectory()` 残存、`ReloadSettings` 閾値リセット非対称性、`defaultConfigurationName`、`patchFileLocks`、`Thread.Sleep`、`reorderRules`、`transientBackups` 等）の追記 |
+| `user-reviewer` | `LGTM: false` |    0     |   3   |   4   |     5      | `handover.md` §5 `[TRACE]` 出力記述とコード未実装の乖離、`README.md` 実態整合（L55 `ENV: Development`、L320 JSONC 非保持明記、L341 `appsettings.json` 実物一致）、`handover.md` Why 補強・`"💡"` `ErrorMessage` 契約・§3 メタ誤記訂正                                                                                        |
+| `se-reviewer`   | `LGTM: false` |    0     |   2   |   3   |     0      | `[TRACE]` 出力の設計・手順書と実装の乖離、将来の罠・妥協点（`RenamerSettings` 拡張時 5 箇所非コンパイル保護結合、旧 `Msg` 破壊モード、複数モデル `ComboBox` `IsSyncing`、UI スレッド同期 I/O・プロセス間後勝ち、10 倍規模時ボトルネック）の追記                                                                              |
+| `qa-reviewer`   | `LGTM: true`  |    0     |   0   |   3   |     0      | 462/462 TRX・DiffC0 95.97%/DiffC1 88.41%・ロールバック性・保留転記を実ファイル突合。`handover.md` L63（`Cycle 3`/`DismissError`）および L40（`RunArgumentsScriptTests` は `M scripts/common.ps1` 起因、`deploy.sh` と切分）訂正を Minor 指摘                                                                                 |
+
+## 2. Cycle 1 詳細記録・採用方針
+
+- **採用方針（選択肢 A）**:
+  1. `State.fs`（`loadConfigWithContext` 経由の `initWithContext` / `ReloadSettings`）にて秘密値（平文 `apiKey`）を除外した `[TRACE]`（探索トレース、`LoadedFiles`、`EnvironmentName`、`SavePath`、`ApiKeySourcePath`）を `eprintfn` 出力する診断ログ出力を追加し、`StateTests.fs` (`QA-ST-05`) で検証の上、再ビルド・再テスト・カバレッジ再計測を実施する。
+  2. `README.md` L55 / L320-323 / L341-368 を実画面・実仕様・実 `appsettings.json` へ整合更新する（`user-reviewer` Suggestion 5 の `VIDEO_DIRS` 位置整理と 401 バッジ補足は保留として `handover.md` §3 へ転記）。
+  3. `handover.md` の L63 誤記訂正・L40 除外理由切分訂正・§1 Why 補強・§3/§4 の未記録負債と将来の罠（PG/User/SE/QA 全指摘）を漏れなく追記する。
+- **Cycle 1 総合 LGTM**: false（上記対応後、全 4 ロールにて Cycle 2 再レビューを実施）

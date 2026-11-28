@@ -121,11 +121,26 @@ module State =
         LastChecked = DateTime.UtcNow
     }
 
-    /// <summary>コンテキストの有無に応じて設定メタデータを同期ロードする（単一の設定解決経路）</summary>
+    /// <summary>設定解決トレース・読込ファイル・出典パス（秘密値除外）を標準エラー出力へ出力する</summary>
+    let private emitConfigDiagnostics (meta: LoadedConfiguration) : unit =
+        for line in meta.TraceLogs do
+            // [WARN] 行は Settings 側で既に出力済みのため、重複出力を避けて [TRACE] 等のみ出力する
+            if not (line.StartsWith("[WARN]", StringComparison.Ordinal)) then
+                eprintfn "%s" line
+        let loaded =
+            if List.isEmpty meta.LoadedFiles then "(なし)"
+            else String.Join(", ", meta.LoadedFiles)
+        let source = meta.ApiKeySourcePath |> Option.defaultValue "(未設定)"
+        eprintfn "[TRACE] 設定確定: Env=%s | SavePath=%s | LoadedFiles=[%s] | ApiKeySource=%s" meta.EnvironmentName meta.SavePath loaded source
+
+    /// <summary>コンテキストの有無に応じて設定メタデータを同期ロードし、診断トレースを出力する（単一の設定解決経路）</summary>
     let private loadConfigWithContext (ctxOpt: ConfigLoadContext option) : LoadedConfiguration =
-        match ctxOpt with
-        | Some ctx -> Settings.loadConfigurationWithMetadataWithContext ctx None None None
-        | None -> Settings.loadConfigurationWithMetadata None None None
+        let meta =
+            match ctxOpt with
+            | Some ctx -> Settings.loadConfigurationWithMetadataWithContext ctx None None None
+            | None -> Settings.loadConfigurationWithMetadata None None None
+        emitConfigDiagnostics meta
+        meta
 
     /// <summary>設定保存先パスが未指定・空白の場合に規定パスへフォールバック解決する</summary>
     let private resolveEffectiveSavePath (preferredSavePath: string) : string =

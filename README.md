@@ -52,7 +52,7 @@ TagBasedVideoManagerは、バイクツーリングの記録、旅行動画、大
 - **シンボリックリンク／ジャンクション安全走査**: ディレクトリジャンクションを解釈・追跡し、循環参照（同一ディレクトリ再帰）を自動検知して安全にスキップ。
 - **OpenRouter モデルによる短縮AI提案**: 命名規則（日時_タイトル等）に基づき、Free/有料モデルを活用して安全な短縮ファイル名およびAIコメントを常時提示。
 - **ワンクリック復旧 & Undo**: 物理リネーム実行と同時にDockerコンテナを自動再起動して即時マウント復旧。直前のリネームを元のファイル名に完全復元する逆リネーム（Undo）に対応。
-- **柔軟な設定管理 (.NET標準 `appsettings.json` / `appsettings.{Environment}.json`) & 設定再読込**: 設定ファイルはベーステンプレート `appsettings.json` と環境別設定 `appsettings.{Environment}.json`（`Development` / `Production` 等）の階層マージ構成を採用し、読み込み・保存ともに共通の 2 段階ディレクトリ解決で統一。アクティブ環境名や保存先ファイル名（例: `DEV` / `appsettings.Development.json`）をメイン画面に常時バッジ表示します。GUI 操作時は変更対象（`selectedModel` / `rules`）のみを既存キー非破壊で部分更新（Patch Save）し、ファイル手編集後もコントロールパネルまたはバナーの「🔄 設定を再読込」ボタンからアプリ再起動なしで即座に反映できます。秘密情報・個人パスは Git から完全に除外されます。
+- **柔軟な設定管理 (.NET標準 `appsettings.json` / `appsettings.{Environment}.json`) & 設定再読込**: 設定ファイルはベーステンプレート `appsettings.json` と環境別設定 `appsettings.{Environment}.json`（`Development` / `Production` 等）の階層マージ構成を採用し、読み込み・保存ともに共通の 2 段階ディレクトリ解決で統一。アクティブ環境名や保存先ファイル名（例: `ENV: Development` / `💾 appsettings.Development.json`）をメイン画面に常時バッジ表示します。GUI 操作時は変更対象（`selectedModel` / `rules`）のみを既存キー非破壊で部分更新（Patch Save）し、ファイル手編集後もコントロールパネルまたはバナーの「🔄 設定を再読込」ボタンからアプリ再起動なしで即座に反映できます。秘密情報・個人パスは Git から完全に除外されます。
 - **ローディングスピナー & Zero-State / 個別再試行**: スキャン中の中央回転スピナー、フォルダ未設定時の Zero-State 誘導、スキャン完了後の 0 件出し分け（動画 0 本 vs 全件安全）、個別 AI 提案エラー時の赤枠カード＋「↻ 再試行」ボタン、ファイルリネーム実行中の操作ブロック半透明暗転オーバーレイ、Docker 制御中の小型スピナーなど、すべての非同期処理で洗練された視覚フィードバックを提供。
 - **100% F# .NET 10 + Avalonia.FuncUI Elmish MVU**: 既存Webアプリのコードに一切手を加えない（改修行数ゼロ）完全独立デスクトップアプリ。
 
@@ -320,6 +320,7 @@ AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベ�
   GUI 操作でモデル選択や命名規則を変更・保存すると、ベース `appsettings.json` は書き換えられず、解決された共通ディレクトリ内の **`appsettings.{Environment}.json`** に対して変更対象キー（`selectedModel` または `rules`）のみが部分更新されます。
   - 既に定義されている `apiKey`, `targetDirectory`, `pathLengthThreshold` や未知キーは一切変更・消失しません。
   - `appsettings.{Environment}.json` が未存在の場合は、変更対象キーのみを含む最小 JSON として新規作成され、未変更の `apiKey` 等を `null` で書き出して下位設定を覆い隠すことはありません。
+  - ※ JSONC コメント（`//`）および末尾カンマは**読み込み時のみ許容**されます。GUI から設定保存（Patch Save）を実行すると再シリアライズにより対象 `appsettings.{Environment}.json` 内の `//` コメントと末尾カンマは保持されず除去されます（他キー・値はそのまま保持されます）。
   - パス単位の排他制御および一時ファイル（`.tmp`）経由のアトミック置換により、競合や書き込み中の破損を防止します。書き込み不可や既存 JSON 構文エラー時は上書き破壊を行わず、メモリ上の変更・確認ダイアログを安全にロールバック／閉鎖した上でエラー通知を行います。
 - **「🔄 設定を再読込」による再起動不要の即時反映**:
   エディタ等で `appsettings.{Environment}.json` を修正した後、アプリを再起動することなく反映できます。
@@ -338,34 +339,36 @@ AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベ�
 }
 ```
 
-- **全項目の記述例（`appsettings.json` 準拠）**:
+- **全項目の記述例（`src/TagBasedVideoManager.Renamer/appsettings.json` 実ファイル準拠）**:
 
 ```json
 {
-  "targetDirectory": "C:\\Users\\YourUserName\\Videos",
+  "targetDirectory": "",
   "pathLengthThreshold": 240,
   "selectedModel": "meta-llama/llama-3.3-70b-instruct:free",
   "apiKey": null,
   "rules": [
     {
-      "id": "rule-date-action",
-      "name": "日付_撮影地_行動 (推奨)",
-      "pattern": "{Date}_{Location}_{Activity}.mp4",
-      "promptInstruction": "ファイル名から撮影日(YYYYMMDD)、撮影場所、主な行動/内容を抽出しアンダースコア繋ぎで命名してください。",
+      "id": "rule-code-name-actor",
+      "name": "品番_要約_出演者(推奨)",
+      "pattern": "{Code}_{Summary}_{Actor}.mp4",
+      "promptInstruction": "既存のファイル名から品番、タイトルの要約、出演者を抽出しアンダースコア繋ぎで命名（短すぎても内容が把握しずらくなるので日本語で200文字前後となるように）してください。日本語タイトルや出演者が不明な場合は品番をWeb検索してそれぞれFANZAから日本語を取得してください。",
       "order": 0,
-      "enableWebSearch": false
+      "enableWebSearch": true
     },
     {
       "id": "rule-compact",
-      "name": "短縮 (タイトルのみ)",
+      "name": "短縮",
       "pattern": "{ShortTitle}.mp4",
-      "promptInstruction": "動画の内容を表す最も重要で短いキーワード（20文字以内）で命名してください。",
+      "promptInstruction": "既存のファイル名から動画の内容を表す最も重要で短いキーワード（200文字以内）で命名してください。",
       "order": 1,
       "enableWebSearch": false
     }
   ]
 }
 ```
+
+※上記 `appsettings.json` はリポジトリ同梱テンプレート（`"targetDirectory": ""`）です。個人環境固有の `"targetDirectory": "C:\\Users\\YourUserName\\Videos"` や `"apiKey": "sk-or-v1-..."` は環境別ファイル `appsettings.Development.json` 等で上書きしてください。
 
 ※`rules` の先頭に定義されたルールが起動時の既定ルールとして自動適用されます。
 ※`apiKey` が未設定（`null`）またはプレースホルダーのまま AI 提案を実行した場合、環境別設定ファイルのフルパスと最小 JSON 例がエラーバナーへ表示され、ファイル修正後に「🔄 設定を再読込」で回復できます。

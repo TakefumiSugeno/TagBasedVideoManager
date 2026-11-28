@@ -2702,3 +2702,45 @@ module StateTests =
                 if Directory.Exists(tempRoot) then Directory.Delete(tempRoot, true)
         )
 
+    [<Fact>]
+    let ``QA-ST-05: initWithContext と ReloadSettings 実行時に標準エラー出力へ TRACE 診断ログと採用メタデータが出力され秘密値が漏洩しないこと`` () =
+        let secretKey = "sk-or-v1-secret-diagnostic-check"
+        withIsolatedRepoContext "Development" (fun _ renamerDir ctx ->
+            let basePath = Path.Combine(renamerDir, "appsettings.json")
+            let devPath = Path.Combine(renamerDir, "appsettings.Development.json")
+            File.WriteAllText(basePath, """{ "apiKey": null }""")
+            File.WriteAllText(devPath, $$"""{ "apiKey": "{{secretKey}}" }""")
+
+            let origErr = Console.Error
+            try
+                use initWriter = new StringWriter()
+                Console.SetError(initWriter)
+                let model, _ = State.initWithContext (Some ctx)
+                let initStderr = initWriter.ToString()
+
+                model.ApiKeySourcePath |> should equal (Some devPath)
+                initStderr |> should contain "[TRACE]"
+                initStderr |> should contain renamerDir
+                initStderr |> should contain "LoadedFiles=["
+                initStderr |> should contain devPath
+                initStderr |> should contain $"ApiKeySource={devPath}"
+                initStderr.Contains(secretKey) |> should equal false
+
+                // ファイルを削除した状態での ReloadSettings では (なし) / (未設定) が出力される
+                File.Delete(basePath)
+                File.Delete(devPath)
+                use reloadWriter = new StringWriter()
+                Console.SetError(reloadWriter)
+                let reloadedModel, _ = State.updateWithContext (Some ctx) ReloadSettings model
+                let reloadStderr = reloadWriter.ToString()
+
+                reloadedModel.ApiKeySourcePath |> should equal None
+                reloadStderr |> should contain "[TRACE]"
+                reloadStderr |> should contain "LoadedFiles=[(なし)]"
+                reloadStderr |> should contain "ApiKeySource=(未設定)"
+                reloadStderr.Contains(secretKey) |> should equal false
+            finally
+                Console.SetError(origErr)
+        )
+
+
