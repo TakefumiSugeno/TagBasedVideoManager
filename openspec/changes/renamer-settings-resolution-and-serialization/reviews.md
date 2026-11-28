@@ -2100,3 +2100,28 @@
   2. `README.md` L55 / L320-323 / L341-368 を実画面・実仕様・実 `appsettings.json` へ整合更新する（`user-reviewer` Suggestion 5 の `VIDEO_DIRS` 位置整理と 401 バッジ補足は保留として `handover.md` §3 へ転記）。
   3. `handover.md` の L63 誤記訂正・L40 除外理由切分訂正・§1 Why 補強・§3/§4 の未記録負債と将来の罠（PG/User/SE/QA 全指摘）を漏れなく追記する。
 - **Cycle 1 総合 LGTM**: false（上記対応後、全 4 ロールにて Cycle 2 再レビューを実施）
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / archive / Archive-Cycle2 (4ロール総括レビュー)
+
+- **日時**: 2026-11-28
+- **フェーズ**: archive (Cycle 2)
+- **レビュアー**: user / se / pg / qa (Reviewer Agents 並列実行)
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+
+## 1. 各ロール判定サマリ（Cycle 2）
+
+| ロール          | 判定          | Critical | Major | Minor | Suggestion | 主な指摘概要                                                                                                                                                                                                                                                                                                                                             |
+| :-------------- | :------------ | :------: | :---: | :---: | :--------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `se-reviewer`   | `LGTM: true`  |    0     |   0   |   0   |     0      | `[TRACE]` 出力・`QA-ST-05`・技術的負債・将来の罠・ロールバック手順・保留転記をすべて実ファイル突合で確認済み（※`handover.md` 内の `State.fs` 行番号十数行シフトはシンボル名併記により実害なし）                                                                                                                                                          |
+| `user-reviewer` | `LGTM: true`  |    0     |   0   |   1   |     0      | Why・暗黙契約・トラブルシューティング・`README.md` 実態整合・PNG 10 枚を確認。Minor：`handover.md` L75/L87/L89/L91 の `State.fs` 行番号および `FileScanner.sortCandidates` 表記の同期推奨                                                                                                                                                                |
+| `pg-reviewer`   | `LGTM: true`  |    0     |   0   |   1   |     1      | `[TRACE]` 出力・負債・罠の網羅を確認。Minor：`handover.md` L72/L75/L87/L89/L91 同期推奨。Suggestion：`emitConfigDiagnostics` の `loadConfigWithContext` 統合＋`isNull` 防御案（約 31% 削減）を将来候補へ転記                                                                                                                                             |
+| `qa-reviewer`   | `LGTM: false` |    0     |   2   |   1   |     0      | Major 1：`QA-ST-05` が最終行のみで Pass してしまい `State.fs` L126-129 ループ及び L128 `false` 分岐（Cobertura 50% `1/2`）を未検証。Major 2：`Console.SetError` が `IsolatedSettingsAndState` と `ConsoleErrorCapture` の別コレクション間で並列競合し得る（`TextWriter.Synchronized` も未使用）。Minor 3：`handover.md` 行番号・関数名・母集団表記の同期 |
+
+## 2. Cycle 2 対応方針
+
+- `ContainerControllerTests.fs` `ContainerLoggingTests` を `IsolatedSettingsAndState` へ統合＋`QA-ST-05` / `UT-CONV-06` へ `TextWriter.Synchronized` 適用（Major 2 解消）。
+- `QA-ST-05` へ探索トレース行（`"設定ディレクトリを採用しました ->"`）および旧 `%APPDATA%` 経由 `[WARN]` ちょうど 1 回出力（L128 重複抑制 `false` 分岐 `100% (2/2)` 検証）を追加（Major 1 解消）。
+- `handover.md` の行番号・関数名同期および `pg` Cycle 2 Suggestion 追記を実施し、`TestRun_2026-11-28_09_15_00` 再計測の上、`qa-reviewer` による Cycle 3 再レビューを実施する。
+- **Cycle 2 総合 LGTM**: false

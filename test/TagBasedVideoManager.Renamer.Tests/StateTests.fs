@@ -2710,32 +2710,39 @@ module StateTests =
             let devPath = Path.Combine(renamerDir, "appsettings.Development.json")
             File.WriteAllText(basePath, """{ "apiKey": null }""")
             File.WriteAllText(devPath, $$"""{ "apiKey": "{{secretKey}}" }""")
+            // TraceLogs 内の [WARN] 行が emitConfigDiagnostics で二重出力されないこと（L128 分岐）を併せて検証するため旧残存ファイルを配置
+            File.WriteAllText(Path.Combine(ctx.AppDataDirectory, "appsettings.json"), """{ "apiKey": "xxx" }""")
 
             let origErr = Console.Error
             try
                 use initWriter = new StringWriter()
-                Console.SetError(initWriter)
+                Console.SetError(TextWriter.Synchronized initWriter)
                 let model, _ = State.initWithContext (Some ctx)
                 let initStderr = initWriter.ToString()
 
                 model.ApiKeySourcePath |> should equal (Some devPath)
                 initStderr |> should contain "[TRACE]"
+                initStderr |> should contain "設定ディレクトリを採用しました ->"
                 initStderr |> should contain renamerDir
                 initStderr |> should contain "LoadedFiles=["
                 initStderr |> should contain devPath
                 initStderr |> should contain $"ApiKeySource={devPath}"
+                let warnCount =
+                    initStderr.Split([| "[WARN] 旧設定ディレクトリ" |], StringSplitOptions.None).Length - 1
+                warnCount |> should equal 1
                 initStderr.Contains(secretKey) |> should equal false
 
                 // ファイルを削除した状態での ReloadSettings では (なし) / (未設定) が出力される
                 File.Delete(basePath)
                 File.Delete(devPath)
                 use reloadWriter = new StringWriter()
-                Console.SetError(reloadWriter)
+                Console.SetError(TextWriter.Synchronized reloadWriter)
                 let reloadedModel, _ = State.updateWithContext (Some ctx) ReloadSettings model
                 let reloadStderr = reloadWriter.ToString()
 
                 reloadedModel.ApiKeySourcePath |> should equal None
                 reloadStderr |> should contain "[TRACE]"
+                reloadStderr |> should contain "第2段階フォールバック: 実行ディレクトリ"
                 reloadStderr |> should contain "LoadedFiles=[(なし)]"
                 reloadStderr |> should contain "ApiKeySource=(未設定)"
                 reloadStderr.Contains(secretKey) |> should equal false

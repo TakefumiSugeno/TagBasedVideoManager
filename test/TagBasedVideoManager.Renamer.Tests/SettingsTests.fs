@@ -1568,7 +1568,7 @@ module SettingsTests =
             use sw = new StringWriter()
             let dto =
                 try
-                    Console.SetError(sw)
+                    Console.SetError(TextWriter.Synchronized sw)
                     JsonSerializer.Deserialize<ConverterTestDto>("""{"apiKey":{"value":"sk-or-v1-legacy-broken"},"afterProp":"preserved"}""", opts)
                 finally
                     Console.SetError(origErr)

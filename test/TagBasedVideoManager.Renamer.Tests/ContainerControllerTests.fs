@@ -500,8 +500,8 @@ module ContainerCheckStatusTests =
         finally
             listener |> Option.iter (fun l -> l.Stop())
 
-/// stderr ログ出力（可観測性）の検証。Console.Error を差し替えるため並列実行から隔離する
-[<Collection("ConsoleErrorCapture")>]
+/// stderr ログ出力（可観測性）の検証。Console.Error を差し替えるテスト群（SettingsTests / StateTests 等）と同一の直列コレクションへ統合し並列競合を防止する
+[<Collection("IsolatedSettingsAndState")>]
 module ContainerLoggingTests =
 
     [<Fact>]
