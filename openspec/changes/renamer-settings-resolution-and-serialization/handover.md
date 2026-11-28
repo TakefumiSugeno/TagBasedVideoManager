@@ -44,10 +44,10 @@ AI File Renamer（`TagBasedVideoManager.Renamer`）において、有効な Open
     - `*Deploy*` / `*BugReproductionTests*`: Windows 上で既存 `scripts/deploy.sh` が `i/lf w/crlf` となっていることに起因（未変更）
     - `*RunArgumentsScriptTests*`: ローカル作業ツリー上の変更範囲外未コミット差分 `M scripts/common.ps1`（`0.0.0.0:${Port}:5620`）に起因
     - `*ContainerMountPathTests*`: 2026-11-28 時点のホスト `wsl.exe` 15 秒タイムアウトに起因（直前ラン `TestRun_2026-11-28_09_00_00` では 463 件中 `UT-MOUNT-03` / `UT-MOUNT-04` の 2 件のみ `wsl.exe` タイムアウト失敗、他 461 件はすべて Pass）
-  - 結果（`TestRun_2026-11-28_09_15_00`）: **合計 456 件 Pass（失敗 0 / スキップ 0）**
+  - 結果（`TestRun_2026-11-28_09_35_00`）: **合計 456 件 Pass（失敗 0 / スキップ 0）**
 - **Web アプリ側非破壊確認**:
   - `dotnet exec test/TagBasedVideoManager.Tests/bin/Debug/net10.0/TagBasedVideoManager.Tests.dll --filter-not-class "*E2E*"` → **合計 157 件 Pass（失敗 0 / スキップ 0）**（`src/TagBasedVideoManager/` 無変更のため再ビルド前の確定値、変更後も `TagBasedVideoManager.fsproj` 無変更）
-- **カバレッジ（`TestRun_2026-11-28_09_15_00`）**:
+- **カバレッジ（`TestRun_2026-11-28_09_35_00`）**:
   - **変更差分合計（`f630b31..HEAD` ＋作業ツリー確定分）**: **DiffC0 = 96.00%** (`1153/1201` >= 90%)、**DiffC1 = 88.59%** (`357/403` >= 85%)
     - `Settings.fs`: DiffC0 **98.27%** (`455/463`) / DiffC1 **89.41%** (`228/255`)（`Summary.txt` クラス `Settings` Line `97.7%`・Cobertura ファイル集計 Branch `89.7%`）
     - `State.fs`: DiffC0 **95.21%** (`318/334`) / DiffC1 **87.93%** (`102/116`)（`Summary.txt` Line `78.3%`、`emitConfigDiagnostics` L126/L128 各 `100% (2/2)`）
@@ -56,8 +56,8 @@ AI File Renamer（`TagBasedVideoManager.Renamer`）において、有効な Open
   - **アセンブリ全体（`Summary.txt`）**: Line (C0) = **89.4%** (`4532/5064` >= 80%)、Branch (C1) = **72.1%** (`1117/1548`)（Coverlet コンソール表記: Line `89.7%` / Branch `69.38%`。全体 C1 が 80% 未満の要因は本変更対象外の未変更レガシー領域起因）
   - **C2 デシジョンテーブル・シナリオ・Adversarial QA**: `test_plan.md` §4 全 30 行（`DT-MERGE-01..11`, `DT-KEY-01..07`, `DT-DIR-01..06`, `DT-PATCH-01..06`）および §2 全 11 シナリオ 1:1 突合 Pass、Adversarial QA 破壊テスト **19/19 Pass**
 - **エビデンス出力先**:
-  - `test/TestResults/TestRun_2026-11-28_09_15_00/TestRun_2026-11-28_09_15_00_net10.0.trx`
-  - `test/TestResults/TestRun_2026-11-28_09_15_00/CoverageReport/index.html`（サマリ: `Summary.txt`）
+  - `test/TestResults/TestRun_2026-11-28_09_35_00/TestRun_2026-11-28_09_35_00_net10.0.trx`
+  - `test/TestResults/TestRun_2026-11-28_09_35_00/CoverageReport/index.html`（サマリ: `Summary.txt`）
   - UI 実画面キャプチャ: `test/TestResults/E2E_Settings_*.png`（10 枚：`HappyPath`, `ZeroState_MissingKey`, `Placeholder_Error`, `Placeholder_Reloaded`, `Placeholder_Recovered`, `ModalSaveError`, `ModalSaveRecovered`, `LongPathBanner_800`, `LongPathBanner_1100`, `StartupWarningBanner`）
 
 ---

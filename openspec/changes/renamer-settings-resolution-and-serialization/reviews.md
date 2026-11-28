@@ -2125,3 +2125,19 @@
 - `QA-ST-05` へ探索トレース行（`"設定ディレクトリを採用しました ->"`）および旧 `%APPDATA%` 経由 `[WARN]` ちょうど 1 回出力（L128 重複抑制 `false` 分岐 `100% (2/2)` 検証）を追加（Major 1 解消）。
 - `handover.md` の行番号・関数名同期および `pg` Cycle 2 Suggestion 追記を実施し、`TestRun_2026-11-28_09_15_00` 再計測の上、`qa-reviewer` による Cycle 3 再レビューを実施する。
 - **Cycle 2 総合 LGTM**: false
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / archive / Archive-Cycle3 (QA Reviewer 再検証 & エスカレーション合意)
+
+- **日時**: 2026-11-28
+- **フェーズ**: archive (Cycle 3)
+- **レビュアー**: qa (QA Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+
+## 1. Cycle 3 確認結果・指摘事項
+
+- **Cycle 2 Major 1 / Minor 3 解消確認**: `QA-ST-05` 強化および `State.fs` `emitConfigDiagnostics`（L126/L128/L131 すべて `line-rate="1"`, `branch-rate="1"`, `100% (2/2)`）、ならびに `handover.md` の行番号・シンボル名・`TestRun_2026-11-28_09_15_00`（456/456 Pass, DiffC0 `96.00%`, DiffC1 `88.59%`）整合を確認。
+- **残存 Major 1 件**: `ContainerControllerTests.fs` において `ContainerLoggingTests`（L504-505）のみ `IsolatedSettingsAndState` に統合されたが、同ファイル内で `eprintfn` を発火させる残り 4 モジュール（`ContainerRuntimeDetectionTests` L93、`ContainerPsParsingTests` L202、`ContainerCheckStatusTests` L334、`ContainerExecuteActionTests` L537）が別コレクションのまま残っており、`--parallel none` なしの標準並列実行時に `ContainerLoggingTests.UT-CC-03` の `captureStderr` へ `[警告]` が混入する並列競合が破壊テスト（`repro_console_race.fsx`）で再現。
+- **Cycle 3 総合 LGTM**: false
+- **ユーザー判断（エスカレーション結果）**: 残り 4 モジュールにも `[<Collection("IsolatedSettingsAndState")>]` を付与して再テストし、特例 Cycle 4（`qa-reviewer`）で `LGTM: true` 取得後に Archive・PR 作成まで完遂する方針を承認済み。
