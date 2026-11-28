@@ -52,7 +52,7 @@ TagBasedVideoManagerは、バイクツーリングの記録、旅行動画、大
 - **シンボリックリンク／ジャンクション安全走査**: ディレクトリジャンクションを解釈・追跡し、循環参照（同一ディレクトリ再帰）を自動検知して安全にスキップ。
 - **OpenRouter モデルによる短縮AI提案**: 命名規則（日時_タイトル等）に基づき、Free/有料モデルを活用して安全な短縮ファイル名およびAIコメントを常時提示。
 - **ワンクリック復旧 & Undo**: 物理リネーム実行と同時にDockerコンテナを自動再起動して即時マウント復旧。直前のリネームを元のファイル名に完全復元する逆リネーム（Undo）に対応。
-- **柔軟な設定管理 (.NET標準 `appsettings.json` / `appsettings.{Environment}.json`)**: 設定ファイルはベーステンプレート `appsettings.json` と環境別設定 `appsettings.{Environment}.json`（`Development` / `Production` 等）の階層マージ構成を採用。アクティブ環境名や保存先ファイル名（例: `DEV` / `appsettings.Development.json`）をメイン画面に常時バッジ表示。書込制限環境では `%APPDATA%\TagBasedVideoManager\` への自動フォールバックに対応し、秘密情報・個人パスは Git から完全に除外されます。
+- **柔軟な設定管理 (.NET標準 `appsettings.json` / `appsettings.{Environment}.json`) & 設定再読込**: 設定ファイルはベーステンプレート `appsettings.json` と環境別設定 `appsettings.{Environment}.json`（`Development` / `Production` 等）の階層マージ構成を採用し、読み込み・保存ともに共通の 2 段階ディレクトリ解決で統一。アクティブ環境名や保存先ファイル名（例: `ENV: Development` / `💾 appsettings.Development.json`）をメイン画面に常時バッジ表示します。GUI 操作時は変更対象（`selectedModel` / `rules`）のみを既存キー非破壊で部分更新（Patch Save）し、ファイル手編集後もコントロールパネルまたはバナーの「🔄 設定を再読込」ボタンからアプリ再起動なしで即座に反映できます。秘密情報・個人パスは Git から完全に除外されます。
 - **ローディングスピナー & Zero-State / 個別再試行**: スキャン中の中央回転スピナー、フォルダ未設定時の Zero-State 誘導、スキャン完了後の 0 件出し分け（動画 0 本 vs 全件安全）、個別 AI 提案エラー時の赤枠カード＋「↻ 再試行」ボタン、ファイルリネーム実行中の操作ブロック半透明暗転オーバーレイ、Docker 制御中の小型スピナーなど、すべての非同期処理で洗練された視覚フィードバックを提供。
 - **100% F# .NET 10 + Avalonia.FuncUI Elmish MVU**: 既存Webアプリのコードに一切手を加えない（改修行数ゼロ）完全独立デスクトップアプリ。
 
@@ -67,7 +67,7 @@ TagBasedVideoManagerは、バイクツーリングの記録、旅行動画、大
 
 - **Web アプリ画面ヘッダーバッジ**: 画面上部のアプリケーションタイトル横に稼働バージョン（例: `v0.3.0`）をピルバッジとして表示。モバイル画面でのタイトル折り返し時も自然に追従し、`<title>` タブタイトルにも反映。
 - **キャッシュ制御 & 耐障害非同期取得**: `GET /api/version` エンドポイント（`Cache-Control: no-cache, no-store, must-revalidate`）経由でアセンブリバージョンを配信。2 秒タイムアウトと非ブロック非同期取得（Bulkhead パターン）により、障害時でも動画一覧の読み込みを一切阻害しません。
-- **デスクトップアプリ (AI File Renamer) タイトルバー表示**: OS ウィンドウタイトルバー（`TagBasedVideoManager - AI File Renamer v0.2.0`）および起動コンソールログにバージョンを表示・出力。
+- **デスクトップアプリ (AI File Renamer) タイトルバー表示**: OS ウィンドウタイトルバー（`TagBasedVideoManager - AI File Renamer v0.3.0`）および起動コンソールログにバージョンを表示・出力。
 - **変更規模連動の SemVer 規則**: Web アプリとデスクトップアプリで独立してバージョンを管理し、OpenSpec の変更規模（L1: Patch, L2: Minor, L3/ユーザー指示: Major）に応じてインクリメントします。
 
 ### 10. 非同期ローディングスピナー & Zero-State / Error-State ガード (Web UI)
@@ -235,16 +235,15 @@ TagBasedVideoManager は .NET 標準の構成思想に準拠し、設定を `app
 
 #### AI File Renamer (デスクトップアプリ) 設定
 
-`src/TagBasedVideoManager.Renamer/` 配下に `appsettings.Development.json`（開発・デバッグ実行時）または `appsettings.Production.json`（Release 実行時）を作成します。アプリ内の GUI で設定を変更・保存した場合も、現在のアクティブ環境に対応するファイル（または `%APPDATA%`）へ自動保存されます。
+`src/TagBasedVideoManager.Renamer/` 配下（リポジトリ外の単体配置時は実行ファイルと同階層）に `appsettings.Development.json`（開発・デバッグ実行時）または `appsettings.Production.json`（Release 実行時）を作成します。API キーのみを設定する場合は、不要項目を省略した以下の最小 JSON で動作します（未指定項目はベース `appsettings.json` または組み込み既定値で自動補完されます）。
 
 ```json
 {
-  "PathLengthThreshold": 240,
-  "TargetDirectory": "C:\\Users\\YourUserName\\Videos",
-  "OpenRouterApiKey": "sk-or-v1-xxxxxxxxxxxxxxxx",
-  "OpenRouterModel": "google/gemini-2.0-flash-lite-preview-02-05:free"
+  "apiKey": "sk-or-v1-..."
 }
 ```
+
+※実際の運用時は `sk-or-v1-...` を取得済みの有効な OpenRouter API キーに置き換えてください。GUI でモデルや命名規則を変更・保存した場合も、ベース `appsettings.json` は変更せず、アクティブ環境に対応する `appsettings.{Environment}.json` へ変更キー（`selectedModel` / `rules`）のみを部分更新（Patch Save）するため、既存の `apiKey` や他設定は保持されます。設定ファイルを手動編集した際は、アプリを再起動せず「🔄 設定を再読込」ボタンから即座に反映できます。
 
 > [!IMPORTANT]
 > **VIDEO_DIRS（複数フォルダ指定）に関する重要事項**:
@@ -286,7 +285,7 @@ Windows 11（WSL 3.0 / Docker Desktop）および Linux（Docker / Podman）向�
 
 ### 4. AI File Renamer の構成設定 (`appsettings.json` / `appsettings.{Environment}.json`)
 
-AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベース構成ファイル `appsettings.json` および環境別設定ファイル `appsettings.{Environment}.json`（`appsettings.Development.json` や `appsettings.Production.json` 等）から各種設定を読み込み・マージします。
+AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベース構成ファイル `appsettings.json` および環境別設定ファイル `appsettings.{Environment}.json`（`appsettings.Development.json` や `appsettings.Production.json` 等）から各種設定を読み込み・マージします（JSON コメント `//` および末尾カンマも許容）。
 
 #### (1) 環境名の解決と階層オーバーライドマージ
 
@@ -294,56 +293,85 @@ AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベ�
   1. OS 環境変数 `DOTNET_ENVIRONMENT`
   2. OS 環境変数 `ASPNETCORE_ENVIRONMENT`
   3. コンパイル時ビルド構成（Debug ビルド時は `Development`、Release ビルド時は `Production`）
-     ※不正文字や空文字が指定された場合は安全な既定値（`Development` / `Production`）に自動フォールバックします。
-- **階層マージ**:
-  ベースとなる `appsettings.json` を読み込んだ上で、該当する環境別設定ファイル（例: `appsettings.Development.json`）が存在する場合、キー単位でオーバーライドマージされます（環境別ファイルで未定義のキーはベース値が維持されます）。
-  さらにユーザー領域（`%APPDATA%`）にファイルが存在する場合は最優先で適用されます。
+     ※不正文字や空文字（パストラバーサル等）が指定された場合は安全な既定値（`Development` / `Production`）に自動フォールバックします。
+- **階層マージとプレースホルダー保護**:
+  ベースとなる `appsettings.json` を読み込んだ上で、同一ディレクトリ内の環境別設定ファイル（例: `appsettings.Development.json`）が存在する場合、キー単位でオーバーライドマージされます（未定義キーはベース値または組み込み既定値が維持・補完されます）。
+  上位ファイルにプレースホルダー（`"xxx"`, `"sk-or-v1-..."` 等）・空文字・不正形式の `apiKey` が記述されている場合は下位の有効な `apiKey` を上書きせず保護し、警告バナーとログで通知します（明示的に無効化したい場合のみ環境別ファイルへ `"apiKey": null` を指定してください）。
 
-#### (2) 設定読み込みの探索優先順位
+#### (2) 読込・保存共通の 2 段階ディレクトリ解決と優先順位
 
-1. **ユーザー個別設定 (最優先オーバーライド)**:
-   - `%APPDATA%\TagBasedVideoManager\appsettings.{Environment}.json`
-   - `%APPDATA%\TagBasedVideoManager\appsettings.json`
-2. **プロジェクト / カレント / 実行ディレクトリ**:
-   - `appsettings.{Environment}.json`
-   - `appsettings.json`
-3. **組み込み既定値**
+読み込みと保存で常に同一の共通ディレクトリを使用し、リポジトリ構成と単体配置の双方で設定ファイルのズレを防ぎます。
 
-※**OS環境変数および `.env` の非参照**: システム全体や別アプリケーションの意図しない環境変数が混入・干渉することを防ぐため、設定値そのものは OS 環境変数および `.env` から参照しません。設定は構成ファイル（`appsettings*.json`）に定義してください（`.env` がディスクに残存している場合は起動時に移行案内の警告ログを出力します）。
+1. **第 1 段階（リポジトリ内 `src/TagBasedVideoManager.Renamer/` 優先探索）**:
+   - まず作業ディレクトリを起点に親方向へ最大 8 階層上（計 9 ステップ）まで遡り、`src/TagBasedVideoManager.Renamer/` 配下に `appsettings.json` または `appsettings.{Environment}.json` が存在する場合に採用します。
+   - 見つからない場合は、実行アセンブリ基点ディレクトリ（`AppDomain.CurrentDomain.BaseDirectory`）を起点に同様に親方向へ最大 8 階層上まで遡って探索します。
+2. **第 2 段階（単体配置フォールバック）**:
+   - リポジトリ外の単体配置等で第 1 段階に該当がない場合は、実行アセンブリ基点ディレクトリ（`AppDomain.CurrentDomain.BaseDirectory`）を共通ディレクトリとして採用します。
+3. **共通ディレクトリ内のファイル優先順位**:
+   - `appsettings.{Environment}.json`（最優先オーバーライド・GUI 保存先）
+   - `appsettings.json`（ベーステンプレート）
+   - 組み込み既定値
 
-#### (3) 設定ファイルの保存先パス決定ロジック
+※**`.env` および汎用 OS 環境変数の非参照**: システム全体や別アプリケーションの意図しない環境変数が混入・干渉することを防ぐため、`.env` ファイルおよび OS 環境変数（`VIDEO_DIR`, `OPENROUTER_API_KEY` 等）からは設定値を一切読み込みません（`.env` や旧保存先ファイルが残存している場合は起動時に移行案内の診断ログを出力します）。
 
-- 設定画面でユーザーが設定を保存すると、ベース `appsettings.json` ではなく**現在のアクティブ環境に対応する `appsettings.{Environment}.json`**（例: `Development` 実行時は `appsettings.Development.json`）へ保存されます。
-- アプリケーション実行ディレクトリやプロジェクトディレクトリに書込権限がある場合は同階層に保存し、書き込み権限がない場合（インストーラ配置や権限不足）は自動的にユーザープロファイル配下（`%APPDATA%\TagBasedVideoManager\appsettings.{Environment}.json`）へ安全に保存します。
-- 一時ファイル（`.tmp`）を経由したアトミック置換により、書き込み中のクラッシュや破損を防止します。
+#### (3) GUI 設定保存（Patch Save）と「🔄 設定を再読込」導線
 
-#### (4) `appsettings.json` の書式例
+- **部分更新（Patch Save）と既存キー保護**:
+  GUI 操作でモデル選択や命名規則を変更・保存すると、ベース `appsettings.json` は書き換えられず、解決された共通ディレクトリ内の **`appsettings.{Environment}.json`** に対して変更対象キー（`selectedModel` または `rules`）のみが部分更新されます。
+  - 既に定義されている `apiKey`, `targetDirectory`, `pathLengthThreshold` や未知キーは一切変更・消失しません。
+  - `appsettings.{Environment}.json` が未存在の場合は、変更対象キーのみを含む最小 JSON として新規作成され、未変更の `apiKey` 等を `null` で書き出して下位設定を覆い隠すことはありません。
+  - ※ JSONC コメント（`//`）および末尾カンマは**読み込み時のみ許容**されます。GUI から設定保存（Patch Save）を実行すると再シリアライズにより対象 `appsettings.{Environment}.json` 内の `//` コメントと末尾カンマは保持されず除去されます（他キー・値はそのまま保持されます）。
+  - パス単位の排他制御および一時ファイル（`.tmp`）経由のアトミック置換により、競合や書き込み中の破損を防止します。書き込み不可や既存 JSON 構文エラー時は上書き破壊を行わず、メモリ上の変更・確認ダイアログを安全にロールバック／閉鎖した上でエラー通知を行います。
+- **「🔄 設定を再読込」による再起動不要の即時反映**:
+  エディタ等で `appsettings.{Environment}.json` を修正した後、アプリを再起動することなく反映できます。
+  - メイン画面のコントロールパネルに常設された **「🔄 設定を再読込」** ボタン（スキャン／リネーム実行中は非活性）、またはエラー発生時に表示される **エラーバナー**（ルール管理モーダル開時はモーダル上部バナー）内の **「🔄 設定を再読込」** ボタンをクリックすると最新の設定が即座に読み込まれます。
+  - 再読込時も画面上で選択済みの対象フォルダ（`targetDirectory`）は維持されるため、API キー設定後そのまま AI 提案や「↻ 再試行」を実行できます。
+
+#### (4) 設定ファイルの書式例（camelCase）
+
+不要項目は省略可能で、未指定項目はベース `appsettings.json` または組み込み既定値で安全に補完されます。
+
+- **最小 JSON 書式例（`appsettings.Development.json` 等に API キーのみ指定する場合）**:
 
 ```json
 {
-  "PathLengthThreshold": 240,
-  "TargetDirectory": "C:\\Users\\YourUserName\\Videos",
-  "OpenRouterApiKey": "sk-or-v1-xxxxxxxxxxxxxxxx",
-  "OpenRouterModel": "google/gemini-2.0-flash-lite-preview-02-05:free",
-  "NamingRules": [
+  "apiKey": "sk-or-v1-..."
+}
+```
+
+- **全項目の記述例（`src/TagBasedVideoManager.Renamer/appsettings.json` 実ファイル準拠）**:
+
+```json
+{
+  "targetDirectory": "",
+  "pathLengthThreshold": 240,
+  "selectedModel": "meta-llama/llama-3.3-70b-instruct:free",
+  "apiKey": null,
+  "rules": [
     {
-      "Id": "rule-1",
-      "Name": "日付+タイトル",
-      "Pattern": "{yyyyMMdd}_{Title}",
-      "Description": "撮影日とタイトルをアンダースコアで結合"
+      "id": "rule-code-name-actor",
+      "name": "品番_要約_出演者(推奨)",
+      "pattern": "{Code}_{Summary}_{Actor}.mp4",
+      "promptInstruction": "既存のファイル名から品番、タイトルの要約、出演者を抽出しアンダースコア繋ぎで命名（短すぎても内容が把握しずらくなるので日本語で200文字前後となるように）してください。日本語タイトルや出演者が不明な場合は品番をWeb検索してそれぞれFANZAから日本語を取得してください。",
+      "order": 0,
+      "enableWebSearch": true
     },
     {
-      "Id": "rule-2",
-      "Name": "タイトルのみ",
-      "Pattern": "{Title}",
-      "Description": "不要なプレフィックスを除去したタイトルのみ"
+      "id": "rule-compact",
+      "name": "短縮",
+      "pattern": "{ShortTitle}.mp4",
+      "promptInstruction": "既存のファイル名から動画の内容を表す最も重要で短いキーワード（200文字以内）で命名してください。",
+      "order": 1,
+      "enableWebSearch": false
     }
   ]
 }
 ```
 
-※`NamingRules` の先頭に定義されたルールが起動時の既定ルールとして自動適用されます。
-※`OpenRouterApiKey` が未設定または空文字の場合、AIファイル名の自動提案は行われず「未提案」状態（元のファイル名維持）で安全に起動します。
+※上記 `appsettings.json` はリポジトリ同梱テンプレート（`"targetDirectory": ""`）です。個人環境固有の `"targetDirectory": "C:\\Users\\YourUserName\\Videos"` や `"apiKey": "sk-or-v1-..."` は環境別ファイル `appsettings.Development.json` 等で上書きしてください。
+
+※`rules` の先頭に定義されたルールが起動時の既定ルールとして自動適用されます。
+※`apiKey` が未設定（`null`）またはプレースホルダーのまま AI 提案を実行した場合、環境別設定ファイルのフルパスと最小 JSON 例がエラーバナーへ表示され、ファイル修正後に「🔄 設定を再読込」で回復できます。
 
 #### (5) 設定項目対応表
 
@@ -359,12 +387,13 @@ AI File Renamer は ASP.NET Core / .NET 標準の構成思想に準拠し、ベ�
 
 ##### AI File Renamer (デスクトップアプリ)
 
-| appsettings.json キー | 旧環境変数名 (移行対象) | 既定値                                            | 説明                                                                   |
-| :-------------------- | :---------------------- | :------------------------------------------------ | :--------------------------------------------------------------------- |
-| `TargetDirectory`     | `VIDEO_DIR`             | `""`                                              | 走査対象の動画フォルダパス（単一フォルダ指定、未設定時は案内画面表示） |
-| `PathLengthThreshold` | `PATH_LENGTH_THRESHOLD` | `240`                                             | 長パス警告・抽出基準文字数                                             |
-| `OpenRouterApiKey`    | `OPENROUTER_API_KEY`    | `""`                                              | OpenRouter APIキー（未設定時はAI未提案表示で安全起動）                 |
-| `OpenRouterModel`     | `OPENROUTER_MODEL`      | `google/gemini-2.0-flash-lite-preview-02-05:free` | 短縮提案に使用するAIモデル                                             |
+| appsettings.json キー | 旧環境変数名 (参照廃止) | 既定値                                   | 説明                                                                                     |
+| :-------------------- | :---------------------- | :--------------------------------------- | :--------------------------------------------------------------------------------------- |
+| `targetDirectory`     | `VIDEO_DIR`             | `""`                                     | 走査対象の動画フォルダパス（単一フォルダ指定、未設定時は案内画面表示）                   |
+| `pathLengthThreshold` | `PATH_LENGTH_THRESHOLD` | `240`                                    | 長パス警告・抽出基準文字数                                                               |
+| `selectedModel`       | `OPENROUTER_MODEL`      | `meta-llama/llama-3.3-70b-instruct:free` | 短縮提案に使用するAIモデル（GUI 保存時は部分更新）                                       |
+| `apiKey`              | `OPENROUTER_API_KEY`    | `null`                                   | OpenRouter APIキー（素の文字列または `null`。未設定/不正時はバナー案内）                 |
+| `rules`               | `—`                     | 既定2ルール                              | 命名規則配列（`id`, `name`, `pattern`, `promptInstruction`, `order`, `enableWebSearch`） |
 
 ---
 

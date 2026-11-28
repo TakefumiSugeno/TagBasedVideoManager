@@ -90,6 +90,7 @@ module ContainerTestHelpers =
 open ContainerTestHelpers
 
 /// ランタイム自動検出 (UT-RUN-01〜03 / C2 網羅)
+[<Collection("IsolatedSettingsAndState")>]
 module ContainerRuntimeDetectionTests =
 
     /// 指定コマンド集合のみ存在するとみなす commandExists モック
@@ -199,6 +200,7 @@ module ContainerRuntimeDetectionTests =
         names |> List.forall (fun n -> not (n.EndsWith ".exe")) |> should equal true
 
 /// docker / wslc `ps -a --format json` 出力の解析 (UT-CC-01〜06)
+[<Collection("IsolatedSettingsAndState")>]
 module ContainerPsParsingTests =
 
     [<Fact>]
@@ -331,6 +333,7 @@ module ContainerPsParsingTests =
         |> should equal (Stopped, Some "t2")
 
 /// ステータス判定 (UT-CC-07 / DT-01〜04 / IT-CC-02)
+[<Collection("IsolatedSettingsAndState")>]
 module ContainerCheckStatusTests =
 
     [<Fact>]
@@ -500,8 +503,8 @@ module ContainerCheckStatusTests =
         finally
             listener |> Option.iter (fun l -> l.Stop())
 
-/// stderr ログ出力（可観測性）の検証。Console.Error を差し替えるため並列実行から隔離する
-[<Collection("ConsoleErrorCapture")>]
+/// stderr ログ出力（可観測性）の検証。Console.Error を差し替えるテスト群（SettingsTests / StateTests 等）と同一の直列コレクションへ統合し並列競合を防止する
+[<Collection("IsolatedSettingsAndState")>]
 module ContainerLoggingTests =
 
     [<Fact>]
@@ -534,6 +537,7 @@ module ContainerLoggingTests =
         err |> should contain marker
 
 /// コンテナ操作 (UT-CC-03/04/08/09, IT-CC-01/03/04, ST-01〜04)
+[<Collection("IsolatedSettingsAndState")>]
 module ContainerExecuteActionTests =
 
     let private short = TimeSpan.FromMilliseconds 200.0
