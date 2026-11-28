@@ -2141,3 +2141,51 @@
 - **残存 Major 1 件**: `ContainerControllerTests.fs` において `ContainerLoggingTests`（L504-505）のみ `IsolatedSettingsAndState` に統合されたが、同ファイル内で `eprintfn` を発火させる残り 4 モジュール（`ContainerRuntimeDetectionTests` L93、`ContainerPsParsingTests` L202、`ContainerCheckStatusTests` L334、`ContainerExecuteActionTests` L537）が別コレクションのまま残っており、`--parallel none` なしの標準並列実行時に `ContainerLoggingTests.UT-CC-03` の `captureStderr` へ `[警告]` が混入する並列競合が破壊テスト（`repro_console_race.fsx`）で再現。
 - **Cycle 3 総合 LGTM**: false
 - **ユーザー判断（エスカレーション結果）**: 残り 4 モジュールにも `[<Collection("IsolatedSettingsAndState")>]` を付与して再テストし、特例 Cycle 4（`qa-reviewer`）で `LGTM: true` 取得後に Archive・PR 作成まで完遂する方針を承認済み。
+
+---
+
+# レビュー記録: renamer-settings-resolution-and-serialization / archive / Archive-Cycle4 (QA Reviewer 特例再検証)
+
+- **日時**: 2026-11-29
+- **フェーズ**: archive (Cycle 4)
+- **レビュアー**: qa (QA Reviewer Agent)
+- **使用プロトコル**: `openspec/templates/checklist_archive.md`
+- **対象成果物**:
+  - `test/TagBasedVideoManager.Renamer.Tests/{ContainerControllerTests.fs, SettingsTests.fs, StateTests.fs}`
+  - `test/TestResults/TestRun_2026-11-28_09_35_00/{TestRun_2026-11-28_09_35_00_net10.0.trx, coverage.cobertura.281126003232437.xml, CoverageReport/Summary.txt}`
+  - `openspec/changes/renamer-settings-resolution-and-serialization/{handover.md, reviews.md, tasks.md}`
+
+## 1. 挑戦的設問への回答
+
+### 設問1: Cycle 3 指摘（`Console.Error` 並列競合）の完全解消と他モジュールへの残存有無
+
+- **確認内容・回答**:
+  - `ContainerControllerTests.fs` 全 5 テストモジュール（L93-94, L203-204, L336-337, L507-508, L540-541）が `[<Collection("IsolatedSettingsAndState")>]` に統合され、`Mono.Cecil` IL コールグラフ解析によりコレクション外 23 テストクラスから `Console.Error` / `Console.SetError` / `eprintfn` / `SetEnv` / `SetCwd` / `Settings` / `State` / `ContainerController` への呼び出しが **0 件** であることを確認済み。
+
+### 設問2: 最新テスト実績・カバレッジ・`handover.md` 実ファイル突合
+
+- **確認内容・回答**:
+  - `TestRun_2026-11-28_09_35_00_net10.0.trx` にて **456/456 Pass（失敗 0 / スキップ 0）**、`Summary.txt` Line `89.4% (4532/5064)`・Branch `72.1% (1117/1548)`（Coverlet `89.7% / 69.38%`）、独立再計算 **DiffC0 = 96.00% (1153/1201)**・**DiffC1 = 88.59% (357/403)**、ならびに `handover.md` 内行番号・シンボル名・`E2E_Settings_*.png` 10 枚・`test_plan.md` 全項目の一致を確認済み。
+
+### 設問3: ロールバック安全性および保留指摘全件引き継ぎ
+
+- **確認内容・回答**: `src/TagBasedVideoManager/` 無変更・DB 変更なし・`appsettings*.json` 無変更であり `git revert -m 1` で安全にロールバック可能。全保留指摘は `handover.md` §3・§4 へ漏れなく転記済み。
+
+## 2. Adversarial QA（並列ストレス検証）
+
+- **対象関数/モジュール**: `TagBasedVideoManager.Renamer.Tests.dll` 全テストクラス・`ContainerControllerTests` 全 5 モジュール・`SettingsTests.UT-CONV-06`・`StateTests.QA-ST-05`
+- **実行コマンド**: `dotnet fsi "...\scratch\verify_cycle4_qa.fsx"`（実行後削除）および `openspec validate "renamer-settings-resolution-and-serialization"`
+- **実行判定**: **堅牢性確認（Green / 0 Errors）**（直列隔離 51 テスト × 20 ラウンド = 1,020 回＋並列 29 テスト × 4 スレッド負荷で競合・`Console.Error` リーク 0 件、`openspec validate` `valid`）
+
+## 3. 指摘事項
+
+なし（Critical: 0 件、Major: 0 件、Minor: 0 件、Suggestion: 0 件）
+
+## 4. 判定
+
+- **LGTM**: true
+- **条件付きLGTM**: なし
+- **引き継ぎ完了確認**: `handover.md` に全ての負債・申し送り・除外クラス理由・最新エビデンス（`TestRun_2026-11-28_09_35_00`）・ロールバック手順が記録済み
+- **リリース可否**: 即時リリース可
+- **保留指摘（申し送り）**: 新規保留指摘なし（既存保留項目は `handover.md` §3・§4 へ全件転記済み）
+- **次のアクション**: Gate 3 検証（`verify-gate.ps1 -Gate archive`）通過後、`openspec archive`・コミット・Push・PR 作成へ進行
